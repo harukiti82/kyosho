@@ -5,6 +5,10 @@
 
 ## ブラウザで遊ぶ（`web/`）
 
+公開版: **https://harukiti82.github.io/kyosho/**（main に push すると GitHub Actions で自動デプロイ）
+
+手元で動かす場合:
+
 Node.js 22.12 以上が必要（Vitest 5 の要件。遊ぶだけなら Vite 8 の 20.19 以上でも可）。
 
 ```sh

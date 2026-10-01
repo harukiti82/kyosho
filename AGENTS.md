@@ -23,6 +23,7 @@
 
 ```
 kyosho/
+├── .github/workflows/pages.yml ← PR でテスト+ビルド、main への push で GitHub Pages にデプロイ
 ├── RULES.md          ← ルール本体・検証結果・改訂履歴（ルール変更はここが起点）
 ├── sim/              ← Python のルールエンジンとバランス検証スクリプト
 │   └── export_replays.py ← web の整合テスト用棋譜を書き出す
@@ -48,6 +49,7 @@ kyosho/
 | test | `cd web && npm test` |
 | e2e | `cd web && npm run e2e`（ビルド → `vite preview :4179` を自動起動） |
 | 棋譜の再生成 | `python3 sim/export_replays.py` |
+| 公開 | main への merge で自動デプロイ → https://harukiti82.github.io/kyosho/ （workflow は main 直 push せず PR 経由で変更） |
 | シミュレーター | `RULES.md` のシミュレーター節を参照 |
 
 ## ルールを変えるとき
