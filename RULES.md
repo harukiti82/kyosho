@@ -116,6 +116,7 @@ python3 sim/compare.py 600     # ルール案の比較（案名の先頭で絞�
 python3 sim/tune_c.py          # 体力・後手ボーナスの調整表
 python3 sim/check_c.py         # 採用ルールの最終確認（約 3 分）
 python3 sim/tune_kaku.py 角2枚  # 角（追加ルール）案の比較（約 2 分/案）
+python3 sim/export_replays.py  # ブラウザ版（web/）の整合テスト用の棋譜を書き出す
 ```
 
 ルールの切り替えは `sim/kyosho.py` の `Rules`（`hand` / `pieces` / `damage` / `heal_minus` / `count_div` / `hp` / `second_bonus`）。
