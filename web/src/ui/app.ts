@@ -98,7 +98,8 @@ export class App {
     };
     const board = this.el.board;
     board.addEventListener("pointerdown", (e) => (this.lastPointer = e.pointerType || "mouse"));
-    board.addEventListener("keydown", () => (this.lastPointer = "keyboard"));
+    // Tab で盤に入ったときも予測を出せるよう、キー入力は文書全体で拾う
+    document.addEventListener("keydown", () => (this.lastPointer = "keyboard"));
     board.addEventListener("pointerover", (e) => {
       if (e.pointerType !== "mouse" || this.pinned) return;
       const at = cellOf(e);
@@ -356,7 +357,9 @@ export class App {
       let delta: HTMLElement | null = null;
       if (last?.type === "move") {
         const d = last.player === p ? last.heal : -last.attack;
-        if (d !== 0) delta = h("span", { class: `delta ${d > 0 ? "up" : "down"}`, text: signed(d) });
+        // 増減の表示は新しい手の直後だけアニメーションさせる
+        const fresh = last.ply === this.animatePly ? " fresh" : "";
+        if (d !== 0) delta = h("span", { class: `delta ${d > 0 ? "up" : "down"}${fresh}`, text: signed(d) });
       }
       el.className = `player-card glass p${p}`;
       el.classList.toggle("active", !g.result && g.turn === p);
