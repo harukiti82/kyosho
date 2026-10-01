@@ -10,3 +10,4 @@
 - ルール v0.4 とバランス検証シミュレーター（`sim/`）を追加
 - ブラウザ版（`web/`）: TS エンジン + 2 手読み CPU + 画面を実装。Python 棋譜 76 局との整合テスト、Playwright で CPU/2 人/角ありを終局まで確認
 - AGENTS.md / README / `.agent/` を整備
+- GitHub Pages 公開: `.github/workflows/pages.yml` を追加し https://harukiti82.github.io/kyosho/ にデプロイ
