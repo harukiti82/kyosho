@@ -620,6 +620,97 @@ button {
   box-shadow: 0 0 0 1.5px #fff;
   pointer-events: none;
 }
+/* 隠し王: 自分の王の印（石の右上）と、王が返されうるときの強い警告 */
+.king-mark {
+  position: absolute;
+  top: -10%;
+  right: -10%;
+  display: grid;
+  place-items: center;
+  width: 46%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: #c9a24a;
+  color: #1f1b14;
+  font-size: 2.6cqi;
+  font-weight: 800;
+  box-shadow: 0 0 0 1.5px #fff;
+  transform: none;
+}
+.stone.king {
+  position: relative;
+  outline: 2.5px solid #c9a24a;
+  outline-offset: 1px;
+}
+.board .stone.king {
+  position: absolute;
+}
+.piece-btn .king-mark {
+  font-size: 0.6rem;
+}
+.threat.king,
+.key-threat.king {
+  background: var(--danger);
+  color: #fff;
+}
+.threat.king {
+  width: 40%;
+  animation: pulse 0.9s ease-in-out infinite;
+}
+@keyframes pulse {
+  50% {
+    transform: scale(1.18);
+  }
+}
+.key-king {
+  display: inline-grid;
+  place-items: center;
+  width: 1.25em;
+  height: 1.25em;
+  border-radius: 50%;
+  background: #c9a24a;
+  color: #1f1b14;
+  font-size: 0.8em;
+  font-weight: 800;
+  line-height: 1;
+  vertical-align: 0.05em;
+}
+/* 王を返した瞬間の演出 */
+.king-pop {
+  position: absolute;
+  z-index: 4;
+  left: 50%;
+  top: 50%;
+  padding: 0.15rem 0.45rem;
+  border-radius: 999px;
+  background: #c9a24a;
+  color: #1f1b14;
+  font-size: 0.85rem;
+  font-weight: 800;
+  white-space: nowrap;
+  box-shadow: 0 0 0 2px #fff, 0 6px 16px -4px rgba(31, 27, 20, 0.5);
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+  animation: king-pop 1.6s ease-out forwards;
+}
+@keyframes king-pop {
+  0% {
+    transform: translate(-50%, -50%) scale(0.4);
+    opacity: 0;
+  }
+  15% {
+    transform: translate(-50%, -50%) scale(1.25);
+    opacity: 1;
+  }
+  80% {
+    transform: translate(-50%, -110%) scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-50%, -130%) scale(1);
+    opacity: 0;
+  }
+}
 /* 取った直後のダメージ数 */
 .dmg-pop {
   position: absolute;
@@ -781,6 +872,85 @@ button {
   font-size: 0.65rem;
   font-weight: 600;
   color: var(--danger);
+}
+
+/* ---- 隠し王の操作欄 ---- */
+.king-box {
+  display: grid;
+  gap: 0.35rem;
+  margin-top: 0.6rem;
+  padding-top: 0.55rem;
+  border-top: 1px dashed rgba(31, 27, 20, 0.15);
+}
+.king-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-self: start;
+  gap: 0.45rem;
+  padding: 0.45rem 0.85rem;
+  border: 1.5px solid #c9a24a;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.7);
+  font-size: 0.9rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.king-toggle.on {
+  background: #c9a24a;
+  color: #1f1b14;
+  box-shadow: 0 0 0 2px #fff, 0 0 0 4px #c9a24a;
+}
+.king-toggle:disabled {
+  cursor: default;
+}
+.king-note {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--ink-muted);
+}
+.king-privacy {
+  margin: 0;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--danger);
+}
+.king-peek {
+  justify-self: start;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+.king-peek[aria-pressed="true"] {
+  background: #c9a24a;
+}
+.king-tag {
+  margin-left: auto;
+  padding: 0.05rem 0.45rem;
+  border-radius: 999px;
+  background: rgba(201, 162, 74, 0.25);
+  font-size: 0.72rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.king-tag.lost {
+  background: rgba(168, 67, 42, 0.15);
+  color: var(--danger);
+}
+.warn.king {
+  color: var(--danger);
+}
+.log-item.king {
+  color: var(--danger);
+}
+.king-sub {
+  display: grid;
+  gap: 0.45rem;
+  margin-top: 0.2rem;
+  padding: 0.5rem 0.6rem;
+  border-left: 3px solid rgba(201, 162, 74, 0.7);
+  border-radius: 0.6rem;
+  background: rgba(255, 255, 255, 0.45);
 }
 
 /* ---- 棋譜 ---- */

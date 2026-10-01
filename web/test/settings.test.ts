@@ -1,9 +1,9 @@
 // URL クエリ（設定の共有）とルールカードの文言のテスト
 
 import { describe, expect, it } from "vitest";
-import { defaultRules, matchPreset, PRESETS } from "../src/engine/rules";
+import { defaultRules, matchPreset, NO_KING, PRESETS, sameRules } from "../src/engine/rules";
 import { decodeRules, encodeRules } from "../src/ui/query";
-import { endDetails, ruleLines, sentenceText } from "../src/ui/ruletext";
+import { endDetails, ruleDetails, ruleLines, sentenceText } from "../src/ui/ruletext";
 import { rulesOf } from "./helpers";
 
 describe("URL クエリ", () => {
@@ -39,6 +39,34 @@ describe("URL クエリ", () => {
     expect(d.invalid).toEqual([]);
     expect(d.rules).toEqual({ ...defaultRules(), action: "flip", gate: true, hp: [5, 20] });
   });
+  it("隠し王の設定（罰・期限）も往復できる。なしのときは king=0 だけを載せる", () => {
+    const king = rulesOf("king");
+    expect(encodeRules(king)).toContain("king=1&kpen=hp&kdmg=20&kdue=5");
+    const lose = rulesOf("orig", { king: { on: true, penalty: "lose", amount: 7, deadline: 1 } });
+    expect(decodeRules(encodeRules(lose))).toEqual({ rules: lose, present: true, invalid: [] });
+    expect(encodeRules(rulesOf("v2"))).toMatch(/&king=0$/);
+    // 隠し王の項目がない古い URL は「なし」
+    expect(decodeRules("?take=flip&hp1=40").rules.king).toEqual(NO_KING);
+    // 範囲の端
+    const edge = decodeRules("?king=1&kpen=hp&kdmg=200&kdue=20");
+    expect([edge.invalid, edge.rules.king]).toEqual([[], { on: true, penalty: "hp", amount: 200, deadline: 20 }]);
+    expect(decodeRules("?king=1&kdmg=1&kdue=1").rules.king).toEqual({ on: true, penalty: "hp", amount: 1, deadline: 1 });
+  });
+  it("隠し王の不正な値は項目ごとに既定値（なし・体力−20・5 手）", () => {
+    const d = decodeRules("?king=yes&kpen=__proto__&kdmg=0&kdue=21");
+    expect(d.rules.king).toEqual(NO_KING);
+    expect(d.invalid.sort()).toEqual(["kdmg", "kdue", "king", "kpen"]);
+    const d2 = decodeRules("?king=1&kpen=die&kdmg=201&kdue=0");
+    expect(d2.rules.king).toEqual({ ...NO_KING, on: true });
+    expect(d2.invalid.sort()).toEqual(["kdmg", "kdue", "kpen"]);
+  });
+  it("隠し王の追加設定は「なし」なら比べない（プリセットの判定）", () => {
+    expect(matchPreset(rulesOf("v2", { king: { on: false, penalty: "lose", amount: 3, deadline: 9 } }))?.id).toBe("v2");
+    expect(matchPreset(rulesOf("king", { king: { on: true, penalty: "hp", amount: 21, deadline: 5 } }))).toBeNull();
+    // 即負けなら減る体力の値は比べない
+    const a = rulesOf("king", { king: { on: true, penalty: "lose", amount: 1, deadline: 5 } });
+    expect(sameRules(a, { ...a, king: { ...a.king, amount: 99 } })).toBe(true);
+  });
   it("範囲の端（体力 5・200、駒 0・40、手数 0・300）は有効", () => {
     const d = decodeRules("?hp1=5&hp2=200&fu=0&hi=40&limit=300");
     expect(d.invalid).toEqual([]);
@@ -48,7 +76,7 @@ describe("URL クエリ", () => {
 
 describe("ルールカードの文言", () => {
   const card = (id: string) => ruleLines(PRESETS.find((p) => p.id === id)!.rules).map(sentenceText);
-  it("どの設定でも 3〜5 行", () => {
+  it("プリセットは 3〜5 行", () => {
     for (const p of PRESETS) {
       const n = ruleLines(p.rules).length;
       expect(n).toBeGreaterThanOrEqual(3);
@@ -86,6 +114,24 @@ describe("ルールカードの文言", () => {
   });
   it("取る＋強さ制限は「取れない」", () => {
     expect(ruleLines(rulesOf("v10", { gate: true })).map(sentenceText)).toContain("置いた駒より数字が大きい駒を含む列は取れない");
+  });
+  it("隠し王: 期限と罰の 1 行が体力の行の前に入る", () => {
+    expect(card("king")).toEqual([
+      "挟んだ相手の駒を裏返す（挟めるマスにしか置けない）",
+      "返した駒の数字の合計がダメージ",
+      "回復なし",
+      "最初の5手のうち1つを王に（相手に見えない）。王を返されたら体力−20",
+      "体力 先手 70・後手 60 が 0 で負け",
+    ]);
+    const lose1 = rulesOf("v10", { king: { on: true, penalty: "lose", amount: 20, deadline: 1 } });
+    expect(ruleLines(lose1).map(sentenceText)).toContain("最初に置く駒が王（相手に見えない）。王を取られたら即負け");
+    // 強さ制限＋隠し王でも 6 行まで
+    expect(ruleLines(rulesOf("king", { gate: true }))).toHaveLength(6);
+    expect(endDetails(lose1)[0]).toBe("体力が 0 以下になるか、王を取られたらその時点で負け");
+    const details = ruleDetails(rulesOf("king")).map(sentenceText).join("\n");
+    expect(details).toContain("5 手目までに選ばなかったら、5 手目に置いた駒が自動で王になる");
+    expect(details).toContain("通常のダメージに加えて体力 −20");
+    expect(ruleLines(rulesOf("v2")).map(sentenceText).join("")).not.toContain("王");
   });
   it("決着の説明に手数上限の有無が入る", () => {
     expect(endDetails(rulesOf("v10"))[1]).toContain("80 手");

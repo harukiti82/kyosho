@@ -11,9 +11,10 @@ import {
   playMove,
   previewMove,
   threatenedPieces,
+  viewFor,
   type GameState,
-  } from "../src/engine/game";
-import { PRESETS, type PieceKind, type RuleSet } from "../src/engine/rules";
+} from "../src/engine/game";
+import { NO_KING, PRESETS, type PieceKind, type RuleSet } from "../src/engine/rules";
 import { at, boardOf, rulesOf, stateOf } from "./helpers";
 
 const names = (cells: readonly (readonly [number, number])[]) =>
@@ -30,24 +31,30 @@ const FLIP = rulesOf("orig", { heal: "none" }); // 裏返す・制限なし・�
 const CAPTURE = rulesOf("v10");
 
 describe("プリセットと初期状態", () => {
-  it("4 つのプリセットの値", () => {
+  it("5 つのプリセットの値（隠し王は「隠し王」プリセットだけ）", () => {
     const byId = Object.fromEntries(PRESETS.map((p) => [p.id, p.rules]));
     expect(byId.v04).toEqual({
       action: "flip", gate: false, damage: "maxCount", heal: "lowMinus1",
-      hp: [65, 66], hand: { fu: 14, gin: 10, kin: 6, hi: 2 }, maxPlies: 0,
+      hp: [65, 66], hand: { fu: 14, gin: 10, kin: 6, hi: 2 }, maxPlies: 0, king: NO_KING,
     });
     expect(byId.v10).toEqual({
       action: "capture", gate: false, damage: "sum", heal: "none",
-      hp: [20, 20], hand: { fu: 8, gin: 0, kin: 4, hi: 2 }, maxPlies: 80,
+      hp: [20, 20], hand: { fu: 8, gin: 0, kin: 4, hi: 2 }, maxPlies: 80, king: NO_KING,
     });
     expect(byId.v2).toEqual({
       action: "flip", gate: true, damage: "sum", heal: "none",
-      hp: [40, 40], hand: { fu: 20, gin: 0, kin: 8, hi: 4 }, maxPlies: 0,
+      hp: [40, 40], hand: { fu: 20, gin: 0, kin: 8, hi: 4 }, maxPlies: 0, king: NO_KING,
     });
     expect(byId.orig).toEqual({
       action: "flip", gate: false, damage: "sum", heal: "avg",
-      hp: [40, 40], hand: { fu: 14, gin: 10, kin: 6, hi: 2 }, maxPlies: 0,
+      hp: [40, 40], hand: { fu: 14, gin: 10, kin: 6, hi: 2 }, maxPlies: 0, king: NO_KING,
     });
+    expect(byId.king).toEqual({
+      action: "flip", gate: false, damage: "sum", heal: "none",
+      hp: [70, 60], hand: { fu: 14, gin: 10, kin: 6, hi: 2 }, maxPlies: 0,
+      king: { on: true, penalty: "hp", amount: 20, deadline: 5 },
+    });
+    expect(NO_KING).toEqual({ on: false, penalty: "hp", amount: 20, deadline: 5 });
   });
   it("初期配置は中央 4 駒がすべて歩で、オセロと同じ並び。体力と持ち駒は設定どおり", () => {
     const b = newBoard();
@@ -289,9 +296,9 @@ describe("CPU（2 手読み）", () => {
     let s = createGame(rules);
     let n = 0;
     while (!s.result) {
-      const ch = chooseLookahead(s, () => 0.5)!;
+      const ch = chooseLookahead(viewFor(s, s.turn), () => 0.5)!;
       expect(legalCells(s, ch.kind).some(([r, c]) => r === ch.r && c === ch.c)).toBe(true);
-      s = playMove(s, ch.r, ch.c, ch.kind);
+      s = playMove(s, ch.r, ch.c, ch.kind, { king: ch.king });
       n++;
     }
     expect(n).toBeGreaterThan(0);
@@ -301,14 +308,14 @@ describe("CPU（2 手読み）", () => {
     // a1（返して回復 4）と h1（返して回復 1）は同じダメージ。回復の多い a1 を選ぶ
     const rules = rulesOf("orig");
     const s = stateOf(boardOf({ b1: [1, 1], c1: [0, 5], g1: [1, 1], f1: [0, 1] }), { rules, hands: [{ kin: 1 }, {}] });
-    expect(lookaheadCandidates(s)).toEqual({ best: 1 + 4, cands: [{ r: 0, c: 0, kind: "kin" }] });
+    expect(lookaheadCandidates(viewFor(s, s.turn))).toEqual({ best: 1 + 4, cands: [{ r: 0, c: 0, kind: "kin" }] });
   });
   it("取られる位置に飛を置かない（駒選びで差がつく）", () => {
     const s = stateOf(boardOf({ a1: [1, 1], h8: [1, 1] }), { hands: [{ fu: 1, hi: 1 }, { fu: 1 }] });
-    const { cands } = lookaheadCandidates(s);
+    const { cands } = lookaheadCandidates(viewFor(s, s.turn));
     expect(cands.some((x) => x.r === 0 && x.c === 1 && x.kind === "hi")).toBe(false);
   });
   it("持ち駒がなければ null", () => {
-    expect(chooseLookahead(stateOf(boardOf({ c1: [0, 1] }), { hands: [{}, { fu: 1 }] }))).toBeNull();
+    expect(chooseLookahead(viewFor(stateOf(boardOf({ c1: [0, 1] }), { hands: [{}, { fu: 1 }] }), 0))).toBeNull();
   });
 });

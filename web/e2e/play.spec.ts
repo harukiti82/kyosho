@@ -4,42 +4,12 @@
 import { expect, test, type Page } from "@playwright/test";
 import { cellName } from "../src/engine/board";
 import { createGame, legalCells, playableKinds, playMove, threatenedPieces, type GameState } from "../src/engine/game";
-import { defaultRules, KIND_ORDER, PIECES, PRESETS, presetById, type PieceKind, type PresetId, type RuleSet } from "../src/engine/rules";
+import { defaultRules, KIND_ORDER, PIECES, PRESETS, presetById, type PieceKind, type RuleSet } from "../src/engine/rules";
 import { encodeRules } from "../src/ui/query";
 import { ruleLines, sentenceText } from "../src/ui/ruletext";
+import { noHorizontalScroll, readSetup, rng, startGame, waitHumanTurnOrEnd } from "./helpers";
 
 const SHOT = "screenshots";
-
-async function noHorizontalScroll(page: Page, width: number) {
-  const sw = await page.evaluate(() => document.documentElement.scrollWidth);
-  expect(sw).toBeLessThanOrEqual(width);
-}
-
-/** 設定画面のフォームから読んだ設定 */
-function readSetup(page: Page): Promise<RuleSet> {
-  return page.locator("#setup-form").evaluate((form: HTMLFormElement) => {
-    const f = new FormData(form);
-    const n = (k: string) => Number((form.elements.namedItem(k) as HTMLInputElement).value);
-    return {
-      action: f.get("action"),
-      gate: f.get("gate") === "1",
-      damage: f.get("damage"),
-      heal: f.get("heal"),
-      hp: [n("hp0"), n("hp1")],
-      hand: { fu: n("fu"), gin: n("gin"), kin: n("kin"), hi: n("hi") },
-      maxPlies: n("maxPlies"),
-    } as unknown as RuleSet;
-  });
-}
-
-async function startGame(page: Page, opts: { mode?: "cpu" | "pvp"; side?: 0 | 1; preset?: PresetId } = {}) {
-  await expect(page.locator("#setup")).toBeVisible();
-  if (opts.preset) await page.locator(`.preset[data-preset=${opts.preset}]`).click();
-  await page.locator(`input[name=mode][value=${opts.mode ?? "cpu"}]`).check({ force: true });
-  if ((opts.mode ?? "cpu") === "cpu") await page.locator(`input[name=side][value="${opts.side ?? 0}"]`).check({ force: true });
-  await page.locator("#setup-start").click();
-  await expect(page.locator("#setup")).toBeHidden();
-}
 
 /** 盤の 64 マスがすべて同じ大きさ（中身の印やバッジで行の高さが変わらない） */
 async function cellsUniform(page: Page) {
@@ -58,16 +28,6 @@ async function ruleCardIs(page: Page, rules: RuleSet) {
   const want = ruleLines(rules).map(sentenceText);
   await expect(page.locator("#rules4 li")).toHaveText(want);
   await expect(page.locator("#rules4")).toBeInViewport({ ratio: 1 });
-}
-
-/** 人間の手番（盤を操作できる）か終局画面のどちらかになるまで待つ。終局なら true */
-async function waitHumanTurnOrEnd(page: Page): Promise<boolean> {
-  await page.waitForFunction(
-    () => !!document.querySelector("#result[open]") || !!document.querySelector(".board.acting"),
-    undefined,
-    { timeout: 30_000 },
-  );
-  return page.locator("#result").evaluate((d) => (d as HTMLDialogElement).open);
 }
 
 const boardSnapshot = (page: Page) =>
@@ -423,18 +383,6 @@ test.describe("スマホ幅 375px", () => {
 });
 
 // ---- 2 人対戦の手順探索 ----
-
-/** 種付き乱数（mulberry32） */
-function rng(seed: number) {
-  let a = seed >>> 0;
-  return () => {
-    a = (a + 0x6d2b79f5) >>> 0;
-    let t = a;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
 
 /** 途中で「置ける所なし」のパスが起きて終局する手順をエンジンで探す（UI で同じ手順をクリックして再生する） */
 function findGameWithPass(rules: RuleSet) {

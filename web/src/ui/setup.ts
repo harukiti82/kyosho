@@ -42,6 +42,7 @@ function clampInt(raw: string, range: { min: number; max: number }, fallback: nu
 const KEY_LABEL: Record<string, string> = {
   take: "挟んだ駒を", gate: "強さ制限", dmg: "ダメージ", heal: "回復", hp1: "先手の体力", hp2: "後手の体力",
   fu: "歩の数", gin: "銀の数", kin: "金の数", hi: "飛の数", limit: "手数上限",
+  king: "隠し王", kpen: "王の罰", kdmg: "王の罰の体力", kdue: "王の指定期限",
 };
 
 export class SetupDialog {
@@ -54,6 +55,10 @@ export class SetupDialog {
     presets: byId("presets"),
     customTag: byId("custom-tag"),
     gateOn: byId("gate-on-label"),
+    kingSub: byId("king-sub"),
+    kingHp: byId("king-hp-label"),
+    kingLose: byId("king-lose-label"),
+    kingAmount: byId("king-amount-field"),
     preview: byId("setup-rules4"),
     sideField: byId("side-field"),
     note: byId("setup-note"),
@@ -158,6 +163,10 @@ export class SetupDialog {
     this.input("hp1").value = String(r.hp[1]);
     for (const k of KIND_ORDER) this.input(k).value = String(r.hand[k]);
     this.input("maxPlies").value = String(r.maxPlies);
+    this.radio("king", r.king.on ? "1" : "0");
+    this.radio("kingPenalty", r.king.penalty);
+    this.input("kingAmount").value = String(r.king.amount);
+    this.input("kingDeadline").value = String(r.king.deadline);
     this.refresh(true);
   }
 
@@ -181,6 +190,12 @@ export class SetupDialog {
       hp: [num("hp0", LIMITS.hp, prev.hp[0]), num("hp1", LIMITS.hp, prev.hp[1])],
       hand,
       maxPlies: num("maxPlies", LIMITS.maxPlies, prev.maxPlies),
+      king: {
+        on: f.get("king") === "1",
+        penalty: f.get("kingPenalty") === "lose" ? "lose" : "hp",
+        amount: num("kingAmount", LIMITS.kingAmount, prev.king.amount),
+        deadline: num("kingDeadline", LIMITS.kingDeadline, prev.king.deadline),
+      },
     };
   }
 
@@ -192,7 +207,13 @@ export class SetupDialog {
       b.setAttribute("aria-pressed", String(b.dataset.preset === match?.id));
     }
     this.el.customTag.textContent = match ? `— ${match.name}` : "— カスタム（どのプリセットとも違う）";
-    this.el.gateOn.textContent = `置いた駒より強い駒は${verb(this.rules).cannot}`;
+    const v = verb(this.rules);
+    this.el.gateOn.textContent = `置いた駒より強い駒は${v.cannot}`;
+    // 隠し王の追加設定は「あり」のときだけ見せる。減る体力の欄は罰が体力のときだけ
+    this.el.kingSub.hidden = !this.rules.king.on;
+    this.el.kingAmount.hidden = this.rules.king.penalty !== "hp";
+    this.el.kingHp.textContent = `${v.hitIf}体力が減る`;
+    this.el.kingLose.textContent = `${v.hitIf}即負け`;
     fillSentences(this.el.preview, ruleLines(this.rules));
     this.syncMode();
   }
