@@ -5,7 +5,7 @@
 import { describe, expect, it } from "vitest";
 import type { Board } from "../src/engine/board";
 import { lookaheadCandidates } from "../src/engine/cpu";
-import { createGame, lastMoveOf, playMove, type GameState } from "../src/engine/game";
+import { createGame, lastMoveOf, playMove, viewFor, type GameState } from "../src/engine/game";
 import { KIND_ORDER, PIECES, presetById, type Hand, type PieceKind, type Player, type PresetId } from "../src/engine/rules";
 import replays from "./fixtures/replays.json";
 
@@ -140,7 +140,7 @@ describe.each(sets.map((s) => [s.preset, s] as const))("Python との整合: %s"
         if (s.result) break;
         if (ev.t === "pass") continue;
         if (ev.cands !== undefined) {
-          const { best, cands } = lookaheadCandidates(s);
+          const { best, cands } = lookaheadCandidates(viewFor(s, s.turn));
           expect(best).toBe(ev.best);
           expect(cands.map((x) => choiceKey(x.r, x.c, x.kind)).sort()).toEqual(splitCands(ev.cands));
           // Python が実際に選んだ手も候補に入っている

@@ -29,6 +29,18 @@ export type Action = "flip" | "capture";
 export type DamageRule = "sum" | "maxCount";
 /** none: なし / avg: 両端の平均（切り捨て） / lowMinus1: 両端の低い方 − 1（0 未満は 0） */
 export type HealRule = "none" | "avg" | "lowMinus1";
+/** 王を返された（取られた）ときの罰。hp: 体力−amount / lose: 即負け */
+export type KingPenalty = "hp" | "lose";
+
+/** 隠し王（読み合い要素）。各自が期限内の 1 手で置いた駒を、相手に見えない王にする */
+export interface HiddenKing {
+  on: boolean;
+  penalty: KingPenalty;
+  /** 罰が hp のときに減る体力 */
+  amount: number;
+  /** 指定期限。各自の最初の deadline 手のうち 1 手で置いた駒を王にする（期限の手までに決めなければその手の駒が王） */
+  deadline: number;
+}
 
 export interface RuleSet {
   action: Action;
@@ -42,6 +54,8 @@ export interface RuleSet {
   hand: Hand;
   /** 総手数の上限。0 なら上限なし */
   maxPlies: number;
+  /** 隠し王。on が false なら他の項目は使わない */
+  king: HiddenKing;
 }
 
 /** 設定値の範囲（設定画面・URL の検証で使う） */
@@ -49,9 +63,14 @@ export const LIMITS = {
   hp: { min: 5, max: 200 },
   pieces: { min: 0, max: 40 },
   maxPlies: { min: 0, max: 300 },
+  kingAmount: { min: 1, max: 200 },
+  kingDeadline: { min: 1, max: 20 },
 } as const;
 
-export type PresetId = "v04" | "v10" | "v2" | "orig";
+/** 隠し王なし（追加設定は「あり」に切り替えたときの既定値） */
+export const NO_KING: Readonly<HiddenKing> = { on: false, penalty: "hp", amount: 20, deadline: 5 };
+
+export type PresetId = "v04" | "v10" | "v2" | "orig" | "king";
 
 export interface Preset {
   id: PresetId;
@@ -70,7 +89,7 @@ export const PRESETS: readonly Preset[] = [
     note: "裏返す・最大値＋枚数÷4・回復は低い方−1",
     rules: {
       action: "flip", gate: false, damage: "maxCount", heal: "lowMinus1",
-      hp: [65, 66], hand: hand(14, 10, 6, 2), maxPlies: 0,
+      hp: [65, 66], hand: hand(14, 10, 6, 2), maxPlies: 0, king: { ...NO_KING },
     },
   },
   {
@@ -79,7 +98,7 @@ export const PRESETS: readonly Preset[] = [
     note: "取って持ち駒にする・どこでも置ける・合計",
     rules: {
       action: "capture", gate: false, damage: "sum", heal: "none",
-      hp: [20, 20], hand: hand(8, 0, 4, 2), maxPlies: 80,
+      hp: [20, 20], hand: hand(8, 0, 4, 2), maxPlies: 80, king: { ...NO_KING },
     },
   },
   {
@@ -88,7 +107,7 @@ export const PRESETS: readonly Preset[] = [
     note: "裏返す・置いた駒より強い駒は返せない・合計",
     rules: {
       action: "flip", gate: true, damage: "sum", heal: "none",
-      hp: [40, 40], hand: hand(20, 0, 8, 4), maxPlies: 0,
+      hp: [40, 40], hand: hand(20, 0, 8, 4), maxPlies: 0, king: { ...NO_KING },
     },
   },
   {
@@ -97,7 +116,18 @@ export const PRESETS: readonly Preset[] = [
     note: "裏返す・合計・回復は両端の平均",
     rules: {
       action: "flip", gate: false, damage: "sum", heal: "avg",
-      hp: [40, 40], hand: hand(14, 10, 6, 2), maxPlies: 0,
+      hp: [40, 40], hand: hand(14, 10, 6, 2), maxPlies: 0, king: { ...NO_KING },
+    },
+  },
+  {
+    id: "king",
+    name: "隠し王",
+    note: "裏返す・合計・最初の5手で王を隠す（返されたら−20）",
+    rules: {
+      action: "flip", gate: false, damage: "sum", heal: "none",
+      // 体力 60・60 だと 2 手読み同士の先手勝率が 32.5%（400 局）だったため、先手に 10 上乗せ（48.3%）
+      hp: [70, 60], hand: hand(14, 10, 6, 2), maxPlies: 0,
+      king: { on: true, penalty: "hp", amount: 20, deadline: 5 },
     },
   },
 ];
@@ -107,7 +137,13 @@ export const presetById = (id: PresetId): Preset => PRESETS.find((p) => p.id ===
 /** 既定のルール（RULES.md の現行版 v1.0） */
 export const DEFAULT_PRESET: PresetId = "v10";
 
-export const cloneRules = (r: RuleSet): RuleSet => ({ ...r, hp: [r.hp[0], r.hp[1]], hand: { ...r.hand } });
+export const cloneRules = (r: RuleSet): RuleSet => ({ ...r, hp: [r.hp[0], r.hp[1]], hand: { ...r.hand }, king: { ...r.king } });
+
+/** 隠し王の設定が同じか（どちらも「なし」なら追加設定の違いは問わない） */
+function sameKing(a: HiddenKing, b: HiddenKing): boolean {
+  if (!a.on || !b.on) return a.on === b.on;
+  return a.penalty === b.penalty && a.deadline === b.deadline && (a.penalty === "lose" || a.amount === b.amount);
+}
 
 export const defaultRules = (): RuleSet => cloneRules(presetById(DEFAULT_PRESET).rules);
 
@@ -120,6 +156,7 @@ export function sameRules(a: RuleSet, b: RuleSet): boolean {
     a.hp[0] === b.hp[0] &&
     a.hp[1] === b.hp[1] &&
     a.maxPlies === b.maxPlies &&
+    sameKing(a.king, b.king) &&
     KIND_ORDER.every((k) => a.hand[k] === b.hand[k])
   );
 }

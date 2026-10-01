@@ -6,6 +6,7 @@ import {
   availableKinds,
   createGame,
   isLegal,
+  kingInfo,
   lastMoveOf,
   legalCells,
   playableKinds,
@@ -13,6 +14,7 @@ import {
   previewMove,
   targetsAt,
   threatenedPieces,
+  viewFor,
   type GameEvent,
   type GameResult,
   type GameState,
@@ -31,7 +33,7 @@ import {
   type RuleSet,
 } from "../engine/rules";
 import { byId, h } from "./dom";
-import { endDetails, handText, hpText, ruleDetails, ruleLines, verb } from "./ruletext";
+import { endDetails, handText, hpText, kingPenaltyText, ruleDetails, ruleLines, verb } from "./ruletext";
 import { fillSentences, SetupDialog, type PlaySettings } from "./setup";
 
 /** CPU が打つまでの待ち時間（盤面の変化を目で追えるように） */
@@ -63,6 +65,10 @@ export class App {
   private seenEvents = 0;
   /** 取った・減ったのアニメーションを再生する手数（新しい手の直後の描画だけ） */
   private animatePly = -1;
+  /** 隠し王: 手番の人が「この駒を王にする」を選んでいる */
+  private kingOn = false;
+  /** 隠し王（2 人対戦）: 「自分の王を確認」を押している間 true */
+  private peek = false;
 
   private readonly cells: HTMLButtonElement[][] = [];
   private readonly setup: SetupDialog;
@@ -78,6 +84,7 @@ export class App {
     preview: byId("preview"),
     handTitle: byId("hand-title"),
     handButtons: byId("hand-buttons"),
+    kingBox: byId("king-box"),
     log: byId("log"),
     toast: byId("toast"),
     result: byId<HTMLDialogElement>("result"),
@@ -166,6 +173,8 @@ export class App {
     this.selected = ["fu", "fu"];
     this.focus = null;
     this.pinned = false;
+    this.kingOn = false;
+    this.peek = false;
     this.seenEvents = 0;
     this.el.game.hidden = false;
     this.renderRuleCard(settings.rules);
@@ -181,11 +190,13 @@ export class App {
     return !!this.game && !this.game.result && this.isHuman(this.game.turn);
   }
 
-  private place(r: number, c: number, kind: PieceKind) {
+  private place(r: number, c: number, kind: PieceKind, king = false) {
     if (!this.game) return;
-    this.game = playMove(this.game, r, c, kind);
+    this.game = playMove(this.game, r, c, kind, { king });
     this.focus = null;
     this.pinned = false;
+    this.kingOn = false;
+    this.peek = false;
     this.afterChange();
   }
 
@@ -209,19 +220,42 @@ export class App {
     if (!g || g.result || this.isHuman(g.turn)) return;
     this.cpuTimer = window.setTimeout(() => {
       if (this.game !== g) return;
-      const ch = chooseLookahead(g);
-      if (ch) this.place(ch.r, ch.c, ch.kind);
+      // CPU には自分の視点（相手の王の正体を含まない）だけを渡す
+      const ch = chooseLookahead(viewFor(g, g.turn));
+      if (ch) this.place(ch.r, ch.c, ch.kind, ch.king);
     }, CPU_DELAY_MS);
   }
 
   private notifyNewEvents(history: GameEvent[]) {
+    const g = this.game!;
     const fresh = history.slice(this.seenEvents);
     this.seenEvents = history.length;
-    const pass = fresh.find((e) => e.type === "pass");
-    if (pass) {
-      const why = pass.reason === "noPieces" ? "持ち駒が尽きました" : "置けるマスがありません";
-      this.showToast(`${this.name(pass.player)}はパス（${why}）。${this.name(other(pass.player))}が続けて打ちます`);
+    const msgs: string[] = [];
+    for (const e of fresh) {
+      if (e.type === "pass") {
+        const why = e.reason === "noPieces" ? "持ち駒が尽きました" : "置けるマスがありません";
+        msgs.push(`${this.name(e.player)}はパス（${why}）。${this.name(other(e.player))}が続けて打ちます`);
+        continue;
+      }
+      if (e.king) {
+        const k = e.king;
+        const v = verb(g.rules);
+        const what = k.lose ? "即負け" : `体力−${k.penalty}`;
+        msgs.push(`王を${v.past}！ ${this.name(other(e.player))}の王は ${cellName(k.r, k.c)} の${pieceLabel(k.kind)}（${what}）`);
+      }
+      // CPU 対戦では、人間の王が決まったことを本人に知らせる（2 人対戦は相手に見えるので出さない）
+      if (this.settings?.mode === "cpu" && e.player === this.settings.human) {
+        const ki = kingInfo(g, e.player);
+        if (ki.cell && ki.cell[0] === e.r && ki.cell[1] === e.c) {
+          msgs.push(
+            ki.auto
+              ? `期限の ${g.rules.king.deadline} 手目なので、置いた${pieceLabel(e.kind)}（${cellName(e.r, e.c)}）が自動であなたの王になりました`
+              : `${cellName(e.r, e.c)} の${pieceLabel(e.kind)}をあなたの王にしました（CPU には見えません）`,
+          );
+        }
+      }
     }
+    if (msgs.length > 0) this.showToast(msgs.join("　"));
   }
 
   // ---- 入力 ----
@@ -242,7 +276,8 @@ export class App {
     const samePinned = this.pinned && this.focus?.r === r && this.focus?.c === c;
     // マウス・キーボードは 1 回で確定。タッチは 1 回目で予測、同じマスの 2 回目で確定
     if (!touch || samePinned) {
-      this.place(r, c, kind);
+      // 自分で選んだときだけ king を渡す（期限の手の自動指定はエンジンが行う）
+      this.place(r, c, kind, this.kingOn && kingInfo(g, g.turn).canDesignate);
       return;
     }
     this.setFocus(r, c, true);
@@ -290,6 +325,46 @@ export class App {
     return this.selected[p];
   }
 
+  /** 手番の人がこの手で置く駒が王になるか（「この駒を王にする」を選んだ・期限の手） */
+  private designating(g: GameState): boolean {
+    if (!this.canAct()) return false;
+    const ki = kingInfo(g, g.turn);
+    return ki.canDesignate && (this.kingOn || ki.forcedNow);
+  }
+
+  /**
+   * 王の印を見せてよいプレイヤー。CPU 対戦は人間、2 人対戦は「自分の王を確認」を押している手番の人だけ。
+   * 終局後は両者（答え合わせ）
+   */
+  private kingsShown(g: GameState): Player[] {
+    if (!g.rules.king.on || !this.settings) return [];
+    if (g.result) return [0, 1];
+    if (this.settings.mode === "cpu") return [this.settings.human];
+    return this.peek ? [g.turn] : [];
+  }
+
+  /** 見せてよい隠れた王のマス → 持ち主 */
+  private shownKingCells(g: GameState): Map<number, Player> {
+    const out = new Map<number, Player>();
+    for (const p of this.kingsShown(g)) {
+      const cell = kingInfo(g, p).cell;
+      if (cell) out.set(idx(cell), p);
+    }
+    return out;
+  }
+
+  private setPeek(on: boolean) {
+    if (this.peek === on) return;
+    this.peek = on;
+    // 押しているボタンを作り直さないよう、持ち駒欄は描き直さない
+    const g = this.game;
+    if (!g) return;
+    const pv = this.currentPreview(g);
+    this.renderBoard(g, pv);
+    this.renderPreview(g, pv);
+    this.el.kingBox.querySelector("#king-peek")?.setAttribute("aria-pressed", String(on));
+  }
+
   // ---- 表示 ----
 
   private name(p: Player) {
@@ -325,6 +400,9 @@ export class App {
       h("span", {}, [h("span", { class: "key-dot", attrs: { "aria-hidden": "true" } }), ` 置くと${v.can}マス`]),
       h("span", {}, [h("span", { class: "key-take", attrs: { "aria-hidden": "true" } }), ` この手で${v.can}駒`]),
       h("span", {}, [h("span", { class: "key-threat", attrs: { "aria-hidden": "true" }, text: "!" }), ` 相手に次に${v.passive}自分の駒`]),
+      ...(r.king.on
+        ? [h("span", {}, [h("span", { class: "key-king", attrs: { "aria-hidden": "true" }, text: "王" }), " 自分の王（自分にだけ見える）"])]
+        : []),
     );
   }
 
@@ -337,6 +415,7 @@ export class App {
     this.renderStatus(g);
     this.renderPreview(g, pv);
     this.renderHand(g);
+    this.renderKingBox(g);
     this.renderLog(g);
   }
 
@@ -350,6 +429,8 @@ export class App {
     // 予測中は「置いた後に返されうる駒」、それ以外は「今、相手が次の手で返せる駒」に警告を出す
     const threat = new Set((pv ? pv.exposed : threatenedPieces(g, viewer)).map(idx));
     const willTake = new Set((pv?.targets ?? []).map(idx));
+    const kings = this.shownKingCells(g);
+    const designating = this.designating(g);
     const last = lastMoveOf(g);
     this.el.board.classList.toggle("over", !!g.result);
     this.el.board.classList.toggle("acting", act);
@@ -371,19 +452,23 @@ export class App {
         cell.classList.toggle("last", last?.r === r && last?.c === c);
         cell.replaceChildren();
         let label = cellName(r, c);
+        // 王の印は、見せてよい人の王だけ（相手の王は終局まで分からない）
+        const isKing = (s && kings.get(i) === s.owner) || (isFocus && designating);
         if (s) {
-          cell.append(this.stone(s.owner, s.kind));
+          cell.append(this.stone(s.owner, s.kind, kings.get(i) === s.owner));
           label += ` ${PLAYER_NAME[s.owner]}の${pieceLabel(s.kind)}`;
+          if (kings.get(i) === s.owner) label += "（王）";
         } else if (isFocus && kind) {
-          const ghost = this.stone(g.turn, kind);
+          const ghost = this.stone(g.turn, kind, designating);
           ghost.classList.add("ghost");
           cell.append(ghost);
           if (pv && pv.damage > 0) cell.append(h("span", { class: "dmg-badge", text: `${pv.damage}` }));
           if (pv && pv.heal > 0) cell.append(h("span", { class: "heal-badge", text: `+${pv.heal}` }));
         }
         if (threat.has(i)) {
-          cell.append(h("span", { class: "threat", text: "!", attrs: { "aria-hidden": "true" } }));
-          label += ` ${v.passive}`;
+          // 自分の王が返されうるときは強調する
+          cell.append(h("span", { class: `threat${isKing ? " king" : ""}`, text: "!", attrs: { "aria-hidden": "true" } }));
+          label += isKing ? ` 王が${v.passive}` : ` ${v.passive}`;
         }
         if (willTake.has(i)) label += ` ${v.can}`;
         if (canTake) label += ` 置くと${v.can}`;
@@ -393,10 +478,11 @@ export class App {
     }
   }
 
-  private stone(owner: Player, kind: PieceKind) {
-    return h("span", { class: `stone p${owner} k-${kind}` }, [
+  private stone(owner: Player, kind: PieceKind, king = false) {
+    return h("span", { class: `stone p${owner} k-${kind}${king ? " king" : ""}` }, [
       h("span", { class: "stone-name", text: PIECES[kind].name }),
       h("span", { class: "stone-val", text: String(PIECES[kind].value) }),
+      king ? h("span", { class: "king-mark", text: "王", attrs: { "aria-hidden": "true" } }) : null,
     ]);
   }
 
@@ -411,7 +497,8 @@ export class App {
       const pct = Math.max(0, Math.min(100, (hp / max) * 100));
       // 直前の手で減った・増えた量（新しい手の直後だけアニメーションさせる）
       let delta: HTMLElement | null = null;
-      if (last && last.player !== p && last.damage > 0) delta = h("span", { class: `delta${fresh}`, text: `−${last.damage}` });
+      const lost = last && last.player !== p ? last.damage + (last.king?.penalty ?? 0) : 0;
+      if (lost > 0) delta = h("span", { class: `delta${fresh}`, text: `−${lost}` });
       if (last && last.player === p && last.heal > 0) delta = h("span", { class: `delta heal${fresh}`, text: `+${last.heal}` });
       el.className = `player-card glass p${p}`;
       el.classList.toggle("active", !g.result && g.turn === p);
@@ -421,6 +508,7 @@ export class App {
           h("span", { class: `dot p${p}`, attrs: { "aria-hidden": "true" } }),
           h("span", { class: "player-name", text: this.name(p) }),
           !g.result && g.turn === p ? h("span", { class: "pill", text: "手番" }) : null,
+          this.kingTag(g, p),
         ]),
         h("div", { class: "hp-row" }, [
           h("span", { class: "hp-label", text: "体力" }),
@@ -462,6 +550,18 @@ export class App {
     }
   }
 
+  /** 体力カードの王の状態（公開情報と、見せてよい本人の情報だけ） */
+  private kingTag(g: GameState, p: Player): HTMLElement | null {
+    if (!g.rules.king.on) return null;
+    const ki = kingInfo(g, p);
+    if (ki.status === "revealed") return h("span", { class: "king-tag lost", text: "王 返された" });
+    if (this.kingsShown(g).includes(p)) {
+      if (ki.cell) return h("span", { class: "king-tag", text: `王 ${cellName(ki.cell[0], ki.cell[1])}` });
+      if (ki.canDesignate) return h("span", { class: "king-tag", text: "王 未定" });
+    }
+    return h("span", { class: "king-tag", text: "王 ？", attrs: { title: "王の場所は本人にしか見えない" } });
+  }
+
   private renderStatus(g: GameState) {
     let text: string;
     if (g.result) {
@@ -469,7 +569,9 @@ export class App {
     } else if (!this.isHuman(g.turn)) {
       text = `${this.name(g.turn)}が考えています…`;
     } else {
-      text = `${this.name(g.turn)}の番 — ${pieceLabel(this.kindFor(g))}を置くマスを選んでください`;
+      text = `${this.name(g.turn)}の番 — ${pieceLabel(this.kindFor(g))}を${this.designating(g) ? "王にして" : ""}置くマスを選んでください`;
+      // 王を決められる手番は、操作の場所を添える（スマホでは持ち駒欄が盤の下で見えないことがある）
+      if (!this.designating(g) && kingInfo(g, g.turn).canDesignate) text += "（王は持ち駒欄で指定）";
     }
     this.el.status.textContent = text;
     this.el.status.classList.toggle("over", !!g.result);
@@ -501,7 +603,9 @@ export class App {
     }
     box.classList.add("on");
     const kind = this.kindFor(g);
-    box.append(h("h2", { class: "label", text: `予測 — ${cellName(f.r, f.c)} に ${pieceLabel(kind)} を置くと` }));
+    const designating = this.designating(g);
+    const asKing = designating ? "王にして" : "";
+    box.append(h("h2", { class: "label", text: `予測 — ${cellName(f.r, f.c)} に ${pieceLabel(kind)} を${asKing}置くと` }));
     if (pv.targets.length === 0) {
       box.append(h("p", { class: "preview-main none", text: `${v.can}駒なし` }));
     } else {
@@ -515,15 +619,35 @@ export class App {
         ]),
       );
     }
-    // 置いた駒そのものが返されうるときは強く、他の駒なら控えめに警告する
+    // 自分の王が返されうるときは最も強く、置いた駒そのものなら強く、他の駒なら控えめに警告する
     const placedExposed = pv.exposed.some(([y, x]) => y === f.r && x === f.c);
-    if (placedExposed) {
+    const kings = this.shownKingCells(g);
+    const myKing = [...kings].find(([, owner]) => owner === g.turn)?.[0];
+    const pen = kingPenaltyText(g.rules);
+    // 王にする駒が返されうるなら、置いた駒の警告はこの 1 行にまとめる
+    const kingPlacedExposed = designating && placedExposed;
+    if (kingPlacedExposed) {
+      box.append(h("p", { class: "warn king", text: `！ 王にする ${pieceLabel(kind)} は次の相手の手で${v.passive}（${v.hitIf}${pen}）` }));
+    } else if (myKing !== undefined && pv.exposed.some((cell) => idx(cell) === myKing)) {
+      const [y, x] = [Math.floor(myKing / SIZE), myKing % SIZE];
+      box.append(
+        h("p", {
+          class: "warn king",
+          text: `！ あなたの王（${cellName(y, x)} の${pieceLabel(g.board[y][x]!.kind)}）が次の相手の手で${v.passive}（${v.hitIf}${pen}）`,
+        }),
+      );
+    }
+    if (kingPlacedExposed) {
+      // 上で警告済み
+    } else if (placedExposed) {
       box.append(h("p", { class: "warn", text: `！ ここに置いた ${pieceLabel(kind)} は次の相手の手で${v.passive}` }));
     } else if (pv.exposedDamage > 0) {
       box.append(h("p", { class: "warn soft", text: `！ 置いた後、相手は次の手で最大 ${pv.exposedDamage} ダメージ与えられる（! の駒）` }));
     }
     const touch = this.lastPointer === "touch" || this.lastPointer === "pen";
-    const hint = touch ? `同じマスをもう一度タップすると ${pieceLabel(kind)} を置きます` : `クリックで ${pieceLabel(kind)} を置きます`;
+    const hint = touch
+      ? `同じマスをもう一度タップすると ${pieceLabel(kind)} を${asKing}置きます`
+      : `クリックで ${pieceLabel(kind)} を${asKing}置きます`;
     box.append(h("p", { class: "hint", text: hint }));
   }
 
@@ -574,18 +698,102 @@ export class App {
     }
   }
 
+  /** 隠し王の操作欄: 王の指定（この駒を王にする）・自分の王の確認（2 人対戦）・状態の説明 */
+  private renderKingBox(g: GameState) {
+    const box = this.el.kingBox;
+    const v = verb(g.rules);
+    box.replaceChildren();
+    box.hidden = !g.rules.king.on || !!g.result;
+    if (box.hidden) return;
+    const pvp = this.settings?.mode === "pvp";
+    const act = this.canAct();
+    // 自分の王の状態を出すのは、操作している人（CPU 対戦では CPU の手番中も人間）
+    const p = this.viewer(g);
+    const ki = kingInfo(g, p);
+    const { deadline } = g.rules.king;
+    const pen = kingPenaltyText(g.rules);
+
+    if (ki.status === "revealed") {
+      box.append(h("p", { class: "king-note", text: `${pvp ? `${PLAYER_NAME[p]}の` : "あなたの"}王は${v.hit}（以後ふつうの駒）` }));
+      return;
+    }
+    if (ki.canDesignate && act) {
+      const forced = ki.forcedNow;
+      const on = forced || this.kingOn;
+      const btn = h(
+        "button",
+        {
+          class: `king-toggle${on ? " on" : ""}`,
+          attrs: { type: "button", id: "king-toggle", "aria-pressed": String(on) },
+        },
+        [h("span", { class: "key-king", text: "王", attrs: { "aria-hidden": "true" } }), forced ? "この手で置く駒が王になる" : "この駒を王にする"],
+      );
+      btn.disabled = forced;
+      btn.addEventListener("click", () => {
+        this.kingOn = !this.kingOn;
+        this.render();
+      });
+      const left = deadline - ki.nextMove + 1;
+      const note = forced
+        ? `期限の ${deadline} 手目です。この手で置く駒が自動で王になります。王を${v.hitIf}${pen}`
+        : `王を決めてから置く（あと ${left} 手のうち 1 手。${deadline} 手目に置いた駒は自動で王）。王を${v.hitIf}${pen}`;
+      box.append(btn, h("p", { class: "king-note", text: note }));
+      if (pvp) box.append(h("p", { class: "king-privacy", text: "王を決める間は、相手に画面を見せないでください" }));
+      return;
+    }
+    if (ki.status === "unset") {
+      // CPU の手番中など。まだ決めていない
+      box.append(h("p", { class: "king-note", text: `王はまだ決まっていません（最初の ${deadline} 手のうちに決める）` }));
+      return;
+    }
+    if (!pvp) {
+      const [y, x] = ki.cell!;
+      box.append(
+        h("p", { class: "king-note" }, [
+          h("span", { class: "key-king", text: "王", attrs: { "aria-hidden": "true" } }),
+          ` あなたの王: ${cellName(y, x)} の${pieceLabel(g.board[y][x]!.kind)}（CPU には見えない。${v.hitIf}${pen}）`,
+        ]),
+      );
+      return;
+    }
+    if (!act) return;
+    // 2 人対戦: 押している間だけ、手番の人の王を表示する
+    const peek = h(
+      "button",
+      { class: "btn ghost king-peek", attrs: { type: "button", id: "king-peek", "aria-pressed": String(this.peek) } },
+      [h("span", { class: "key-king", text: "王", attrs: { "aria-hidden": "true" } }), " 自分の王を確認（押している間だけ表示）"],
+    );
+    peek.addEventListener("pointerdown", (e) => {
+      peek.setPointerCapture?.(e.pointerId);
+      this.setPeek(true);
+    });
+    for (const ev of ["pointerup", "pointercancel", "lostpointercapture", "blur"] as const) {
+      peek.addEventListener(ev, () => this.setPeek(false));
+    }
+    peek.addEventListener("keydown", (e) => {
+      if (e.key === " " || e.key === "Enter") {
+        e.preventDefault();
+        this.setPeek(true);
+      }
+    });
+    peek.addEventListener("keyup", () => this.setPeek(false));
+    peek.addEventListener("contextmenu", (e) => e.preventDefault());
+    box.append(peek);
+  }
+
   private moveText(e: GameEvent): string {
     if (e.type === "pass") return `${PLAYER_NAME[e.player]} パス（${e.reason === "noPieces" ? "持ち駒切れ" : "置ける所なし"}）`;
     const head = `${PLAYER_NAME[e.player]} ${pieceLabel(e.kind)}→${cellName(e.r, e.c)}`;
     if (e.targets.length === 0) return head;
     const v = verb(this.game!.rules);
     const heal = e.heal > 0 ? ` +${e.heal}回復` : "";
-    return `${head} ${e.targets.map((x) => pieceLabel(x.kind)).join("・")}を${v.past} ${e.damage}ダメージ${heal}`;
+    const king = e.king ? ` 王を${v.past}！（${e.king.lose ? "即負け" : `体力−${e.king.penalty}`}）` : "";
+    return `${head} ${e.targets.map((x) => pieceLabel(x.kind)).join("・")}を${v.past} ${e.damage}ダメージ${heal}${king}`;
   }
 
   private renderLog(g: GameState) {
     const items = [...g.history].reverse().map((e) =>
-      h("li", { class: `log-item ${e.type} p${e.player}${e.type === "move" && e.damage > 0 ? " hit" : ""}` }, [
+      h("li", { class: `log-item ${e.type} p${e.player}${e.type === "move" && e.damage > 0 ? " hit" : ""}${e.type === "move" && e.king ? " king" : ""}` }, [
         h("span", { class: "log-ply", text: e.type === "move" ? String(e.ply) : "—" }),
         h("span", { text: this.moveText(e) }),
       ]),
@@ -602,6 +810,11 @@ export class App {
     // 置いたマスにダメージ数を出す（次の描画で消える）
     const pop = m.heal > 0 ? `${m.damage} ダメージ ＋${m.heal} 回復` : `${m.damage} ダメージ`;
     this.cells[m.r][m.c].append(h("span", { class: "dmg-pop", text: pop }));
+    // 王を返した: 王だった駒に「王！」と罰を出す（公開の演出）
+    if (m.king) {
+      const text = m.king.lose ? "王！" : `王！ −${m.king.penalty}`;
+      this.cells[m.king.r][m.king.c].append(h("span", { class: "king-pop", text }));
+    }
     if (this.game!.rules.action === "flip") {
       for (const t of m.targets) this.cells[t.r][t.c].querySelector(".stone")?.classList.add("flipped");
       return;
@@ -649,7 +862,9 @@ export class App {
   }
 
   private reasonShort(g: GameState): string {
-    return { ko: "体力 0", limit: `${g.rules.maxPlies} 手で判定`, stalled: "打てる手なしで判定" }[g.result!.reason];
+    return { ko: "体力 0", limit: `${g.rules.maxPlies} 手で判定`, stalled: "打てる手なしで判定", king: `王を${verb(g.rules).past}` }[
+      g.result!.reason
+    ];
   }
 
   private showResult(r: GameResult) {
@@ -665,13 +880,28 @@ export class App {
       ko: `体力 0 — ${loser !== null ? this.name(loser) : ""}の体力が 0 以下になりました`,
       limit: `${g.rules.maxPlies} 手に達して打ち切り — ${judged}`,
       stalled: `${stall} — ${judged}`,
+      king: `王を${verb(g.rules).past} — ${loser !== null ? this.name(loser) : ""}の王が${verb(g.rules).hit}ので即負け`,
     }[r.reason];
     byId("result-winner").textContent = this.resultHeadline(r);
     byId("result-reason").textContent = reason;
     byId("result-detail").textContent =
-      `${this.name(0)} 体力 ${g.hp[0]} ／ ${this.name(1)} 体力 ${g.hp[1]} ／ 石数 ${d0} 対 ${d1}（${g.ply} 手・ルール ${ruleName(g.rules)}）`;
+      `${this.name(0)} 体力 ${g.hp[0]} ／ ${this.name(1)} 体力 ${g.hp[1]} ／ 石数 ${d0} 対 ${d1}（${g.ply} 手・ルール ${ruleName(g.rules)}）` +
+      this.kingSummary(g);
     this.hideToast();
     if (!this.el.result.open) this.el.result.showModal();
+  }
+
+  /** 終局後の王の答え合わせ（例: 「／ 王: 先手 d3（隠れたまま）・後手 e5（返された）」） */
+  private kingSummary(g: GameState): string {
+    if (!g.rules.king.on) return "";
+    const one = (p: Player) => {
+      const ki = kingInfo(g, p);
+      const moved = lastKingHit(g, p);
+      if (moved) return `${PLAYER_NAME[p]} ${cellName(moved.r, moved.c)}（${verb(g.rules).hit}）`;
+      if (ki.cell) return `${PLAYER_NAME[p]} ${cellName(ki.cell[0], ki.cell[1])}（隠れたまま）`;
+      return `${PLAYER_NAME[p]} なし（決める前に終局）`;
+    };
+    return ` ／ 王: ${one(0)}・${one(1)}`;
   }
 
   /** ルール詳細ダイアログを設定から作って開く */
@@ -707,6 +937,19 @@ export class App {
             " 赤枠で光り、ダメージと回復を表示。スマホは同じマスをもう一度タップで置く",
           ]),
           h("span", {}, [h("span", { class: "key-threat", attrs: { "aria-hidden": "true" }, text: "!" }), ` の付いた自分の駒は、相手が次の 1 手で${v.can}駒`]),
+          ...(r.king.on
+            ? [
+                "隠し王: 王を決める手番では、持ち駒の下の「この駒を王にする」を押してから置く",
+                h("span", {}, [
+                  h("span", { class: "key-king", attrs: { "aria-hidden": "true" }, text: "王" }),
+                  " の印は自分の王。CPU 対戦では常に表示。2 人対戦では「自分の王を確認」を押している間だけ表示する",
+                ]),
+                h("span", {}, [
+                  h("span", { class: "key-threat king", attrs: { "aria-hidden": "true" }, text: "!" }),
+                  ` 自分の王が次の 1 手で${v.passive}ときは赤い「!」。相手の駒はどれが王か分からないので、予測のダメージに罰は入らない`,
+                ]),
+              ]
+            : []),
         ]),
       );
     }
@@ -724,6 +967,12 @@ export class App {
   private hideToast() {
     this.el.toast.hidden = true;
   }
+}
+
+/** owner の王が返された手の記録（棋譜の公開情報） */
+function lastKingHit(g: GameState, owner: Player) {
+  for (const e of g.history) if (e.type === "move" && e.player !== owner && e.king) return e.king;
+  return undefined;
 }
 
 function inView(el: HTMLElement) {

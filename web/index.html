@@ -45,6 +45,7 @@
         <div class="glass hand" id="hand">
           <h2 class="label" id="hand-title">持ち駒</h2>
           <div class="hand-buttons" id="hand-buttons"></div>
+          <div class="king-box" id="king-box" hidden></div>
         </div>
         <div class="glass preview" id="preview" aria-live="polite"></div>
         <div class="glass log">
@@ -142,7 +143,24 @@
               <label class="num num-wide"><input type="number" name="maxPlies" inputmode="numeric" min="0" max="300" step="1" required aria-label="手数上限" /><span>手（0 = なし）</span></label>
             </div>
           </div>
-          <p class="opt-help">体力 5〜200、駒 0〜40、手数 0〜300。範囲外の値は自動で直します。</p>
+          <div class="opt">
+            <span class="opt-name" id="opt-king">隠し王（読み合い）</span>
+            <div class="seg" role="radiogroup" aria-labelledby="opt-king">
+              <label><input type="radio" name="king" value="0" /><span>なし</span></label>
+              <label><input type="radio" name="king" value="1" /><span>あり（最初の数手で 1 つを王にして隠す）</span></label>
+            </div>
+            <div class="king-sub" id="king-sub">
+              <div class="seg" role="radiogroup" aria-label="王を返されたときの罰">
+                <label><input type="radio" name="kingPenalty" value="hp" /><span id="king-hp-label">返されたら体力が減る</span></label>
+                <label><input type="radio" name="kingPenalty" value="lose" /><span id="king-lose-label">返されたら即負け</span></label>
+              </div>
+              <div class="nums">
+                <label class="num" id="king-amount-field"><span>減る体力</span><input type="number" name="kingAmount" inputmode="numeric" min="1" max="200" step="1" required /></label>
+                <label class="num"><span>期限 最初の</span><input type="number" name="kingDeadline" inputmode="numeric" min="1" max="20" step="1" required /><span>手</span></label>
+              </div>
+            </div>
+          </div>
+          <p class="opt-help">体力 5〜200、駒 0〜40、手数 0〜300、王の罰 1〜200、期限 1〜20。範囲外の値は自動で直します。</p>
         </fieldset>
 
         <section class="setup-preview" aria-labelledby="setup-preview-title">

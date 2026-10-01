@@ -1,5 +1,6 @@
 // 対局の進行（合法手・手番・パス・体力・終局判定）。sim/*.py の play() / outcome() に対応する。
 // 状態はイミュータブルに扱い、playMove は新しい GameState を返す。
+// 隠し王の真の状態（GameState.kings）は、UI・CPU からは viewFor() / kingInfo() を通してしか見ない。
 
 import {
   applyLines,
@@ -29,8 +30,8 @@ import {
   type RuleSet,
 } from "./rules";
 
-/** ko: 体力 0 以下 / limit: 手数上限に到達 / stalled: 両者とも打てない（持ち駒切れ・置ける所なし） */
-export type EndReason = "ko" | "limit" | "stalled";
+/** ko: 体力 0 以下 / limit: 手数上限に到達 / stalled: 両者とも打てない（持ち駒切れ・置ける所なし） / king: 王を返された（罰が即負け） */
+export type EndReason = "ko" | "limit" | "stalled" | "king";
 
 export interface GameResult {
   /** 勝者。引き分けは null */
@@ -58,6 +59,30 @@ export interface MoveEvent {
   targets: Target[];
   damage: number;
   heal: number;
+  /** 相手の隠し王を返した（取った）。王はこの手で公開される。返していなければキー自体がない */
+  king?: KingHit;
+}
+
+/** 相手の王を返した（取った）ときの記録（公開情報） */
+export interface KingHit {
+  /** 王の駒のマスと駒種 */
+  r: number;
+  c: number;
+  kind: PieceKind;
+  /** 通常のダメージに加えて減らした体力（即負けなら 0） */
+  penalty: number;
+  /** 罰が即負け */
+  lose: boolean;
+}
+
+/** 隠し王の真の状態（プレイヤーごと） */
+export interface KingState {
+  /** 王の駒を置いたマス。未指定なら null */
+  cell: Cell | null;
+  /** 期限の手で自動的に決まった */
+  auto: boolean;
+  /** 相手に返されて公開された（以後ふつうの駒） */
+  revealed: boolean;
 }
 
 /** 打てない手番。noPieces: 持ち駒切れ / noMoves: 置けるマスがない */
@@ -79,6 +104,11 @@ export interface GameState {
   ply: number;
   history: GameEvent[];
   result: GameResult | null;
+  /**
+   * 隠し王の真の状態 [先手, 後手]。相手の王の場所は隠し情報なので、UI・CPU はここを直接読まない
+   * （CPU は viewFor()、UI は viewFor() / kingInfo() を手番・見ている側に限って使う）
+   */
+  kings: [KingState, KingState];
 }
 
 /** 最後に打たれた手（パスは飛ばす） */
@@ -148,6 +178,7 @@ export function createGame(rules: RuleSet = defaultRules()): GameState {
     ply: 0,
     history: [],
     result: null,
+    kings: [noKing(), noKing()],
   };
   // 持ち駒が 0 個などで先手が打てない設定もありうる
   return settleTurn(g, 0);
@@ -195,8 +226,17 @@ export function attackable(rules: RuleSet, board: Board, hand: Hand, attacker: P
   return out;
 }
 
-/** p が次の 1 手で得られる最大の (ダメージ, ダメージ + 回復)。打てなければ 0 */
-export function bestReply(rules: RuleSet, board: Board, hand: Hand, p: Player): { damage: number; score: number } {
+/**
+ * p が次の 1 手で得られる最大の (ダメージ, ダメージ + 回復)。打てなければ 0。
+ * king を渡すと、そのマスの駒（相手の王）を返す手の score に penalty を足す（CPU の読み用。damage には足さない）
+ */
+export function bestReply(
+  rules: RuleSet,
+  board: Board,
+  hand: Hand,
+  p: Player,
+  king?: { cell: Cell; penalty: number },
+): { damage: number; score: number } {
   const kinds = availableKinds(hand);
   let damage = 0;
   let score = 0;
@@ -209,7 +249,8 @@ export function bestReply(rules: RuleSet, board: Board, hand: Hand, p: Player): 
       if (lines.length === 0) continue;
       const d = damageOf(board, lines, rules);
       damage = Math.max(damage, d);
-      score = Math.max(score, d + healOf(lines, v, rules));
+      const hit = king && lines.some((l) => l.cells.some(([y, x]) => y === king.cell[0] && x === king.cell[1]));
+      score = Math.max(score, d + healOf(lines, v, rules) + (hit ? king.penalty : 0));
     }
   }
   return { damage, score };
@@ -257,8 +298,8 @@ export function threatenedPieces(state: GameState, victim: Player): Cell[] {
   return attackable(state.rules, state.board, state.hands[attacker], attacker);
 }
 
-/** 手番のプレイヤーが (r, c) に kind を置く。不正な手は例外 */
-export function playMove(state: GameState, r: number, c: number, kind: PieceKind): GameState {
+/** 手番のプレイヤーが (r, c) に kind を置く。opts.king なら置いた駒を自分の王にする（隠し王）。不正な手は例外 */
+export function playMove(state: GameState, r: number, c: number, kind: PieceKind, opts: { king?: boolean } = {}): GameState {
   if (state.result) throw new Error("対局は終了しています");
   const { rules } = state;
   const p = state.turn;
@@ -267,6 +308,8 @@ export function playMove(state: GameState, r: number, c: number, kind: PieceKind
   if (state.board[r][c] !== null) throw new Error(`(${r}, ${c}) は空いていません`);
   const lines = legalLines(rules, state.board, state.hands[p], p, r, c, kind);
   if (!lines) throw new Error(`(${r}, ${c}) に ${kind} を置いても返せる駒がありません`);
+  const mine = kingInfo(state, p);
+  if (opts.king && !mine.canDesignate) throw new Error("王はもう指定できません");
 
   const targets: Target[] = targetsOf(lines).map(([y, x]) => ({ r: y, c: x, kind: state.board[y][x]!.kind }));
   const damage = damageOf(state.board, lines, rules);
@@ -276,16 +319,125 @@ export function playMove(state: GameState, r: number, c: number, kind: PieceKind
   hands[p][kind]--;
   // 取るルールでは、取った駒が数字そのままで自分の持ち駒になる
   if (rules.action === "capture") for (const t of targets) hands[p][t.kind]++;
+
+  const kings: [KingState, KingState] = [state.kings[0], state.kings[1]];
+  // 王の指定。期限の手までに指定しなければ、期限の手で置いた駒が自動で王になる
+  if (mine.canDesignate && (opts.king || mine.forcedNow)) kings[p] = { cell: [r, c], auto: !opts.king, revealed: false };
+  // 相手の隠れた王を返した（取った）ら、罰を与えて王を公開する
+  let hit: KingHit | undefined;
+  const qk = kings[q];
+  if (rules.king.on && qk.cell && !qk.revealed && targets.some((t) => t.r === qk.cell![0] && t.c === qk.cell![1])) {
+    const lose = rules.king.penalty === "lose";
+    hit = { r: qk.cell[0], c: qk.cell[1], kind: state.board[qk.cell[0]][qk.cell[1]]!.kind, penalty: lose ? 0 : rules.king.amount, lose };
+    kings[q] = { ...qk, revealed: true };
+  }
+
   const hp: [number, number] = [...state.hp];
-  hp[q] -= damage;
+  hp[q] -= damage + (hit?.penalty ?? 0);
   hp[p] += heal;
   const ply = state.ply + 1;
-  const history: GameEvent[] = [...state.history, { type: "move", ply, player: p, r, c, kind, targets, damage, heal }];
-  const next: GameState = { ...state, board, hands, hp, ply, history };
+  const move: MoveEvent = { type: "move", ply, player: p, r, c, kind, targets, damage, heal };
+  if (hit) move.king = hit;
+  const history: GameEvent[] = [...state.history, move];
+  const next: GameState = { ...state, board, hands, hp, ply, history, kings };
 
+  if (hit?.lose) return { ...next, result: { winner: p, reason: "king", byDiscs: false } };
   // 体力 0 以下になった時点で即敗北
   if (hp[q] <= 0) return { ...next, result: { winner: p, reason: "ko", byDiscs: false } };
   if (rules.maxPlies > 0 && ply >= rules.maxPlies) return { ...next, result: judge(board, hp, "limit") };
   // 相手が打てれば相手番。打てなければ相手はパスし、自分が続けて打つ。両者打てなければ終局
   return settleTurn(next, q);
+}
+
+// ---- 隠し王 ----
+
+const noKing = (): KingState => ({ cell: null, auto: false, revealed: false });
+
+/** p がこれまでに打った手数（パスは数えない） */
+export function movesBy(state: Pick<GameState, "history">, p: Player): number {
+  return state.history.filter((e) => e.type === "move" && e.player === p).length;
+}
+
+/** p 自身から見た自分の王 */
+export interface KingInfo {
+  /** off: 隠し王なし / unset: まだ決めていない / hidden: 隠れている / revealed: 返されて公開済み */
+  status: "off" | "unset" | "hidden" | "revealed";
+  /** 王の駒のマス（hidden のときだけ） */
+  cell: Cell | null;
+  /** 期限の手で自動的に決まった */
+  auto: boolean;
+  /** 次の自分の手が何手目か（自分の手だけを数える。1 始まり） */
+  nextMove: number;
+  /** 次の自分の手で王を指定できる */
+  canDesignate: boolean;
+  /** 次の自分の手が期限（指定しなければ置いた駒が自動で王になる） */
+  forcedNow: boolean;
+}
+
+/**
+ * p の王の情報。p 本人だけが見てよい（UI は手番の人・CPU 対戦の人間、CPU は自分の分だけを呼ぶ）
+ */
+export function kingInfo(state: GameState, p: Player): KingInfo {
+  const { king } = state.rules;
+  const ks = state.kings[p];
+  const nextMove = movesBy(state, p) + 1;
+  if (!king.on) return { status: "off", cell: null, auto: false, nextMove, canDesignate: false, forcedNow: false };
+  const status = ks.revealed ? "revealed" : ks.cell ? "hidden" : "unset";
+  const canDesignate = status === "unset" && nextMove <= king.deadline && !state.result;
+  return {
+    status,
+    cell: status === "hidden" ? ks.cell : null,
+    auto: ks.auto,
+    nextMove,
+    canDesignate,
+    forcedNow: canDesignate && nextMove === king.deadline,
+  };
+}
+
+/** owner の王が返されて公開されたか（棋譜から分かる公開情報） */
+export function kingRevealed(state: Pick<GameState, "history">, owner: Player): boolean {
+  return state.history.some((e) => e.type === "move" && e.player !== owner && e.king !== undefined);
+}
+
+/**
+ * owner の王の候補（棋譜だけから求める公開情報）。
+ * owner が指定期限内に置き、まだ一度も返されて（取られて）いない駒。期限内の手を打ち終えていなくても、それまでに置いた駒を候補にする。
+ * 王が公開された後は空
+ */
+export function kingCandidates(state: Pick<GameState, "rules" | "history">, owner: Player): Cell[] {
+  const { king } = state.rules;
+  if (!king.on) return [];
+  const cands = new Map<number, Cell>();
+  let n = 0;
+  for (const e of state.history) {
+    if (e.type !== "move") continue;
+    if (e.player === owner) {
+      n++;
+      if (n <= king.deadline) cands.set(e.r * SIZE + e.c, [e.r, e.c]);
+    } else {
+      if (e.king) return [];
+      for (const t of e.targets) cands.delete(t.r * SIZE + t.c);
+    }
+  }
+  return [...cands.values()];
+}
+
+/** viewer から見える局面。相手の王の真の場所は含まない（CPU はこれだけを見て打つ） */
+export interface PlayerView extends Omit<GameState, "kings"> {
+  viewer: Player;
+  /** 自分の王 */
+  myKing: KingInfo;
+  /** 相手の王について分かること（公開されたか・候補） */
+  oppKing: { revealed: boolean; candidates: Cell[] };
+}
+
+export function viewFor(state: GameState, viewer: Player): PlayerView {
+  const { kings: _secret, ...pub } = state;
+  const opp = other(viewer);
+  return {
+    ...pub,
+    viewer,
+    myKing: kingInfo(state, viewer),
+    oppKing: { revealed: kingRevealed(state, opp), candidates: kingCandidates(state, opp) },
+  };
 }
