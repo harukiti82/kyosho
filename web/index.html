@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="description" content="オセロ × 持ち駒 × 体力の二人対戦ゲーム「挟将」" />
+    <meta name="description" content="挟んで取った駒が自分の持ち駒になる、オセロ盤の二人対戦ゲーム「挟将」" />
     <title>挟将（きょうしょう）</title>
   </head>
   <body>
@@ -14,21 +14,39 @@
     <header class="topbar">
       <h1 class="title">挟将<span class="title-sub">きょうしょう</span></h1>
       <div class="topbar-actions">
-        <button type="button" class="btn ghost" id="btn-rules">ルール</button>
+        <button type="button" class="btn ghost" id="btn-rules">ルール詳細</button>
         <button type="button" class="btn ghost" id="btn-new">新しい対局</button>
       </div>
     </header>
 
     <main class="layout" id="game" hidden>
-      <section class="players" aria-label="体力">
+      <!-- 常に見える 4 行ルール（RULES.md v1.0 の冒頭と同じ） -->
+      <section class="glass rules4" id="rules4" aria-label="ルール">
+        <ol class="rules4-list">
+          <li>持ち駒を<strong>空いているマスならどこにでも</strong>置ける</li>
+          <li>置いた駒と自分の駒で挟んだ相手の駒を<strong>取って、自分の持ち駒にする</strong></li>
+          <li><strong>取った駒の数字の合計</strong>が相手へのダメージ</li>
+          <li>体力 20 が 0 で負け（80 手で終われば体力の多い方が勝ち）</li>
+        </ol>
+      </section>
+
+      <section class="players" aria-label="体力と持ち駒">
         <div class="player-card" id="player-0"></div>
         <div class="player-card" id="player-1"></div>
       </section>
 
-      <p class="status" id="status" role="status" aria-live="polite"></p>
+      <div class="status-row">
+        <p class="status" id="status" role="status" aria-live="polite"></p>
+        <span class="ply" id="ply"></span>
+      </div>
 
       <div class="board-wrap">
         <div class="board" id="board" role="grid" aria-label="盤面"></div>
+        <p class="legend" id="legend">
+          <span><span class="key-dot" aria-hidden="true"></span> 置くと取れるマス</span>
+          <span><span class="key-take" aria-hidden="true"></span> この手で取れる駒</span>
+          <span><span class="key-threat" aria-hidden="true">!</span> 相手に次に取られうる自分の駒</span>
+        </p>
       </div>
 
       <section class="side">
@@ -60,13 +78,6 @@
           <label class="choice"><input type="radio" name="side" value="0" checked /> 先手（黒・先に打つ）</label>
           <label class="choice"><input type="radio" name="side" value="1" /> 後手（白）</label>
         </fieldset>
-        <fieldset class="field">
-          <legend class="label">追加ルール</legend>
-          <label class="choice">
-            <input type="checkbox" name="kaku" />
-            角を使う（歩 2 個 → 角 2 個、攻撃 = 最大値 × 2 ＋ 枚数 ÷ 4、体力 65 / 65）
-          </label>
-        </fieldset>
         <div class="modal-actions">
           <button type="button" class="btn ghost" id="setup-rules">ルールを読む</button>
           <button type="submit" class="btn primary" id="setup-start">対局開始</button>
@@ -89,52 +100,43 @@
       </div>
     </dialog>
 
-    <!-- ルール説明（RULES.md v0.4 の要約） -->
+    <!-- ルール説明（RULES.md v1.0 の要約） -->
     <dialog class="modal" id="rules">
       <div class="modal-body rules-body">
         <h2 class="modal-title" tabindex="-1" autofocus>挟将のルール</h2>
-        <p>オセロの盤と挟み方で、数値の違う持ち駒を置いて体力を削り合う。相手の体力を 0 にするか、終局時に体力で上回れば勝ち。</p>
+        <p>オセロの盤で、挟んだ相手の駒を取って自分の持ち駒にする二人対戦。取った駒の数字が相手へのダメージになる。</p>
+
+        <h3>ルール（これで全部）</h3>
+        <ol>
+          <li>持ち駒を<strong>空いているマスならどこにでも</strong>置ける（挟めなくても置ける）</li>
+          <li>置いた駒と自分の駒で一直線に挟んだ相手の駒（オセロと同じ 8 方向・連続した列）は<strong>盤から取り、自分の持ち駒にする</strong>（数字はそのまま）</li>
+          <li><strong>取った駒の数字の合計</strong>が相手へのダメージ</li>
+          <li>体力が 0 以下になったら負け。挟まれる位置へ自分から置いても取られない（取るのは置いた側だけ）</li>
+        </ol>
 
         <h3>準備</h3>
         <ul>
-          <li>8×8 の盤。初期配置はオセロと同じで、中央の 4 駒はすべて歩（1）</li>
-          <li>体力: 先手 65 / 後手 66</li>
-          <li>持ち駒（両者同じ・公開）: 歩1 ×14 / 銀2 ×10 / 金3 ×6 / 飛5 ×2</li>
+          <li>8×8 の盤。中央の 4 駒は歩（オセロと同じ配置）</li>
+          <li>持ち駒（両者同じ・公開）: 歩1 ×8 / 金3 ×4 / 飛5 ×2</li>
+          <li>体力: 両者 20</li>
         </ul>
 
-        <h3>手番</h3>
-        <ol>
-          <li>持ち駒から 1 個選び、オセロのルールどおりに置く（相手の駒を挟めない場所には置けない）</li>
-          <li><strong>攻撃</strong>: 相手の体力を「返した駒の最大値 ＋ 返した枚数 ÷ 4（切り捨て）」減らす</li>
-          <li><strong>回復</strong>: 挟んだ方向ごとに「置いた駒と、反対側の端の自分の駒の低い方 − 1」を求め、いちばん大きい 1 方向分だけ回復（0 未満は 0）</li>
-          <li>返された駒は色だけ変わり、数値はそのまま残る</li>
-        </ol>
-
-        <h3>回復の早見表</h3>
-        <table class="rules-table">
-          <thead><tr><th>低い方</th><th>歩 1</th><th>銀 2</th><th>金 3</th><th>飛 5</th></tr></thead>
-          <tbody><tr><th>回復</th><td>0</td><td>1</td><td>2</td><td>4</td></tr></tbody>
-        </table>
-        <p class="note">例: 金を置いて相手の歩・銀・金を返し、反対側の端が自分の銀 → 攻撃 3（最大値 3 ＋ 3÷4＝0）、回復 1（min(3, 2) − 1）。</p>
+        <h3>例</h3>
+        <p class="note">黒が a1 に置き、b1 の白の歩1・c1 の白の金3 を d1 の黒と挟んだ → 歩と金を取って黒の持ち駒にし、白に 1＋3＝<strong>4 ダメージ</strong>。</p>
 
         <h3>決着</h3>
         <ul>
-          <li>体力が 0 以下になった時点でそのプレイヤーの負け</li>
-          <li>盤が埋まるか両者とも置けなくなったら終局。体力の多い方が勝ち → 同じなら石の数 → それも同じなら引き分け</li>
-          <li>置ける場所がない、または持ち駒が尽きたらパス（攻撃も回復もなし）</li>
+          <li>体力が 0 以下になった時点で負け</li>
+          <li>総手数 80 手（各 40 手）で打ち切り。体力の多い方の勝ち、同じなら引き分け</li>
+          <li>持ち駒が尽きたらパス。両者とも尽きたら終局し、体力で判定</li>
         </ul>
 
-        <h3>追加ルール: 角（対局設定で ON）</h3>
+        <h3>画面の見方</h3>
         <ul>
-          <li>持ち駒の歩 2 個を角 2 個に差し替える。体力は先手 65 / 後手 65</li>
-          <li>角は盤上では数値 1（回復は歩と同じ 0）</li>
-          <li>角を置いた手の攻撃は「返した駒の最大値 × 2 ＋ 返した枚数 ÷ 4」</li>
-        </ul>
-
-        <h3>画面の操作</h3>
-        <ul>
-          <li>持ち駒を選ぶと置けるマスに印が出る。マスにカーソルを乗せると、その手の攻撃・回復と返る駒を予測表示する</li>
-          <li>スマホでは 1 回目のタップで予測、同じマスを 2 回目のタップで確定</li>
+          <li>置く駒を持ち駒から選ぶ（最初は歩が選ばれている）</li>
+          <li><span class="key-dot" aria-hidden="true"></span> の付いたマスは、置くと何か取れるマス</li>
+          <li>マスにカーソルを乗せる（スマホは 1 回タップ）と、取れる駒が <span class="key-take" aria-hidden="true"></span> 赤枠で光り、ダメージを表示。スマホは同じマスをもう一度タップで置く</li>
+          <li><span class="key-threat" aria-hidden="true">!</span> の付いた自分の駒は、相手が次の 1 手で取れる駒</li>
         </ul>
         <div class="modal-actions">
           <button type="button" class="btn primary" id="rules-close">閉じる</button>
