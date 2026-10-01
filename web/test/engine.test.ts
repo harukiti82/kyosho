@@ -1,220 +1,309 @@
 import { describe, expect, it } from "vitest";
-import { applyMove, bestCapture, capturesAt, newBoard } from "../src/engine/board";
+import { applyLines, damageOf, healOf, linesFor, newBoard, rawLines } from "../src/engine/board";
 import { chooseLookahead, lookaheadCandidates } from "../src/engine/cpu";
-import { createGame, judge, playMove, previewMove, threatenedPieces } from "../src/engine/game";
-import { INITIAL_HAND, INITIAL_HP, MAX_PLIES } from "../src/engine/rules";
-import { at, boardOf, stateOf } from "./helpers";
+import {
+  canMove,
+  createGame,
+  judge,
+  lastMoveOf,
+  legalCells,
+  playableKinds,
+  playMove,
+  previewMove,
+  threatenedPieces,
+  type GameState,
+  } from "../src/engine/game";
+import { PRESETS, type PieceKind, type RuleSet } from "../src/engine/rules";
+import { at, boardOf, rulesOf, stateOf } from "./helpers";
 
 const names = (cells: readonly (readonly [number, number])[]) =>
   cells.map(([r, c]) => `${"abcdefgh"[c]}${r + 1}`).sort();
 
-/** 先手が name に kind を置く */
-function play(s: ReturnType<typeof stateOf>, name: string, kind: "fu" | "kin" | "hi" = "fu") {
+/** 手番のプレイヤーが name に kind を置く */
+function play(s: GameState, name: string, kind: PieceKind = "fu") {
   const [r, c] = at(name);
   return playMove(s, r, c, kind);
 }
+const lastMove = (s: GameState) => lastMoveOf(s)!;
 
-describe("ルール定数", () => {
-  it("体力 20・80 手・持ち駒 歩8・金4・飛2（両者同じ）", () => {
-    const g = createGame();
-    expect(INITIAL_HP).toBe(20);
-    expect(MAX_PLIES).toBe(80);
-    expect(g.hp).toEqual([20, 20]);
-    expect(g.hands).toEqual([{ fu: 8, kin: 4, hi: 2 }, { fu: 8, kin: 4, hi: 2 }]);
-    expect(INITIAL_HAND).toEqual({ fu: 8, kin: 4, hi: 2 });
+const FLIP = rulesOf("orig", { heal: "none" }); // 裏返す・制限なし・合計・回復なし
+const CAPTURE = rulesOf("v10");
+
+describe("プリセットと初期状態", () => {
+  it("4 つのプリセットの値", () => {
+    const byId = Object.fromEntries(PRESETS.map((p) => [p.id, p.rules]));
+    expect(byId.v04).toEqual({
+      action: "flip", gate: false, damage: "maxCount", heal: "lowMinus1",
+      hp: [65, 66], hand: { fu: 14, gin: 10, kin: 6, hi: 2 }, maxPlies: 0,
+    });
+    expect(byId.v10).toEqual({
+      action: "capture", gate: false, damage: "sum", heal: "none",
+      hp: [20, 20], hand: { fu: 8, gin: 0, kin: 4, hi: 2 }, maxPlies: 80,
+    });
+    expect(byId.v2).toEqual({
+      action: "flip", gate: true, damage: "sum", heal: "none",
+      hp: [40, 40], hand: { fu: 20, gin: 0, kin: 8, hi: 4 }, maxPlies: 0,
+    });
+    expect(byId.orig).toEqual({
+      action: "flip", gate: false, damage: "sum", heal: "avg",
+      hp: [40, 40], hand: { fu: 14, gin: 10, kin: 6, hi: 2 }, maxPlies: 0,
+    });
   });
-  it("初期配置は中央 4 駒がすべて歩で、オセロと同じ並び", () => {
+  it("初期配置は中央 4 駒がすべて歩で、オセロと同じ並び。体力と持ち駒は設定どおり", () => {
     const b = newBoard();
     expect([b[3][3], b[4][4], b[3][4], b[4][3]]).toEqual([
       { owner: 1, kind: "fu" }, { owner: 1, kind: "fu" }, { owner: 0, kind: "fu" }, { owner: 0, kind: "fu" },
     ]);
+    const g = createGame(rulesOf("v04"));
+    expect(g.hp).toEqual([65, 66]);
+    expect(g.hands[1]).toEqual({ fu: 14, gin: 10, kin: 6, hi: 2 });
+    expect(g.turn).toBe(0);
+  });
+  it("createGame は設定をコピーする（後から元の設定を変えても対局に影響しない）", () => {
+    const r = rulesOf("v2");
+    const g = createGame(r);
+    r.hand.fu = 0;
+    r.hp[0] = 5;
+    expect(g.rules.hand.fu).toBe(20);
+    expect(g.hp).toEqual([40, 40]);
   });
 });
 
-describe("置く・取る", () => {
+describe("挟んだ駒を: 裏返す", () => {
+  it("挟めるマスにしか置けない（初手は 4 マス）", () => {
+    const g = createGame(FLIP);
+    expect(names(legalCells(g, "fu"))).toEqual(["c4", "d3", "e6", "f5"]);
+    expect(() => play(g, "a1")).toThrow();
+    expect(previewMove(g, 0, 0, "fu")).toBeNull();
+  });
+  it("返した駒は色だけ変わり、数字はそのまま。持ち駒は増えない", () => {
+    const s = stateOf(boardOf({ b1: [1, 5], c1: [1, 3], d1: [0, 1] }), { rules: FLIP, hands: [{ fu: 2 }, { fu: 1 }] });
+    const n = play(s, "a1");
+    expect([n.board[0][0], n.board[0][1], n.board[0][2]]).toEqual([
+      { owner: 0, kind: "fu" }, { owner: 0, kind: "hi" }, { owner: 0, kind: "kin" },
+    ]);
+    expect(n.hands[0]).toEqual({ fu: 1, gin: 0, kin: 0, hi: 0 });
+    expect(lastMove(n)).toMatchObject({ damage: 8, heal: 0, targets: [{ r: 0, c: 1, kind: "hi" }, { r: 0, c: 2, kind: "kin" }] });
+    expect(n.hp).toEqual([40, 32]);
+  });
+});
+
+describe("挟んだ駒を: 取って持ち駒にする", () => {
   it("挟めない空きマスにも置ける（何も取らずダメージ 0）", () => {
-    const n = play(createGame(), "a1", "hi");
+    const n = play(createGame(CAPTURE), "a1", "hi");
     expect(n.board[0][0]).toEqual({ owner: 0, kind: "hi" });
-    expect(n.hands[0]).toEqual({ fu: 8, kin: 4, hi: 1 });
-    expect(n.hp).toEqual([20, 20]);
-    expect(n.history.at(-1)).toMatchObject({ type: "move", captured: [], damage: 0 });
-    expect(n.turn).toBe(1);
+    expect(n.hands[0]).toEqual({ fu: 8, gin: 0, kin: 4, hi: 1 });
+    expect(lastMove(n)).toMatchObject({ targets: [], damage: 0, heal: 0 });
+    expect(legalCells(createGame(CAPTURE), "fu")).toHaveLength(60);
   });
-  it("埋まっているマスには置けない", () => {
-    expect(() => play(createGame(), "d4")).toThrow();
-  });
-  it("1 方向で挟んだ列をすべて取る（盤から消える）", () => {
-    // a1 に置くと b1・c1（後手）を d1（先手）と挟む
-    const s = stateOf(boardOf({ b1: [1, 1], c1: [1, 3], d1: [0, 1] }));
-    const n = play(s, "a1");
-    expect(names(capturesAt(s.board, 0, 0, 0))).toEqual(["b1", "c1"]);
-    expect(n.board[0][1]).toBeNull();
-    expect(n.board[0][2]).toBeNull();
-    expect(n.board[0][3]).toEqual({ owner: 0, kind: "fu" });
-  });
-  it("複数方向を同時に取る", () => {
-    // 右・下・斜めの 3 方向
-    const s = stateOf(boardOf({ b1: [1, 1], c1: [0, 1], a2: [1, 3], a3: [0, 1], b2: [1, 5], c3: [0, 3] }));
-    expect(names(capturesAt(s.board, 0, 0, 0))).toEqual(["a2", "b1", "b2"]);
-    const n = play(s, "a1");
-    expect([n.board[0][1], n.board[1][0], n.board[1][1]]).toEqual([null, null, null]);
-  });
-  it("端が空き・相手の駒・盤外なら取れない", () => {
-    const s = stateOf(boardOf({ b1: [1, 1], c1: [1, 1], a2: [1, 1], a3: [1, 3] }));
-    expect(capturesAt(s.board, 0, 0, 0)).toEqual([]);
-  });
-  it("取った駒は数字そのままで取った側の持ち駒に入る", () => {
-    const s = stateOf(boardOf({ b1: [1, 1], c1: [1, 3], d1: [1, 5], e1: [0, 1] }), {
-      hands: [{ fu: 1, kin: 1 }, { fu: 1 }],
+  it("取った駒は盤から消え、数字そのままで取った側の持ち駒に入る", () => {
+    const s = stateOf(boardOf({ b1: [1, 1], c1: [1, 2], d1: [1, 5], e1: [0, 1] }), {
+      hands: [{ kin: 1 }, { fu: 1 }],
     });
     const n = play(s, "a1", "kin");
-    expect(n.hands[0]).toEqual({ fu: 2, kin: 1, hi: 1 }); // 金 1 個使って 歩・金・飛 を 1 個ずつ得る
-    expect(n.hands[1]).toEqual({ fu: 1, kin: 0, hi: 0 }); // 取られた側の持ち駒は変わらない
+    expect([n.board[0][1], n.board[0][2], n.board[0][3]]).toEqual([null, null, null]);
+    expect(n.hands[0]).toEqual({ fu: 1, gin: 1, kin: 0, hi: 1 });
+    expect(n.hands[1]).toEqual({ fu: 1, gin: 0, kin: 0, hi: 0 });
   });
-  it("ダメージ = 取った駒の数字の合計", () => {
-    const s = stateOf(boardOf({ b1: [1, 1], c1: [1, 3], d1: [0, 1], a2: [1, 5], a3: [0, 1] }));
-    const n = play(s, "a1");
-    expect(n.history.at(-1)).toMatchObject({ damage: 1 + 3 + 5 });
-    expect(n.hp).toEqual([20, 11]);
-  });
-  it("挟まれる位置へ自分から置いても取られない（取るのは置いた側だけ）", () => {
-    // 先手が b1 に置くと a1・c1 の後手に挟まれる形になるが、何も起きない
+  it("挟まれる位置へ自分から置いても取られない", () => {
     const s = stateOf(boardOf({ a1: [1, 1], c1: [1, 1] }));
     const n = play(s, "b1", "hi");
     expect(n.board[0][1]).toEqual({ owner: 0, kind: "hi" });
     expect(n.hp).toEqual([20, 20]);
-    expect(n.hands[1]).toEqual(s.hands[1]);
   });
-  it("取った飛を自分の駒として置ける", () => {
-    // 先手が a1 で後手の飛(b1)を取る → 先手の持ち駒の飛が 3 個に
-    let s = stateOf(boardOf({ b1: [1, 5], c1: [0, 1] }), { hands: [{ fu: 1 }, { fu: 1 }] });
-    s = play(s, "a1");
-    expect(s.hands[0].hi).toBe(1);
-    // 後手が b1 に歩を置く（a1 と c1 の間。挟まれても取られない）
-    s = playMove(s, 0, 1, "fu");
-    // 先手は取った飛を置ける
-    s = playMove(s, 5, 5, "hi");
-    expect(s.board[5][5]).toEqual({ owner: 0, kind: "hi" });
+});
+
+describe("強さ制限", () => {
+  // 右: 後手の金3 を挟む / 下: 後手の歩1 を挟む
+  const stones = { b1: [1, 3], c1: [0, 1], a2: [1, 1], a3: [0, 1] } as const;
+  it("置いた駒より数字が大きい駒を含む列だけ返せない（他の方向は返せる）", () => {
+    const rules = rulesOf("v2");
+    const s = stateOf(boardOf(stones), { rules, hands: [{ fu: 1, kin: 1 }, { fu: 1 }] });
+    expect(names(linesFor(s.board, 0, 0, 0, "fu", rules).flatMap((l) => l.cells))).toEqual(["a2"]);
+    expect(names(linesFor(s.board, 0, 0, 0, "kin", rules).flatMap((l) => l.cells))).toEqual(["a2", "b1"]); // 同じ数字は返せる
+    const n = play(s, "a1", "fu");
+    expect(n.board[0][1]).toEqual({ owner: 1, kind: "kin" });
+    expect(n.board[1][0]).toEqual({ owner: 0, kind: "fu" });
+    expect(lastMove(n).damage).toBe(1);
   });
-  it("applyMove は元の盤面を変更しない", () => {
+  it("制限なしなら同じ手で両方返せる", () => {
+    const s = stateOf(boardOf(stones), { rules: FLIP, hands: [{ fu: 1 }, { fu: 1 }] });
+    expect(lastMove(play(s, "a1")).damage).toBe(4);
+  });
+  it("裏返すルールでは、返せる列がない駒ではそのマスに置けない", () => {
+    const rules = rulesOf("v2");
+    const s = stateOf(boardOf({ b1: [1, 5], c1: [0, 1] }), { rules, hands: [{ fu: 1, hi: 1 }, { fu: 1 }] });
+    expect(legalCells(s, "fu")).toEqual([]);
+    expect(names(legalCells(s, "hi"))).toEqual(["a1"]);
+    expect(playableKinds(s)).toEqual(["hi"]);
+    expect(() => play(s, "a1", "fu")).toThrow();
+  });
+  it("取るルールでも効く（置けるが、強い駒の列は取れない）", () => {
+    const rules = rulesOf("v10", { gate: true });
+    const s = stateOf(boardOf({ b1: [1, 5], c1: [0, 1] }), { rules, hands: [{ fu: 1 }, { fu: 1 }] });
+    const n = play(s, "a1");
+    expect(n.board[0][1]).toEqual({ owner: 1, kind: "hi" });
+    expect(lastMove(n).damage).toBe(0);
+  });
+  it("相手の「返されうる駒」は相手の持ち駒で最も大きい駒で判定する", () => {
+    const rules = rulesOf("v2");
+    // 後手が a1 に置けば先手の飛 b1 を挟めるが、後手の持ち駒が歩だけなら返せない
+    const board = boardOf({ b1: [0, 5], c1: [1, 1] });
+    expect(threatenedPieces(stateOf(board, { rules, hands: [{ fu: 1 }, { fu: 3 }] }), 0)).toEqual([]);
+    expect(names(threatenedPieces(stateOf(board, { rules, hands: [{ fu: 1 }, { fu: 1, hi: 1 }] }), 0))).toEqual(["b1"]);
+  });
+});
+
+describe("ダメージ", () => {
+  // a1 に置くと右に 歩1・金3・飛5、下に 歩1・歩1 を挟む（5 枚）
+  const board = boardOf({ b1: [1, 1], c1: [1, 3], d1: [1, 5], e1: [0, 1], a2: [1, 1], a3: [1, 1], a4: [0, 1] });
+  const lines = (r: RuleSet) => linesFor(board, 0, 0, 0, "fu", r);
+  it("合計: 1+3+5+1+1 = 11", () => {
+    const r = rulesOf("orig", { damage: "sum" });
+    expect(damageOf(board, lines(r), r)).toBe(11);
+  });
+  it("最大値＋枚数÷4: 5 + floor(5/4) = 6。3 枚以下なら最大値のまま", () => {
+    const r = rulesOf("orig", { damage: "maxCount" });
+    expect(damageOf(board, lines(r), r)).toBe(6);
+    const b3 = boardOf({ b1: [1, 1], c1: [1, 3], d1: [1, 2], e1: [0, 1] });
+    expect(damageOf(b3, linesFor(b3, 0, 0, 0, "fu", r), r)).toBe(3);
+  });
+  it("何も返さなければ 0", () => {
+    const r = rulesOf("v10", { damage: "maxCount" });
+    expect(damageOf(board, [], r)).toBe(0);
+  });
+});
+
+describe("回復", () => {
+  // a1 に置くと右は金3 の自駒で、下は歩1 の自駒で挟む
+  const board = boardOf({ b1: [1, 1], c1: [0, 3], a2: [1, 1], a3: [0, 1] });
+  const raw = rawLines(board, 0, 0, 0);
+  const heal = (placed: number, h: RuleSet["heal"]) => healOf(raw, placed, rulesOf("orig", { heal: h }));
+  it("平均（切り捨て）: 最も大きい 1 方向分", () => {
+    expect(heal(5, "avg")).toBe(4); // (5+3)/2=4、(5+1)/2=3 → 4
+    expect(heal(2, "avg")).toBe(2); // (2+3)/2=2.5→2、(2+1)/2=1.5→1
+    expect(heal(1, "avg")).toBe(2); // (1+3)/2=2、(1+1)/2=1
+  });
+  it("低い方−1（0 未満は 0）: 最も大きい 1 方向分", () => {
+    expect(heal(5, "lowMinus1")).toBe(2); // min(5,3)-1=2、min(5,1)-1=0
+    expect(heal(1, "lowMinus1")).toBe(0); // min(1,3)-1=0
+    expect(healOf(raw.slice(1), 5, rulesOf("orig", { heal: "lowMinus1" }))).toBe(0); // 歩の端だけ → 0
+  });
+  it("回復なし・返せない手は 0", () => {
+    expect(heal(5, "none")).toBe(0);
+    expect(healOf([], 5, rulesOf("orig"))).toBe(0);
+  });
+  it("回復は置いた側の体力に足す（初期体力を超えてもよい）", () => {
+    const s = stateOf(board, { rules: rulesOf("orig"), hands: [{ hi: 1 }, { fu: 1 }] });
+    const n = play(s, "a1", "hi");
+    expect(lastMove(n)).toMatchObject({ damage: 2, heal: 4 });
+    expect(n.hp).toEqual([44, 38]);
+  });
+});
+
+describe("対局の進行", () => {
+  it("手数上限で打ち切り、体力の多い方の勝ち（limit）。0 なら上限なし", () => {
+    const rules = rulesOf("v10", { maxPlies: 3 });
+    const s = stateOf(boardOf({}), { rules, ply: 2, hp: [5, 6] });
+    expect(play(s, "a1").result).toEqual({ winner: 1, reason: "limit", byDiscs: false });
+    expect(play(stateOf(boardOf({}), { rules, ply: 1 }), "a1").result).toBeNull();
+    const none = rulesOf("v10", { maxPlies: 0 });
+    expect(play(stateOf(boardOf({ h8: [1, 1] }), { rules: none, ply: 500 }), "a1").result).toBeNull();
+  });
+  it("体力が同じなら石数、石数も同じなら引き分け", () => {
+    const b = boardOf({ a1: [0, 1], a2: [0, 1], h8: [1, 5] });
+    expect(judge(b, [10, 9], "limit")).toEqual({ winner: 0, reason: "limit", byDiscs: false });
+    expect(judge(b, [9, 9], "stalled")).toEqual({ winner: 0, reason: "stalled", byDiscs: true });
+    expect(judge(boardOf({ a1: [0, 1], h8: [1, 5] }), [9, 9], "limit")).toEqual({ winner: null, reason: "limit", byDiscs: false });
+  });
+  it("体力 5 の設定で 5 ダメージを受けると即終局（ko）、その後は置けない", () => {
+    const rules = rulesOf("v10", { hp: [5, 5] });
+    const s = stateOf(boardOf({ b1: [1, 5], c1: [0, 1] }), { rules });
+    const n = play(s, "a1");
+    expect(n.hp).toEqual([5, 0]);
+    expect(n.result).toEqual({ winner: 0, reason: "ko", byDiscs: false });
+    expect(() => play(n, "h8")).toThrow();
+    expect(previewMove(n, 7, 7, "fu")).toBeNull();
+    expect(threatenedPieces(n, 0)).toEqual([]);
+  });
+  it("持ち駒切れはパス（noPieces）し、相手が続けて打つ", () => {
+    const s = stateOf(boardOf({ d4: [0, 1], e5: [1, 1] }), { hands: [{ fu: 2 }, { fu: 1 }], turn: 1 });
+    const n = playMove(s, 0, 0, "fu");
+    const n2 = playMove(n, 0, 7, "fu");
+    expect(n2.turn).toBe(0);
+    expect(n2.history.at(-1)).toEqual({ type: "pass", player: 1, reason: "noPieces" });
+    expect(n2.result).toBeNull();
+  });
+  it("強さ制限で置けるマスが尽きたらパス（noMoves）。両者打てなければ終局", () => {
+    const rules = rulesOf("v2");
+    // 先手が a1 で後手の歩を返すと、後手は持ち駒が歩だけで先手の飛を返せない → パス
+    const s = stateOf(boardOf({ b1: [1, 1], c1: [0, 5], d1: [1, 1], h8: [1, 5], g8: [0, 5] }), {
+      rules,
+      hands: [{ fu: 2 }, { fu: 5 }],
+    });
+    expect(s.hands[1].fu).toBe(5); // 持ち駒はあるが置ける所がない
+    const n = play(s, "a1");
+    expect(n.history.at(-1)).toEqual({ type: "pass", player: 1, reason: "noMoves" });
+    expect(n.turn).toBe(0);
+    expect(canMove(n, 1)).toBe(false);
+    expect(names(legalCells(n, "fu"))).toEqual(["e1"]);
+    // 先手も置ける所がなくなれば終局（体力 → 石数で判定）
+    const done = stateOf(boardOf({ a1: [0, 5], b1: [1, 5] }), { rules, hands: [{ fu: 1 }, { fu: 1 }] });
+    expect(canMove(done, 0)).toBe(false);
+    expect(canMove(done, 1)).toBe(false);
+  });
+  it("駒の数がすべて 0 なら、始まった時点で終局（体力も石数も同じなので引き分け）", () => {
+    const g = createGame(rulesOf("v2", { hand: { fu: 0, gin: 0, kin: 0, hi: 0 } }));
+    expect(g.result).toEqual({ winner: null, reason: "stalled", byDiscs: false });
+    expect(g.ply).toBe(0);
+    const g2 = createGame(rulesOf("v10", { hand: { fu: 0, gin: 0, kin: 0, hi: 0 }, hp: [30, 20] }));
+    expect(g2.result).toEqual({ winner: 0, reason: "stalled", byDiscs: false });
+  });
+  it("applyLines は元の盤面を変更しない", () => {
     const b = boardOf({ b1: [1, 1], c1: [0, 1] });
-    applyMove(b, 0, 0, 0, "fu");
+    applyLines(b, 0, 0, 0, "fu", rawLines(b, 0, 0, 0), CAPTURE);
     expect(b[0][0]).toBeNull();
     expect(b[0][1]).toEqual({ owner: 1, kind: "fu" });
   });
 });
 
 describe("予測と警告", () => {
-  it("previewMove: 取れる駒とダメージ。取れなければ空", () => {
-    const s = stateOf(boardOf({ b1: [1, 3], c1: [0, 1] }));
-    expect(previewMove(s, 0, 0, "fu")).toMatchObject({ captured: [[0, 1]], damage: 3 });
-    expect(previewMove(s, 7, 7, "fu")).toMatchObject({ captured: [], damage: 0 });
-    expect(previewMove(s, 0, 2, "fu")).toBeNull(); // 埋まっている
+  it("previewMove: 返せる駒・ダメージ・回復", () => {
+    const s = stateOf(boardOf({ b1: [1, 3], c1: [0, 3] }), { rules: rulesOf("orig"), hands: [{ hi: 1 }, { fu: 1 }] });
+    expect(previewMove(s, 0, 0, "hi")).toMatchObject({ targets: [[0, 1]], damage: 3, heal: 4 });
   });
-  it("previewMove: 置いた後に相手が取れる自分の駒（置いた駒を含む）", () => {
-    // 先手が b1 に飛を置くと、後手は c1 に置けば a1 と挟んで飛を取れる
+  it("previewMove: 置いた後に相手が返せる自分の駒（置いた駒を含む）", () => {
     const s = stateOf(boardOf({ a1: [1, 1] }));
     const pv = previewMove(s, 0, 1, "hi")!;
     expect(names(pv.exposed)).toEqual(["b1"]);
     expect(pv.exposedDamage).toBe(5);
   });
-  it("previewMove: 相手に持ち駒がなければ取られうる駒はない", () => {
-    const s = stateOf(boardOf({ a1: [1, 1] }), { hands: [{ hi: 1 }, {}] });
-    expect(previewMove(s, 0, 1, "hi")).toMatchObject({ exposed: [], exposedDamage: 0 });
-  });
-  it("threatenedPieces: 相手が次の 1 手で取れる駒", () => {
-    // 先手の b1・d1 は後手に c1 へ置かれると両方取られる。h8 は周りに後手がいないので無事
+  it("threatenedPieces: 相手が次の 1 手で返せる駒", () => {
     const s = stateOf(boardOf({ a1: [1, 1], b1: [0, 5], d1: [0, 3], e1: [1, 1], h8: [0, 1] }));
     expect(names(threatenedPieces(s, 0))).toEqual(["b1", "d1"]);
-    expect(bestCapture(s.board, 1)).toBe(8);
-  });
-});
-
-describe("対局の進行", () => {
-  it("持ち駒が尽きた側はパスし、相手が続けて打つ", () => {
-    const s = stateOf(boardOf({ d4: [0, 1], e5: [1, 1] }), { hands: [{ fu: 2 }, { fu: 1 }], turn: 1 });
-    const n = playMove(s, 0, 0, "fu"); // 後手が最後の 1 個を置く
-    expect(n.hands[1]).toEqual({ fu: 0, kin: 0, hi: 0 });
-    expect(n.turn).toBe(0);
-    const n2 = playMove(n, 0, 7, "fu"); // 先手が打つと、後手は持ち駒がないのでパス
-    expect(n2.turn).toBe(0);
-    expect(n2.history.at(-1)).toEqual({ type: "pass", player: 1 });
-    expect(n2.result).toBeNull();
-  });
-  it("取って持ち駒が増えれば、尽きかけていても打ち続けられる", () => {
-    const s = stateOf(boardOf({ b1: [1, 1], c1: [0, 1] }), { hands: [{ fu: 1 }, { fu: 1 }] });
-    const n = play(s, "a1");
-    expect(n.hands[0]).toEqual({ fu: 1, kin: 0, hi: 0 });
-  });
-  it("両者とも持ち駒が尽きたら終局し、体力で判定（stalled）", () => {
-    const s = stateOf(boardOf({ b1: [1, 3], c1: [0, 1] }), { hands: [{ fu: 1 }, {}], hp: [20, 20] });
-    // 先手が最後の歩で金を取る → 先手の持ち駒は金 1 個、後手は 0 個 → 後手パス・先手が打つ
-    const n = play(s, "a1");
-    expect(n.turn).toBe(0);
-    expect(n.history.at(-1)).toEqual({ type: "pass", player: 1 });
-    const n2 = playMove(n, 7, 7, "kin");
-    expect(n2.result).toEqual({ winner: 0, reason: "stalled" });
-    expect(n2.hp).toEqual([20, 17]);
-  });
-  it("80 手目で打ち切り、体力の多い方の勝ち（limit）", () => {
-    const s = stateOf(boardOf({ b1: [1, 1], c1: [0, 1] }), { ply: MAX_PLIES - 1, hp: [5, 6] });
-    const n = play(s, "a1"); // 後手 6 → 5 で同点 → 引き分け
-    expect(n.ply).toBe(80);
-    expect(n.result).toEqual({ winner: null, reason: "limit" });
-    const s2 = stateOf(boardOf({}), { ply: MAX_PLIES - 1, hp: [5, 6] });
-    expect(play(s2, "a1").result).toEqual({ winner: 1, reason: "limit" });
-    // 79 手目まではまだ続く
-    expect(play(stateOf(boardOf({}), { ply: MAX_PLIES - 2 }), "a1").result).toBeNull();
-  });
-  it("体力 0 ちょうどで即終局（ko）、その後は置けない", () => {
-    const s = stateOf(boardOf({ b1: [1, 3], c1: [0, 1] }), { hp: [10, 3] });
-    const n = play(s, "a1");
-    expect(n.hp[1]).toBe(0);
-    expect(n.result).toEqual({ winner: 0, reason: "ko" });
-    expect(() => playMove(n, 7, 7, "fu")).toThrow();
-    expect(previewMove(n, 7, 7, "fu")).toBeNull();
-    expect(threatenedPieces(n, 0)).toEqual([]);
-  });
-  it("体力が 0 未満になっても ko。80 手目の ko は手数切れより優先", () => {
-    const s = stateOf(boardOf({ b1: [1, 5], c1: [0, 1] }), { hp: [1, 2], ply: MAX_PLIES - 1 });
-    const n = play(s, "a1");
-    expect(n.hp[1]).toBe(-3);
-    expect(n.result).toEqual({ winner: 0, reason: "ko" });
-  });
-  it("体力が 1 残れば続行する", () => {
-    expect(play(stateOf(boardOf({ b1: [1, 3], c1: [0, 1] }), { hp: [10, 4] }), "a1").result).toBeNull();
-  });
-  it("judge: 体力が多い方の勝ち、同じなら引き分け", () => {
-    expect(judge([10, 9], "limit")).toEqual({ winner: 0, reason: "limit" });
-    expect(judge([9, 10], "stalled")).toEqual({ winner: 1, reason: "stalled" });
-    expect(judge([9, 9], "limit")).toEqual({ winner: null, reason: "limit" });
-  });
-  it("持ち駒にない駒種は置けない", () => {
-    const s = stateOf(boardOf({}), { hands: [{ fu: 1 }, { fu: 1 }] });
-    expect(() => play(s, "a1", "hi")).toThrow();
-    expect(previewMove(s, 0, 0, "hi")).toBeNull();
   });
 });
 
 describe("CPU（2 手読み）", () => {
-  it("空きマスと手持ちの駒を返し、終局まで打てる", () => {
-    let s = createGame();
+  it.each(PRESETS.map((p) => [p.name, p.rules] as const))("%s: 合法手だけを打って終局まで進む", (_, rules) => {
+    let s = createGame(rules);
     let n = 0;
     while (!s.result) {
       const ch = chooseLookahead(s, () => 0.5)!;
-      expect(s.hands[s.turn][ch.kind]).toBeGreaterThan(0);
-      expect(s.board[ch.r][ch.c]).toBeNull();
+      expect(legalCells(s, ch.kind).some(([r, c]) => r === ch.r && c === ch.c)).toBe(true);
       s = playMove(s, ch.r, ch.c, ch.kind);
       n++;
     }
-    expect(n).toBeLessThanOrEqual(MAX_PLIES);
+    expect(n).toBeGreaterThan(0);
+    if (rules.maxPlies > 0) expect(n).toBeLessThanOrEqual(rules.maxPlies);
   });
-  it("取れる手があれば取る（相手の応手がないとき）", () => {
-    const s = stateOf(boardOf({ b1: [1, 5], c1: [0, 1] }), { hands: [{ fu: 1 }, {}] });
-    expect(lookaheadCandidates(s)).toEqual({ best: 5, cands: [{ r: 0, c: 0, kind: "fu" }] });
+  it("回復も評価に入れる", () => {
+    // a1（返して回復 4）と h1（返して回復 1）は同じダメージ。回復の多い a1 を選ぶ
+    const rules = rulesOf("orig");
+    const s = stateOf(boardOf({ b1: [1, 1], c1: [0, 5], g1: [1, 1], f1: [0, 1] }), { rules, hands: [{ kin: 1 }, {}] });
+    expect(lookaheadCandidates(s)).toEqual({ best: 1 + 4, cands: [{ r: 0, c: 0, kind: "kin" }] });
   });
   it("取られる位置に飛を置かない（駒選びで差がつく）", () => {
-    // a1 は後手。b1 に置くと c1 に置かれて取られる。歩なら -1、飛なら -5
     const s = stateOf(boardOf({ a1: [1, 1], h8: [1, 1] }), { hands: [{ fu: 1, hi: 1 }, { fu: 1 }] });
     const { cands } = lookaheadCandidates(s);
     expect(cands.some((x) => x.r === 0 && x.c === 1 && x.kind === "hi")).toBe(false);

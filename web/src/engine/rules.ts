@@ -1,33 +1,131 @@
-// 挟将のルール定数（RULES.md v1.0「取った駒が持ち駒になる」）。UI に依存しない。
+// 挟将のルール設定。各項目を独立に組み合わせられる（Web 試遊版）。UI に依存しない。
 
 export type Player = 0 | 1;
-export type PieceKind = "fu" | "kin" | "hi";
+export type PieceKind = "fu" | "gin" | "kin" | "hi";
 
 export interface PieceSpec {
   kind: PieceKind;
   /** 表示名（1 文字） */
   name: string;
-  /** 駒の数字。取られたときのダメージになる */
+  /** 駒の数字。返された・取られたときのダメージの元になる */
   value: number;
 }
 
 export const PIECES: Record<PieceKind, PieceSpec> = {
   fu: { kind: "fu", name: "歩", value: 1 },
+  gin: { kind: "gin", name: "銀", value: 2 },
   kin: { kind: "kin", name: "金", value: 3 },
   hi: { kind: "hi", name: "飛", value: 5 },
 };
 
-/** 表示・走査の順序（数字の小さい順。sim/capture.py の持ち駒の並びと同じ） */
-export const KIND_ORDER: readonly PieceKind[] = ["fu", "kin", "hi"];
+/** 表示・走査の順序（数字の小さい順。sim/*.py の持ち駒の並びと同じ） */
+export const KIND_ORDER: readonly PieceKind[] = ["fu", "gin", "kin", "hi"];
 
 export type Hand = Record<PieceKind, number>;
 
-/** 初期の持ち駒（両者共通・公開） */
-export const INITIAL_HAND: Readonly<Hand> = { fu: 8, kin: 4, hi: 2 };
-/** 初期体力（両者共通。後手ボーナスなし） */
-export const INITIAL_HP = 20;
-/** 総手数の上限（各 40 手）。達したら体力で判定する */
-export const MAX_PLIES = 80;
+/** 挟んだ駒を flip: 裏返す（オセロ） / capture: 取って自分の持ち駒にする */
+export type Action = "flip" | "capture";
+/** sum: 数字の合計 / maxCount: 最大値 + 枚数 ÷ 4（切り捨て） */
+export type DamageRule = "sum" | "maxCount";
+/** none: なし / avg: 両端の平均（切り捨て） / lowMinus1: 両端の低い方 − 1（0 未満は 0） */
+export type HealRule = "none" | "avg" | "lowMinus1";
+
+export interface RuleSet {
+  action: Action;
+  /** true なら、置いた駒より数字が大きい駒を含む列は返せない（取れない） */
+  gate: boolean;
+  damage: DamageRule;
+  heal: HealRule;
+  /** 初期体力 [先手, 後手] */
+  hp: [number, number];
+  /** 初期の持ち駒（両者同じ） */
+  hand: Hand;
+  /** 総手数の上限。0 なら上限なし */
+  maxPlies: number;
+}
+
+/** 設定値の範囲（設定画面・URL の検証で使う） */
+export const LIMITS = {
+  hp: { min: 5, max: 200 },
+  pieces: { min: 0, max: 40 },
+  maxPlies: { min: 0, max: 300 },
+} as const;
+
+export type PresetId = "v04" | "v10" | "v2" | "orig";
+
+export interface Preset {
+  id: PresetId;
+  name: string;
+  /** プリセットの 1 行説明 */
+  note: string;
+  rules: RuleSet;
+}
+
+const hand = (fu: number, gin: number, kin: number, hi: number): Hand => ({ fu, gin, kin, hi });
+
+export const PRESETS: readonly Preset[] = [
+  {
+    id: "v04",
+    name: "v0.4",
+    note: "裏返す・最大値＋枚数÷4・回復は低い方−1",
+    rules: {
+      action: "flip", gate: false, damage: "maxCount", heal: "lowMinus1",
+      hp: [65, 66], hand: hand(14, 10, 6, 2), maxPlies: 0,
+    },
+  },
+  {
+    id: "v10",
+    name: "v1.0（取る）",
+    note: "取って持ち駒にする・どこでも置ける・合計",
+    rules: {
+      action: "capture", gate: false, damage: "sum", heal: "none",
+      hp: [20, 20], hand: hand(8, 0, 4, 2), maxPlies: 80,
+    },
+  },
+  {
+    id: "v2",
+    name: "v2案（強い駒は返せない）",
+    note: "裏返す・置いた駒より強い駒は返せない・合計",
+    rules: {
+      action: "flip", gate: true, damage: "sum", heal: "none",
+      hp: [40, 40], hand: hand(20, 0, 8, 4), maxPlies: 0,
+    },
+  },
+  {
+    id: "orig",
+    name: "原案",
+    note: "裏返す・合計・回復は両端の平均",
+    rules: {
+      action: "flip", gate: false, damage: "sum", heal: "avg",
+      hp: [40, 40], hand: hand(14, 10, 6, 2), maxPlies: 0,
+    },
+  },
+];
+
+export const presetById = (id: PresetId): Preset => PRESETS.find((p) => p.id === id)!;
+
+/** 既定のルール（RULES.md の現行版 v1.0） */
+export const DEFAULT_PRESET: PresetId = "v10";
+
+export const cloneRules = (r: RuleSet): RuleSet => ({ ...r, hp: [r.hp[0], r.hp[1]], hand: { ...r.hand } });
+
+export const defaultRules = (): RuleSet => cloneRules(presetById(DEFAULT_PRESET).rules);
+
+export function sameRules(a: RuleSet, b: RuleSet): boolean {
+  return (
+    a.action === b.action &&
+    a.gate === b.gate &&
+    a.damage === b.damage &&
+    a.heal === b.heal &&
+    a.hp[0] === b.hp[0] &&
+    a.hp[1] === b.hp[1] &&
+    a.maxPlies === b.maxPlies &&
+    KIND_ORDER.every((k) => a.hand[k] === b.hand[k])
+  );
+}
+
+/** 設定と一致するプリセット（なければ null = カスタム） */
+export const matchPreset = (r: RuleSet): Preset | null => PRESETS.find((p) => sameRules(p.rules, r)) ?? null;
 
 export const PLAYER_NAME: Record<Player, string> = { 0: "先手", 1: "後手" };
 
