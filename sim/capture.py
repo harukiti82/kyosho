@@ -18,7 +18,7 @@ DIRS = [(-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 1)]
 @dataclass
 class Rules:
     hand: dict = field(default_factory=lambda: {1: 8, 3: 4, 5: 2})  # 数字 -> 個数
-    hp: int = 30
+    hp: int = 20
     max_plies: int = 80
     second_bonus: int = 0
 
