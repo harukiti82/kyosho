@@ -11,6 +11,7 @@
   --ink: #1f1b14;
   --ink-muted: #5c6b4d;
   --danger: #a8432a;
+  --heal: #3f7a3a;
   --glass-bg: rgba(255, 255, 255, 0.55);
   --glass-bg-hi: rgba(255, 255, 255, 0.72);
   --glass-border: rgba(255, 255, 255, 0.7);
@@ -212,6 +213,9 @@ button {
   grid-area: rules;
   padding: 0.6rem 0.9rem 0.6rem 0.4rem;
 }
+.rules4-head {
+  margin: 0 0 0.2rem 0.5rem;
+}
 .rules4-list {
   margin: 0;
   padding-left: 1.6rem;
@@ -352,6 +356,9 @@ button {
   font-size: 0.85rem;
   font-weight: 700;
   color: var(--danger);
+}
+.delta.heal {
+  color: var(--heal);
 }
 .delta.fresh {
   animation: rise 0.6s ease-out;
@@ -562,7 +569,36 @@ button {
   box-shadow: 0 0 0 2px #fff;
   pointer-events: none;
 }
-/* 相手が次の 1 手で取れる駒 */
+/* 予測: 置いたら回復する量 */
+.heal-badge {
+  position: absolute;
+  z-index: 2;
+  left: -6%;
+  bottom: -6%;
+  min-width: 46%;
+  padding: 0 0.2em;
+  border-radius: 999px;
+  background: var(--heal);
+  color: #fff;
+  font-size: 3.8cqi;
+  font-weight: 800;
+  line-height: 1.35;
+  box-shadow: 0 0 0 2px #fff;
+  pointer-events: none;
+}
+/* 裏返った駒 */
+.board .stone.flipped {
+  animation: flip 0.5s ease-out;
+}
+@keyframes flip {
+  0% {
+    transform: rotateY(90deg) scale(0.9);
+  }
+  100% {
+    transform: none;
+  }
+}
+/* 相手が次の 1 手で返せる（取れる）駒 */
 .threat,
 .key-threat {
   display: inline-grid;
@@ -675,6 +711,9 @@ button {
   color: var(--danger);
   font-size: 1.15rem;
 }
+.preview-main .heal {
+  color: var(--heal);
+}
 .warn {
   margin: 0.4rem 0 0;
   font-size: 0.82rem;
@@ -737,6 +776,11 @@ button {
 .piece-btn:disabled {
   cursor: not-allowed;
   opacity: 0.4;
+}
+.piece-blocked {
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: var(--danger);
 }
 
 /* ---- 棋譜 ---- */
@@ -818,6 +862,9 @@ button {
   background: rgba(70, 84, 52, 0.25);
   backdrop-filter: blur(4px);
 }
+.modal-wide {
+  width: min(calc(100vw - 32px), 42rem);
+}
 .modal-body {
   padding: 1.25rem 1.25rem 1rem;
 }
@@ -852,6 +899,187 @@ button {
   gap: 0.5rem;
   margin-top: 1rem;
 }
+/* ---- 対局設定 ---- */
+.setup-lead {
+  margin: -0.25rem 0 0.75rem;
+  font-size: 0.85rem;
+  color: var(--ink-muted);
+}
+.setup-note {
+  margin: 0 0 0.75rem;
+  padding: 0.45rem 0.7rem;
+  border-radius: 0.75rem;
+  background: rgba(224, 165, 38, 0.18);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+.presets {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr));
+  gap: 0.45rem;
+}
+.preset {
+  display: grid;
+  gap: 0.1rem;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid rgba(31, 27, 20, 0.12);
+  border-radius: var(--radius-button);
+  background: rgba(255, 255, 255, 0.6);
+  text-align: left;
+  cursor: pointer;
+}
+.preset:hover {
+  background: #fff;
+}
+.preset[aria-pressed="true"] {
+  background: #fff;
+  border-color: var(--accent-to);
+  box-shadow: 0 0 0 2px var(--accent-to);
+}
+.preset-name {
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+.preset-note {
+  font-size: 0.74rem;
+  color: var(--ink-muted);
+}
+.custom-tag {
+  letter-spacing: 0;
+  color: var(--accent-to);
+}
+.rule-fields {
+  display: grid;
+  gap: 0.7rem;
+}
+.opt {
+  display: grid;
+  gap: 0.3rem;
+  min-width: 0;
+}
+.opt-name {
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+.opt-help {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--ink-muted);
+}
+.seg {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+.seg label {
+  position: relative;
+  cursor: pointer;
+}
+/* ラジオボタン本体は見えなくし、ラベルをボタン風にする（キーボード操作はそのまま） */
+.seg input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+}
+.seg span {
+  display: inline-block;
+  padding: 0.35rem 0.75rem;
+  border: 1px solid rgba(31, 27, 20, 0.15);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.6);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.seg input:checked + span {
+  background: var(--accent);
+  border-color: transparent;
+  color: #fff;
+}
+.seg input:focus-visible + span {
+  outline: 2px solid rgba(122, 142, 95, 0.8);
+  outline-offset: 2px;
+}
+.side-seg {
+  margin-top: 0.4rem;
+}
+.nums {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.9rem;
+}
+.nums-4 {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.4rem;
+}
+.num {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.nums-4 .num {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 0;
+}
+.num input {
+  width: 4.6rem;
+  min-width: 0;
+  padding: 0.35rem 0.45rem;
+  border: 1px solid rgba(31, 27, 20, 0.2);
+  border-radius: 0.6rem;
+  background: #fff;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+.nums-4 .num input {
+  width: 100%;
+}
+.setup-preview {
+  margin: 0 0 0.9rem;
+  padding: 0.6rem 0.8rem 0.6rem 0.4rem;
+  border-radius: 1rem;
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(31, 27, 20, 0.08);
+}
+.setup-preview .label {
+  margin-left: 0.5rem;
+}
+.share {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.6rem;
+}
+.share-status {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--accent-to);
+}
+.share-url {
+  width: 100%;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid rgba(31, 27, 20, 0.2);
+  border-radius: 0.6rem;
+  background: #fff;
+  font: inherit;
+  font-size: 0.78rem;
+  color: var(--ink);
+}
+/* 長い設定画面でも「対局開始」が常に見えるよう、下端に固定する */
+.setup .modal-actions {
+  position: sticky;
+  bottom: -1rem;
+  margin: 0.75rem -1.25rem -1rem;
+  padding: 0.6rem 1.25rem 0.9rem;
+  background: rgba(255, 253, 246, 0.96);
+  border-top: 1px solid rgba(31, 27, 20, 0.08);
+}
+
 .result-winner {
   margin: 0.1rem 0 0.4rem;
   font-size: 2rem;
