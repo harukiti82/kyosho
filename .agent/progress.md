@@ -13,3 +13,5 @@
 - GitHub Pages 公開: `.github/workflows/pages.yml` を追加し https://harukiti82.github.io/kyosho/ にデプロイ
 - ルール v1.0「取った駒が持ち駒になる」に作り直し: RULES.md 改稿（v0.4 は `docs/RULES-v0.4.md`）、web のエンジン・CPU・UI・テストを置き換え
 - v1.0 の整合テスト（`sim/capture.py` の 50 局と全手一致）、UI に 4 行ルール常時表示・取れる駒の予測・取られうる駒の警告・取った駒の演出を追加
+- Web 版を試遊版に作り直し: エンジンを `RuleSet` で一般化（裏返す/取る・強さ制限・ダメージ・回復・体力・駒数・手数上限）、プリセット 4 種・設定画面・URL 共有・自動生成ルールカード
+- Python 整合を 3 本に拡張（kyosho / capture / gate の 86 局で全手・2 手読み候補一致）、e2e で 4 プリセットを終局まで確認
