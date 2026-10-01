@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="オセロ × 持ち駒 × 体力の二人対戦ゲーム「挟将」" />
+    <title>挟将（きょうしょう）</title>
+  </head>
+  <body>
+    <div class="stage" aria-hidden="true">
+      <span class="blob blob-a"></span><span class="blob blob-b"></span><span class="blob blob-c"></span>
+    </div>
+
+    <header class="topbar">
+      <h1 class="title">挟将<span class="title-sub">きょうしょう</span></h1>
+      <div class="topbar-actions">
+        <button type="button" class="btn ghost" id="btn-rules">ルール</button>
+        <button type="button" class="btn ghost" id="btn-new">新しい対局</button>
+      </div>
+    </header>
+
+    <main class="layout" id="game" hidden>
+      <section class="players" aria-label="体力">
+        <div class="player-card" id="player-0"></div>
+        <div class="player-card" id="player-1"></div>
+      </section>
+
+      <p class="status" id="status" role="status" aria-live="polite"></p>
+
+      <div class="board-wrap">
+        <div class="board" id="board" role="grid" aria-label="盤面"></div>
+      </div>
+
+      <section class="side">
+        <div class="glass hand" id="hand">
+          <h2 class="label" id="hand-title">持ち駒</h2>
+          <div class="hand-buttons" id="hand-buttons"></div>
+        </div>
+        <div class="glass preview" id="preview" aria-live="polite"></div>
+        <div class="glass log">
+          <h2 class="label">棋譜</h2>
+          <ol class="log-list" id="log"></ol>
+        </div>
+      </section>
+    </main>
+
+    <div class="toast" id="toast" role="alert" hidden></div>
+
+    <!-- 対局設定 -->
+    <dialog class="modal" id="setup">
+      <form method="dialog" class="modal-body" id="setup-form">
+        <h2 class="modal-title">対局の設定</h2>
+        <fieldset class="field">
+          <legend class="label">モード</legend>
+          <label class="choice"><input type="radio" name="mode" value="cpu" checked /> CPU 対戦</label>
+          <label class="choice"><input type="radio" name="mode" value="pvp" /> 2 人対戦（同じ端末で交互）</label>
+        </fieldset>
+        <fieldset class="field" id="side-field">
+          <legend class="label">あなたの手番</legend>
+          <label class="choice"><input type="radio" name="side" value="0" checked /> 先手（黒・先に打つ）</label>
+          <label class="choice"><input type="radio" name="side" value="1" /> 後手（白）</label>
+        </fieldset>
+        <fieldset class="field">
+          <legend class="label">追加ルール</legend>
+          <label class="choice">
+            <input type="checkbox" name="kaku" />
+            角を使う（歩 2 個 → 角 2 個、攻撃 = 最大値 × 2 ＋ 枚数 ÷ 4、体力 65 / 65）
+          </label>
+        </fieldset>
+        <div class="modal-actions">
+          <button type="button" class="btn ghost" id="setup-rules">ルールを読む</button>
+          <button type="submit" class="btn primary" id="setup-start">対局開始</button>
+        </div>
+      </form>
+    </dialog>
+
+    <!-- 終局 -->
+    <dialog class="modal" id="result">
+      <div class="modal-body">
+        <p class="label">終局</p>
+        <h2 class="result-winner" id="result-winner"></h2>
+        <p class="result-reason" id="result-reason"></p>
+        <p class="result-detail" id="result-detail"></p>
+        <div class="modal-actions">
+          <button type="button" class="btn ghost" id="result-view">盤面を見る</button>
+          <button type="button" class="btn ghost" id="result-setup">設定を変える</button>
+          <button type="button" class="btn primary" id="result-rematch" autofocus>再戦</button>
+        </div>
+      </div>
+    </dialog>
+
+    <!-- ルール説明（RULES.md v0.4 の要約） -->
+    <dialog class="modal" id="rules">
+      <div class="modal-body rules-body">
+        <h2 class="modal-title" tabindex="-1" autofocus>挟将のルール</h2>
+        <p>オセロの盤と挟み方で、数値の違う持ち駒を置いて体力を削り合う。相手の体力を 0 にするか、終局時に体力で上回れば勝ち。</p>
+
+        <h3>準備</h3>
+        <ul>
+          <li>8×8 の盤。初期配置はオセロと同じで、中央の 4 駒はすべて歩（1）</li>
+          <li>体力: 先手 65 / 後手 66</li>
+          <li>持ち駒（両者同じ・公開）: 歩1 ×14 / 銀2 ×10 / 金3 ×6 / 飛5 ×2</li>
+        </ul>
+
+        <h3>手番</h3>
+        <ol>
+          <li>持ち駒から 1 個選び、オセロのルールどおりに置く（相手の駒を挟めない場所には置けない）</li>
+          <li><strong>攻撃</strong>: 相手の体力を「返した駒の最大値 ＋ 返した枚数 ÷ 4（切り捨て）」減らす</li>
+          <li><strong>回復</strong>: 挟んだ方向ごとに「置いた駒と、反対側の端の自分の駒の低い方 − 1」を求め、いちばん大きい 1 方向分だけ回復（0 未満は 0）</li>
+          <li>返された駒は色だけ変わり、数値はそのまま残る</li>
+        </ol>
+
+        <h3>回復の早見表</h3>
+        <table class="rules-table">
+          <thead><tr><th>低い方</th><th>歩 1</th><th>銀 2</th><th>金 3</th><th>飛 5</th></tr></thead>
+          <tbody><tr><th>回復</th><td>0</td><td>1</td><td>2</td><td>4</td></tr></tbody>
+        </table>
+        <p class="note">例: 金を置いて相手の歩・銀・金を返し、反対側の端が自分の銀 → 攻撃 3（最大値 3 ＋ 3÷4＝0）、回復 1（min(3, 2) − 1）。</p>
+
+        <h3>決着</h3>
+        <ul>
+          <li>体力が 0 以下になった時点でそのプレイヤーの負け</li>
+          <li>盤が埋まるか両者とも置けなくなったら終局。体力の多い方が勝ち → 同じなら石の数 → それも同じなら引き分け</li>
+          <li>置ける場所がない、または持ち駒が尽きたらパス（攻撃も回復もなし）</li>
+        </ul>
+
+        <h3>追加ルール: 角（対局設定で ON）</h3>
+        <ul>
+          <li>持ち駒の歩 2 個を角 2 個に差し替える。体力は先手 65 / 後手 65</li>
+          <li>角は盤上では数値 1（回復は歩と同じ 0）</li>
+          <li>角を置いた手の攻撃は「返した駒の最大値 × 2 ＋ 返した枚数 ÷ 4」</li>
+        </ul>
+
+        <h3>画面の操作</h3>
+        <ul>
+          <li>持ち駒を選ぶと置けるマスに印が出る。マスにカーソルを乗せると、その手の攻撃・回復と返る駒を予測表示する</li>
+          <li>スマホでは 1 回目のタップで予測、同じマスを 2 回目のタップで確定</li>
+        </ul>
+        <div class="modal-actions">
+          <button type="button" class="btn primary" id="rules-close">閉じる</button>
+        </div>
+      </div>
+    </dialog>
+
+    <script type="module" src="./src/main.ts"></script>
+  </body>
+</html>
