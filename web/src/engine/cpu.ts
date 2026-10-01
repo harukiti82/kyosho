@@ -1,9 +1,9 @@
-// CPU の打ち手。sim/capture.py の bot_lookahead（2 手読み）の移植。
-// 評価 = 自分のダメージ − 相手の最善応手のダメージ。同点はランダム。
+// CPU の打ち手。sim/kyosho.py・sim/capture.py・sim/gate.py の bot_lookahead（2 手読み）を全設定共通にしたもの。
+// 評価 = 自分の (ダメージ + 回復) − 相手の最善応手の (ダメージ + 回復)。同点はランダム。
 
-import { applyMove, bestCapture, damageOf, emptyCells, capturesAt } from "./board";
-import { availableKinds, type GameState } from "./game";
-import { other, type PieceKind } from "./rules";
+import { applyLines, damageOf, emptyCells, gateLines, healOf, rawLines } from "./board";
+import { availableKinds, bestReply, type GameState } from "./game";
+import { other, PIECES, type PieceKind } from "./rules";
 
 export interface Choice {
   r: number;
@@ -13,20 +13,25 @@ export interface Choice {
 
 /** 最善スコアと、そのスコアを取る候補手すべて */
 export function lookaheadCandidates(state: GameState): { best: number; cands: Choice[] } {
+  const { rules, board } = state;
   const p = state.turn;
   const q = other(p);
   const myKinds = availableKinds(state.hands[p]);
-  // 相手の持ち駒は自分の着手で変わらない（取った駒は自分に入る）
-  const oppHasPiece = availableKinds(state.hands[q]).length > 0;
+  // 相手の持ち駒は自分の着手で変わらない（取った駒は自分の持ち駒に入る）
+  const oppHand = state.hands[q];
   let best = -Infinity;
   let cands: Choice[] = [];
 
-  for (const [r, c] of emptyCells(state.board)) {
-    const d = damageOf(state.board, capturesAt(state.board, r, c, p));
+  for (const [r, c] of emptyCells(board)) {
+    const raw = rawLines(board, r, c, p);
     for (const kind of myKinds) {
-      // 置いた駒の数字によって相手の取れる量が変わるので、駒種ごとに読む
-      const reply = oppHasPiece ? bestCapture(applyMove(state.board, p, r, c, kind).board, q) : 0;
-      const s = d - reply;
+      const v = PIECES[kind].value;
+      const lines = gateLines(raw, v, rules.gate);
+      if (rules.action === "flip" && lines.length === 0) continue;
+      const own = damageOf(board, lines, rules) + healOf(lines, v, rules);
+      // 置いた駒の数字によって相手の返せる量が変わるので、駒種ごとに読む
+      const reply = bestReply(rules, applyLines(board, p, r, c, kind, lines, rules), oppHand, q).score;
+      const s = own - reply;
       if (s > best) {
         best = s;
         cands = [{ r, c, kind }];
