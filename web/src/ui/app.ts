@@ -570,6 +570,7 @@ export class App {
     byId("result-reason").textContent = reason;
     byId("result-detail").textContent =
       `${this.name(0)} 体力 ${g.hp[0]}・石 ${stones[0]} ／ ${this.name(1)} 体力 ${g.hp[1]}・石 ${stones[1]}（${g.ply} 手）`;
+    this.hideToast();
     if (!this.el.result.open) this.el.result.showModal();
   }
 

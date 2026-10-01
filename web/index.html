@@ -84,7 +84,7 @@
         <div class="modal-actions">
           <button type="button" class="btn ghost" id="result-view">盤面を見る</button>
           <button type="button" class="btn ghost" id="result-setup">設定を変える</button>
-          <button type="button" class="btn primary" id="result-rematch">再戦</button>
+          <button type="button" class="btn primary" id="result-rematch" autofocus>再戦</button>
         </div>
       </div>
     </dialog>
@@ -92,7 +92,7 @@
     <!-- ルール説明（RULES.md v0.4 の要約） -->
     <dialog class="modal" id="rules">
       <div class="modal-body rules-body">
-        <h2 class="modal-title">挟将のルール</h2>
+        <h2 class="modal-title" tabindex="-1" autofocus>挟将のルール</h2>
         <p>オセロの盤と挟み方で、数値の違う持ち駒を置いて体力を削り合う。相手の体力を 0 にするか、終局時に体力で上回れば勝ち。</p>
 
         <h3>準備</h3>

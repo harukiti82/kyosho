@@ -662,6 +662,7 @@ button {
   background: rgba(255, 253, 246, 0.94);
   color: var(--ink);
   box-shadow: 0 24px 60px -24px rgba(70, 84, 52, 0.6);
+  -webkit-tap-highlight-color: transparent;
 }
 .modal::backdrop {
   background: rgba(70, 84, 52, 0.25);
@@ -673,6 +674,9 @@ button {
 .modal-title {
   margin: 0 0 0.75rem;
   font-size: 1.2rem;
+}
+.modal-title:focus {
+  outline: none;
 }
 .field {
   margin: 0 0 0.9rem;
