@@ -3,12 +3,14 @@
 // 隠し王ありなら &king=1&kpen=hp&kdmg=20&kdue=5（なしのときは king=0 だけを載せる）
 // 方向駒の項目（dir=piece・横と角の数 yoko / kaku・駒の数字 vfu〜vhi）は既定値と違うときだけ末尾に載せる。
 // そのため既存プリセットの URL は方向駒の追加前と同じで、方向駒の項目がない古い URL は「全方向・既定の数字・横と角は 0 個」になる
+// 端の駒の力（anc=atk）も既定値（なし）と違うときだけ載せる。項目がない URL は「なし」
 
 import {
   defaultRules,
   KIND_ORDER,
   LIMITS,
   type Action,
+  type AnchorRule,
   type DamageRule,
   type DirRule,
   type HealRule,
@@ -23,6 +25,7 @@ const HEAL: Record<string, HealRule> = { none: "none", avg: "avg", low: "lowMinu
 const GATE: Record<string, boolean> = { "0": false, "1": true };
 const KING_PENALTY: Record<string, KingPenalty> = { hp: "hp", lose: "lose" };
 const DIRS: Record<string, DirRule> = { all: "all", piece: "piece" };
+const ANCHOR: Record<string, AnchorRule> = { none: "none", atk: "attack" };
 /** 駒の数字のキー（例: vfu） */
 const valueKey = (k: PieceKind) => `v${k}`;
 /** 追加前からある駒（数のキーを常に載せる）と、方向駒で足した駒（既定値と違うときだけ載せる） */
@@ -33,7 +36,7 @@ const keyOf = <T>(table: Record<string, T>, v: T) => Object.keys(table).find((k)
 /** クエリに載せるキー（これ以外のキーは無視する） */
 export const QUERY_KEYS = [
   "take", "gate", "dmg", "heal", "hp1", "hp2", ...KIND_ORDER, "limit", "king", "kpen", "kdmg", "kdue",
-  "dir", ...KIND_ORDER.map(valueKey),
+  "dir", ...KIND_ORDER.map(valueKey), "anc",
 ] as const;
 
 export function encodeRules(r: RuleSet): string {
@@ -57,6 +60,7 @@ export function encodeRules(r: RuleSet): string {
   if (r.dirs !== def.dirs) q.set("dir", keyOf(DIRS, r.dirs));
   for (const k of NEW_KINDS) if (r.hand[k] !== def.hand[k]) q.set(k, String(r.hand[k]));
   for (const k of KIND_ORDER) if (r.values[k] !== def.values[k]) q.set(valueKey(k), String(r.values[k]));
+  if (r.anchor !== def.anchor) q.set("anc", keyOf(ANCHOR, r.anchor));
   return q.toString();
 }
 
@@ -98,6 +102,7 @@ export function decodeRules(search: string): Decoded {
     gate: pick("gate", own(GATE), def.gate),
     dirs: pick("dir", own(DIRS), def.dirs),
     damage: pick("dmg", own(DAMAGE), def.damage),
+    anchor: pick("anc", own(ANCHOR), def.anchor),
     heal: pick("heal", own(HEAL), def.heal),
     hp: [pick("hp1", (s) => intIn(s, LIMITS.hp), def.hp[0]), pick("hp2", (s) => intIn(s, LIMITS.hp), def.hp[1])],
     hand: { ...def.hand },

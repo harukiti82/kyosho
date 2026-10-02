@@ -76,9 +76,10 @@ describe("URL クエリ", () => {
 
 describe("ルールカードの文言", () => {
   const card = (id: string) => ruleLines(PRESETS.find((p) => p.id === id)!.rules).map(sentenceText);
-  it("プリセットは 3〜5 行（方向駒は方向の 1 行が増えて 6 行）", () => {
+  it("プリセットは 3〜5 行（方向駒は方向の 1 行が増えて 6 行、拠点は端の駒の 1 行が増えて 7 行）", () => {
     expect(ruleLines(rulesOf("dir"))).toHaveLength(6);
-    for (const p of PRESETS.filter((p) => p.id !== "dir")) {
+    expect(ruleLines(rulesOf("anchor"))).toHaveLength(7);
+    for (const p of PRESETS.filter((p) => p.id !== "dir" && p.id !== "anchor")) {
       const n = ruleLines(p.rules).length;
       expect(n).toBeGreaterThanOrEqual(3);
       expect(n).toBeLessThanOrEqual(5);

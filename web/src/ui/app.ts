@@ -20,6 +20,7 @@ import {
   type GameState,
   type MoveEvent,
   type Preview,
+  type Target,
 } from "../engine/game";
 import {
   defaultRules,
@@ -401,6 +402,7 @@ export class App {
     const lines = ruleLines(r);
     fillSentences(this.el.rulesList, lines);
     this.el.rulesList.classList.toggle("dense", lines.length >= 6);
+    this.el.rulesList.classList.toggle("denser", lines.length >= 7);
   }
 
   private renderLegend(r: RuleSet) {
@@ -408,6 +410,9 @@ export class App {
     this.el.legend.replaceChildren(
       h("span", {}, [h("span", { class: "key-dot", attrs: { "aria-hidden": "true" } }), ` 置くと${v.can}マス`]),
       h("span", {}, [h("span", { class: "key-take", attrs: { "aria-hidden": "true" } }), ` この手で${v.can}駒`]),
+      ...(r.anchor === "attack"
+        ? [h("span", {}, [h("span", { class: "key-anchor", attrs: { "aria-hidden": "true" } }), " ダメージに上乗せする端の自分の駒"])]
+        : []),
       h("span", {}, [h("span", { class: "key-threat", attrs: { "aria-hidden": "true" }, text: "!" }), ` 相手に次に${v.passive}自分の駒`]),
       ...(r.dirs === "piece"
         ? [h("span", {}, [h("span", { class: "key-dir", attrs: { "aria-hidden": "true" }, text: dirMarks(r) }), " 駒が挟める方向"])]
@@ -441,6 +446,8 @@ export class App {
     // 予測中は「置いた後に返されうる駒」、それ以外は「今、相手が次の手で返せる駒」に警告を出す
     const threat = new Set((pv ? pv.exposed : threatenedPieces(g, viewer)).map(idx));
     const willTake = new Set((pv?.targets ?? []).map(idx));
+    // 端の駒の力: 上乗せに使う端の自分の駒 → 足す数字
+    const anchors = new Map((pv?.anchors ?? []).map((a) => [idx([a.r, a.c]), g.rules.values[a.kind]]));
     const kings = this.shownKingCells(g);
     const designating = this.designating(g);
     const last = lastMoveOf(g);
@@ -461,6 +468,7 @@ export class App {
         cell.classList.toggle("can-take", canTake);
         cell.classList.toggle("focus", isFocus);
         cell.classList.toggle("will-take", willTake.has(i));
+        cell.classList.toggle("anchor", anchors.has(i));
         cell.classList.toggle("last", last?.r === r && last?.c === c);
         cell.replaceChildren();
         let label = cellName(r, c);
@@ -481,6 +489,11 @@ export class App {
           // 自分の王が返されうるときは強調する
           cell.append(h("span", { class: `threat${isKing ? " king" : ""}`, text: "!", attrs: { "aria-hidden": "true" } }));
           label += isKing ? ` 王が${v.passive}` : ` ${v.passive}`;
+        }
+        const add = anchors.get(i);
+        if (add !== undefined) {
+          cell.append(h("span", { class: "anchor-badge", text: `+${add}`, attrs: { "aria-hidden": "true" } }));
+          label += ` 端の駒としてダメージに+${add}`;
         }
         if (willTake.has(i)) label += ` ${v.can}`;
         if (canTake) label += ` 置くと${v.can}`;
@@ -615,6 +628,7 @@ export class App {
             h("span", { class: "key-dot", attrs: { "aria-hidden": "true" } }),
             ` のマスは置くと${v.can}マス。`,
             g.rules.dirs === "piece" ? "持ち駒を選び替えると、その駒の矢印の方向で返せるマスに印が付きます。" : null,
+            g.rules.anchor === "attack" ? "青枠の端の自分の駒の数字もダメージに足されます。" : null,
           ]),
         );
       }
@@ -639,6 +653,11 @@ export class App {
           pv.heal > 0 ? h("strong", { class: "heal", text: `自分が ${pv.heal} 回復` }) : null,
         ]),
       );
+      if (pv.anchors.length > 0) {
+        // 内訳（例: 返した駒 2 ＋ 端の金5 ＝ 7）。端の駒は盤上の青枠と同じ色
+        const parts = pv.anchors.flatMap((a) => [" ＋ ", h("span", { class: "anchor-part", text: `端の${pieceLabel(g.rules, a.kind)}` })]);
+        box.append(h("p", { class: "breakdown" }, [`内訳: ${v.past}駒 ${pv.base}`, ...parts, ` ＝ ${pv.damage}`]));
+      }
     }
     // 自分の王が返されうるときは最も強く、置いた駒そのものなら強く、他の駒なら控えめに警告する
     const placedExposed = pv.exposed.some(([y, x]) => y === f.r && x === f.c);
@@ -810,7 +829,7 @@ export class App {
     const v = verb(r);
     const heal = e.heal > 0 ? ` +${e.heal}回復` : "";
     const king = e.king ? ` 王を${v.past}！（${e.king.lose ? "即負け" : `体力−${e.king.penalty}`}）` : "";
-    return `${head} ${e.targets.map((x) => pieceLabel(r, x.kind)).join("・")}を${v.past} ${e.damage}ダメージ${heal}${king}`;
+    return `${head} ${e.targets.map((x) => pieceLabel(r, x.kind)).join("・")}を${v.past} ${e.damage}ダメージ${anchorText(r, e)}${heal}${king}`;
   }
 
   private renderLog(g: GameState) {
@@ -831,11 +850,15 @@ export class App {
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     // 置いたマスにダメージ数を出す（次の描画で消える）
     const pop = m.heal > 0 ? `${m.damage} ダメージ ＋${m.heal} 回復` : `${m.damage} ダメージ`;
-    this.cells[m.r][m.c].append(h("span", { class: "dmg-pop", text: pop }));
+    this.cells[m.r][m.c].append(h("span", { class: `dmg-pop${edgeClass(m.c)}`, text: pop }));
+    // 上乗せに使った端の駒に足した数字を出す
+    for (const a of m.anchors ?? []) {
+      this.cells[a.r][a.c].append(h("span", { class: `anchor-pop${edgeClass(a.c)}`, text: `+${this.game!.rules.values[a.kind]}` }));
+    }
     // 王を返した: 王だった駒に「王！」と罰を出す（公開の演出）
     if (m.king) {
       const text = m.king.lose ? "王！" : `王！ −${m.king.penalty}`;
-      this.cells[m.king.r][m.king.c].append(h("span", { class: "king-pop", text }));
+      this.cells[m.king.r][m.king.c].append(h("span", { class: `king-pop${edgeClass(m.king.c)}`, text }));
     }
     if (this.game!.rules.action === "flip") {
       for (const t of m.targets) this.cells[t.r][t.c].querySelector(".stone")?.classList.add("flipped");
@@ -959,6 +982,15 @@ export class App {
             " 赤枠で光り、ダメージと回復を表示。スマホは同じマスをもう一度タップで置く",
           ]),
           h("span", {}, [h("span", { class: "key-threat", attrs: { "aria-hidden": "true" }, text: "!" }), ` の付いた自分の駒は、相手が次の 1 手で${v.can}駒`]),
+          ...(r.anchor === "attack"
+            ? [
+                h("span", {}, [
+                  "予測中、ダメージに上乗せする端の自分の駒は ",
+                  h("span", { class: "key-anchor", attrs: { "aria-hidden": "true" } }),
+                  ` 青枠と「+数字」で示す。予測と棋譜にはダメージの内訳（${v.past}駒 ＋ 端の駒）を出す`,
+                ]),
+              ]
+            : []),
           ...(r.dirs === "piece"
             ? [
                 `駒の矢印（${dirMarks(r)}）は挟める方向。持ち駒を選び替えると、その駒で${v.can}マスだけに印が付き、予測もその駒の方向で計算する`,
@@ -1001,6 +1033,17 @@ export class App {
 function lastKingHit(g: GameState, owner: Player) {
   for (const e of g.history) if (e.type === "move" && e.player !== owner && e.king) return e.king;
   return undefined;
+}
+
+/** 盤の左右の端の列なら、着手の演出を盤の内側に寄せるクラス */
+const edgeClass = (c: number) => (c === 0 ? " edge-l" : c === SIZE - 1 ? " edge-r" : "");
+
+/** 棋譜のダメージの内訳（上乗せがあるときだけ。例: 「（返した駒2＋端の金5）」） */
+function anchorText(r: RuleSet, e: MoveEvent): string {
+  const anchors: readonly Target[] = e.anchors ?? [];
+  if (anchors.length === 0) return "";
+  const bonus = anchors.reduce((n, a) => n + r.values[a.kind], 0);
+  return `（${verb(r).past}駒${e.damage - bonus}${anchors.map((a) => `＋端の${pieceLabel(r, a.kind)}`).join("")}）`;
 }
 
 /** 対局に出てくる駒の方向のマーク（例: 「↕↔✕✚✱」。同じ方向は 1 回） */

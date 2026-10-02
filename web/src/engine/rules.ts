@@ -55,6 +55,8 @@ export type DamageRule = "sum" | "maxCount";
 export type HealRule = "none" | "avg" | "lowMinus1";
 /** 挟める方向。all: 8 方向すべて（従来） / piece: 置いた駒の方向だけ */
 export type DirRule = "all" | "piece";
+/** 端の駒の力。none: なし（従来） / attack: 返した（取った）列ごとに、反対端の自分の駒の数字をダメージに上乗せする */
+export type AnchorRule = "none" | "attack";
 /** 王を返された（取られた）ときの罰。hp: 体力−amount / lose: 即負け */
 export type KingPenalty = "hp" | "lose";
 
@@ -75,6 +77,8 @@ export interface RuleSet {
   /** 挟める方向 */
   dirs: DirRule;
   damage: DamageRule;
+  /** 端の駒の力（挟んだ反対端の自分の駒の数字をダメージに足すか） */
+  anchor: AnchorRule;
   heal: HealRule;
   /** 初期体力 [先手, 後手] */
   hp: [number, number];
@@ -101,7 +105,7 @@ export const LIMITS = {
 /** 隠し王なし（追加設定は「あり」に切り替えたときの既定値） */
 export const NO_KING: Readonly<HiddenKing> = { on: false, penalty: "hp", amount: 20, deadline: 5 };
 
-export type PresetId = "v04" | "v10" | "v2" | "orig" | "king" | "dir";
+export type PresetId = "v04" | "v10" | "v2" | "orig" | "king" | "dir" | "anchor";
 
 export interface Preset {
   id: PresetId;
@@ -121,7 +125,7 @@ export const PRESETS: readonly Preset[] = [
     name: "v0.4",
     note: "裏返す・最大値＋枚数÷4・回復は低い方−1",
     rules: {
-      action: "flip", gate: false, dirs: "all", damage: "maxCount", heal: "lowMinus1",
+      action: "flip", gate: false, dirs: "all", damage: "maxCount", anchor: "none", heal: "lowMinus1",
       hp: [65, 66], hand: hand(14, 10, 6, 2), values: values(), maxPlies: 0, king: { ...NO_KING },
     },
   },
@@ -130,7 +134,7 @@ export const PRESETS: readonly Preset[] = [
     name: "v1.0（取る）",
     note: "取って持ち駒にする・どこでも置ける・合計",
     rules: {
-      action: "capture", gate: false, dirs: "all", damage: "sum", heal: "none",
+      action: "capture", gate: false, dirs: "all", damage: "sum", anchor: "none", heal: "none",
       hp: [20, 20], hand: hand(8, 0, 4, 2), values: values(), maxPlies: 80, king: { ...NO_KING },
     },
   },
@@ -139,7 +143,7 @@ export const PRESETS: readonly Preset[] = [
     name: "v2案（強い駒は返せない）",
     note: "裏返す・置いた駒より強い駒は返せない・合計",
     rules: {
-      action: "flip", gate: true, dirs: "all", damage: "sum", heal: "none",
+      action: "flip", gate: true, dirs: "all", damage: "sum", anchor: "none", heal: "none",
       hp: [40, 40], hand: hand(20, 0, 8, 4), values: values(), maxPlies: 0, king: { ...NO_KING },
     },
   },
@@ -148,7 +152,7 @@ export const PRESETS: readonly Preset[] = [
     name: "原案",
     note: "裏返す・合計・回復は両端の平均",
     rules: {
-      action: "flip", gate: false, dirs: "all", damage: "sum", heal: "avg",
+      action: "flip", gate: false, dirs: "all", damage: "sum", anchor: "none", heal: "avg",
       hp: [40, 40], hand: hand(14, 10, 6, 2), values: values(), maxPlies: 0, king: { ...NO_KING },
     },
   },
@@ -157,7 +161,7 @@ export const PRESETS: readonly Preset[] = [
     name: "隠し王",
     note: "裏返す・合計・最初の5手で王を隠す（返されたら−20）",
     rules: {
-      action: "flip", gate: false, dirs: "all", damage: "sum", heal: "none",
+      action: "flip", gate: false, dirs: "all", damage: "sum", anchor: "none", heal: "none",
       // 体力 60・60 だと 2 手読み同士の先手勝率が 32.5%（400 局）だったため、先手に 10 上乗せ（48.3%）
       hp: [70, 60], hand: hand(14, 10, 6, 2), values: values(), maxPlies: 0,
       king: { on: true, penalty: "hp", amount: 20, deadline: 5 },
@@ -168,11 +172,26 @@ export const PRESETS: readonly Preset[] = [
     name: "方向駒",
     note: "駒ごとに挟める方向が違う（歩↕ 横↔ 角✕ 飛✚ 金✱）＋隠し王",
     rules: {
-      action: "flip", gate: false, dirs: "piece", damage: "sum", heal: "none",
+      action: "flip", gate: false, dirs: "piece", damage: "sum", anchor: "none", heal: "none",
       // 体力 60・60 だと 2 手読み同士の先手勝率が 60.9%（2000 局）だったため、後手に 5 上乗せ（48.9%）
       hp: [60, 65],
       hand: { fu: 8, yoko: 8, gin: 0, kaku: 6, kin: 4, hi: 6 },
       // 便利な駒ほど数字が大きい（返されると痛い）。既存プリセットの金3・飛5 とは逆
+      values: { ...DEFAULT_VALUES, hi: 3, kin: 5 },
+      maxPlies: 0,
+      king: { on: true, penalty: "hp", amount: 20, deadline: 5 },
+    },
+  },
+  {
+    id: "anchor",
+    name: "拠点",
+    note: "方向駒＋挟んだ端の自分の駒の数字もダメージに足す",
+    rules: {
+      action: "flip", gate: false, dirs: "piece", damage: "sum", anchor: "attack", heal: "none",
+      // 方向駒と同じ 60・65 だと上乗せでダメージが増え、2 手読み同士の平均手数が 16.9 手（2000 局）と短すぎるため、
+      // 平均 30 手以上になるよう引き上げた（125・130: 先手勝率 47.3%・平均 31.3 手、4000 局）
+      hp: [125, 130],
+      hand: { fu: 8, yoko: 8, gin: 0, kaku: 6, kin: 4, hi: 6 },
       values: { ...DEFAULT_VALUES, hi: 3, kin: 5 },
       maxPlies: 0,
       king: { on: true, penalty: "hp", amount: 20, deadline: 5 },
@@ -207,6 +226,7 @@ export function sameRules(a: RuleSet, b: RuleSet): boolean {
     a.gate === b.gate &&
     a.dirs === b.dirs &&
     a.damage === b.damage &&
+    a.anchor === b.anchor &&
     a.heal === b.heal &&
     a.hp[0] === b.hp[0] &&
     a.hp[1] === b.hp[1] &&

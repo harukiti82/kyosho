@@ -1,5 +1,5 @@
 // CPU の打ち手。sim/kyosho.py・sim/capture.py・sim/gate.py の bot_lookahead（2 手読み）を全設定共通にしたもの。
-// 評価 = 自分の (ダメージ + 回復) − 相手の最善応手の (ダメージ + 回復)。同点はランダム。
+// 評価 = 自分の (ダメージ + 回復) − 相手の最善応手の (ダメージ + 回復)。同点はランダム。ダメージは damageOf（端の駒の上乗せ込み）。
 // 隠し王ありでは、相手の王の「候補」（公開情報）と自分の王だけを見て罰を評価に足す（PlayerView は相手の王の正体を持たない）。
 
 import { applyLines, damageOf, emptyCells, healOf, pieceLines, rawLines, SIZE, type Cell } from "./board";

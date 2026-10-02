@@ -45,7 +45,10 @@ export function kingLine(r: RuleSet): Sentence {
   return [...head, `（相手に見えない）。王を${verb(r).hitIf}`, { strong: kingPenaltyText(r) }];
 }
 
-/** ルールカードの 3〜7 行（一目で今のルールが分かる短文） */
+/** 端の駒の力（攻撃に上乗せ）のルールカードの 1 行 */
+export const anchorLine = (): Sentence => ["挟んだ", { strong: "端の自分の駒の数字" }, "もダメージに足す"];
+
+/** ルールカードの 3〜8 行（一目で今のルールが分かる短文） */
 export function ruleLines(r: RuleSet): Sentence[] {
   const v = verb(r);
   const lines: Sentence[] = [];
@@ -58,6 +61,7 @@ export function ruleLines(r: RuleSet): Sentence[] {
   if (r.gate) lines.push(["置いた駒より", { strong: "数字が大きい駒" }, `を含む列は${v.cannot}`]);
   if (r.damage === "sum") lines.push([`${v.past}駒の`, { strong: "数字の合計" }, "がダメージ"]);
   else lines.push([`${v.past}駒の`, { strong: "最大の数字＋枚数÷4" }, "がダメージ"]);
+  if (r.anchor === "attack") lines.push(anchorLine());
   if (r.heal === "none") lines.push(["回復なし"]);
   else if (r.heal === "avg") lines.push(["挟んだ両端の駒の", { strong: "平均" }, "だけ回復"]);
   else lines.push(["挟んだ両端の駒の", { strong: "低い方−1" }, "だけ回復"]);
@@ -109,6 +113,17 @@ export function ruleDetails(r: RuleSet): Sentence[] {
   }
   if (r.damage === "sum") out.push([`ダメージ = ${v.past}駒の数字の合計`]);
   else out.push([`ダメージ = ${v.past}駒の数字の最大値 ＋ ${v.past}枚数 ÷ 4（切り捨て）`]);
+  if (r.anchor === "attack") {
+    out.push([
+      "端の駒の力: ",
+      { strong: `${v.past}列ごとに、反対端の自分の駒（もともと盤上にあって挟むのに使った駒）の数字もダメージに足す` },
+      `。2 列${v.past}ら両方の端を足す。${v.cannot}列（方向・強さ制限）の端は足さない。置いた駒の数字は足さない`,
+    ]);
+    out.push([
+      "強い駒は置いた後も挟む端として何度もダメージを上乗せできる拠点になる。",
+      r.action === "flip" ? "逆に返されると相手の拠点になる" : "逆に取られると相手の持ち駒になる",
+    ]);
+  }
   if (r.heal === "avg") {
     out.push(["回復 = 挟んだ両端（置いた駒と反対端の自分の駒）の数字の平均（切り捨て）。複数方向なら最も大きい 1 方向分"]);
   } else if (r.heal === "lowMinus1") {
