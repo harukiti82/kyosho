@@ -1,7 +1,7 @@
 // 設定からルールの平文を作る（対局画面のルールカード・設定画面・ルール詳細で共用）。
 // 強調したい部分は strong に分けて返し、DOM への流し込みは呼び出し側が textContent で行う。
 
-import { KIND_ORDER, PIECES, type RuleSet } from "../engine/rules";
+import { kindsByValue, kindsInRules, KIND_ORDER, PIECES, REACH_MARK, type PieceKind, type RuleSet } from "../engine/rules";
 
 export type Segment = string | { strong: string };
 export type Sentence = Segment[];
@@ -17,10 +17,22 @@ export function hpText(r: RuleSet): string {
   return r.hp[0] === r.hp[1] ? `体力 ${r.hp[0]}` : `体力 先手 ${r.hp[0]}・後手 ${r.hp[1]}`;
 }
 
-/** 持ち駒の一覧（例: 「歩1 ×14・銀2 ×10」）。0 個の駒は省く */
+/** 駒の方向のマーク（挟める方向が「駒ごと」のときだけ。全方向なら空文字） */
+export const dirMark = (r: RuleSet, k: PieceKind) => (r.dirs === "piece" ? REACH_MARK[PIECES[k].reach].mark : "");
+
+/** 駒の名前と数字（例: 「歩1」） */
+export const pieceLabel = (r: RuleSet, k: PieceKind) => `${PIECES[k].name}${r.values[k]}`;
+
+/** 持ち駒の一覧（例: 「歩1 ×14・銀2 ×10」、駒ごとの方向なら「歩1↕ ×8」）。0 個の駒は省く */
 export function handText(r: RuleSet): string {
-  const parts = KIND_ORDER.filter((k) => r.hand[k] > 0).map((k) => `${PIECES[k].name}${PIECES[k].value} ×${r.hand[k]}`);
+  const parts = kindsByValue(r, KIND_ORDER.filter((k) => r.hand[k] > 0)).map((k) => `${pieceLabel(r, k)}${dirMark(r, k)} ×${r.hand[k]}`);
   return parts.length > 0 ? parts.join("・") : "なし";
+}
+
+/** 挟める方向が「駒ごと」のときのルールカードの 1 行（例: 挟めるのは駒の矢印の方向だけ（歩↕ 横↔ 角✕ 飛✚ 金✱）） */
+export function dirLine(r: RuleSet): Sentence {
+  const marks = kindsInRules(r).map((k) => `${PIECES[k].name}${dirMark(r, k)}`).join(" ");
+  return ["挟めるのは駒の", { strong: "矢印の方向だけ" }, `（${marks}）`];
 }
 
 /** 王を返された（取られた）ときの罰（例: 「体力−20」「即負け」） */
@@ -33,7 +45,7 @@ export function kingLine(r: RuleSet): Sentence {
   return [...head, `（相手に見えない）。王を${verb(r).hitIf}`, { strong: kingPenaltyText(r) }];
 }
 
-/** ルールカードの 3〜6 行（一目で今のルールが分かる短文） */
+/** ルールカードの 3〜7 行（一目で今のルールが分かる短文） */
 export function ruleLines(r: RuleSet): Sentence[] {
   const v = verb(r);
   const lines: Sentence[] = [];
@@ -42,6 +54,7 @@ export function ruleLines(r: RuleSet): Sentence[] {
   } else {
     lines.push(["空きマスなら", { strong: "どこにでも置け" }, "、挟んだ相手の駒を", { strong: "取って自分の持ち駒にする" }]);
   }
+  if (r.dirs === "piece") lines.push(dirLine(r));
   if (r.gate) lines.push(["置いた駒より", { strong: "数字が大きい駒" }, `を含む列は${v.cannot}`]);
   if (r.damage === "sum") lines.push([`${v.past}駒の`, { strong: "数字の合計" }, "がダメージ"]);
   else lines.push([`${v.past}駒の`, { strong: "最大の数字＋枚数÷4" }, "がダメージ"]);
@@ -58,20 +71,34 @@ export function ruleLines(r: RuleSet): Sentence[] {
 export function ruleDetails(r: RuleSet): Sentence[] {
   const v = verb(r);
   const out: Sentence[] = [];
+  const piece = r.dirs === "piece";
+  const line = piece ? "一直線（置いた駒の矢印の方向だけ）" : "一直線（8 方向）";
   if (r.action === "flip") {
     out.push([
-      "持ち駒を 1 つ選んで空きマスに置き、自分の駒との間に一直線（8 方向）に挟んだ相手の駒を",
+      `持ち駒を 1 つ選んで空きマスに置き、自分の駒との間に${line}に挟んだ相手の駒を`,
       { strong: "裏返して自分の駒にする" },
-      "（数字はそのまま）。1 枚も返せないマスには置けない",
+      piece ? "（種類と数字はそのまま）。その駒の方向で 1 枚も返せないマスには置けない" : "（数字はそのまま）。1 枚も返せないマスには置けない",
     ]);
   } else {
     out.push([
       "持ち駒を 1 つ選んで",
       { strong: "空いているマスならどこにでも" },
-      "置ける。自分の駒との間に一直線（8 方向）に挟んだ相手の駒は",
-      { strong: "盤から取り、数字そのままで自分の持ち駒にする" },
+      `置ける。自分の駒との間に${line}に挟んだ相手の駒は`,
+      { strong: piece ? "盤から取り、種類と数字そのままで自分の持ち駒にする" : "盤から取り、数字そのままで自分の持ち駒にする" },
     ]);
     out.push(["挟まれる位置へ自分から置いても取られない（取るのは置いた側だけ）"]);
+  }
+  if (piece) {
+    const each = kindsInRules(r).map((k) => {
+      const m = REACH_MARK[PIECES[k].reach];
+      return `${PIECES[k].name}${m.mark} ${m.name}`;
+    });
+    out.push([
+      "挟める方向は駒ごとに違う: ",
+      { strong: each.join("・") },
+      `。置いた駒の方向に挟んだ列だけ${v.can}（他の方向に挟んでいても${v.cannot}）。縦・横は盤の向き（先手・後手で同じ）`,
+    ]);
+    out.push(["方向は置く駒だけで決まる。挟まれる側の駒・反対端の自分の駒の矢印は関係ない"]);
   }
   if (r.gate) {
     out.push([

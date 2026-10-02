@@ -37,7 +37,7 @@ export function stateOf(
   } = {},
 ): GameState {
   const g = createGame(opts.rules ?? rulesOf("v10"));
-  const empty: Hand = { fu: 0, gin: 0, kin: 0, hi: 0 };
+  const empty: Hand = { fu: 0, yoko: 0, gin: 0, kaku: 0, kin: 0, hi: 0 };
   return {
     ...g,
     board,

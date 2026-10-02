@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import type { Board } from "../src/engine/board";
 import { lookaheadCandidates } from "../src/engine/cpu";
 import { createGame, lastMoveOf, playMove, viewFor, type GameState } from "../src/engine/game";
-import { KIND_ORDER, PIECES, presetById, type Hand, type PieceKind, type Player, type PresetId } from "../src/engine/rules";
+import { PIECES, presetById, type Hand, type PieceKind, type Player, type PresetId } from "../src/engine/rules";
 import replays from "./fixtures/replays.json";
 
 type PyEvent =
@@ -48,11 +48,13 @@ interface PySet {
   games: PyGame[];
 }
 const sets = (replays as unknown as { sets: PySet[] }).sets;
+/** Python の持ち駒の並び [歩, 銀, 金, 飛]（シミュレーターに横・角はない） */
+const PY_KINDS: readonly PieceKind[] = ["fu", "gin", "kin", "hi"];
 
 const CH: Record<number, string> = { 1: "a", 2: "b", 3: "c", 5: "e" };
 const dump = (b: Board) =>
   b.flat().map((s) => (s ? (s.owner === 0 ? CH[PIECES[s.kind].value] : CH[PIECES[s.kind].value].toUpperCase()) : ".")).join("");
-const dumpHands = (hs: Hand[]) => hs.map((h) => KIND_ORDER.map((k) => h[k]));
+const dumpHands = (hs: Hand[]) => hs.map((h) => PY_KINDS.map((k) => h[k]));
 const choiceKey = (r: number, c: number, k: PieceKind) => `${r}${c}${PIECES[k].value}`;
 const splitCands = (s: string) => (s.match(/.{3}/g) ?? []).sort();
 const lastMove = (s: GameState) => lastMoveOf(s)!;
@@ -70,7 +72,10 @@ describe.each(sets.map((s) => [s.preset, s] as const))("Python との整合: %s"
 
   it("プリセットとシミュレーターの設定・棋譜の量と種類", () => {
     expect(rules.hp).toEqual(set.hp);
-    expect(KIND_ORDER.map((k) => rules.hand[k])).toEqual(set.hand);
+    expect(PY_KINDS.map((k) => rules.hand[k])).toEqual(set.hand);
+    // シミュレーターは全方向・既定の数字（歩1 銀2 金3 飛5）で、横・角を持たない
+    expect([rules.dirs, rules.hand.yoko, rules.hand.kaku]).toEqual(["all", 0, 0]);
+    expect(PY_KINDS.map((k) => rules.values[k])).toEqual([1, 2, 3, 5]);
     expect(rules.maxPlies).toBe(set.max_plies);
     expect(games.length).toBeGreaterThanOrEqual(20);
     expect(games.flatMap((g) => g.bots)).toContain("lookahead");

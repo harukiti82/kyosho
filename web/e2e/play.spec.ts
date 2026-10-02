@@ -296,7 +296,7 @@ test.describe("PC 幅", () => {
   test("エッジケース: 駒の数がすべて 0 なら即終局、体力 5 なら早く決着する", async ({ page }) => {
     const errors: string[] = [];
     page.on("pageerror", (e) => errors.push(String(e)));
-    const zero = { ...presetById("v2").rules, hand: { fu: 0, gin: 0, kin: 0, hi: 0 } };
+    const zero = { ...presetById("v2").rules, hand: { fu: 0, yoko: 0, gin: 0, kaku: 0, kin: 0, hi: 0 } };
     await page.goto(`/?${encodeRules(zero)}`);
     await startGame(page);
     await expect(page.locator("#result")).toBeVisible();

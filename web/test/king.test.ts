@@ -132,7 +132,7 @@ describe("隠し王: 王を返したときの罰と公開", () => {
       ...s,
       board: boardOf({ d1: [0, 1], e1: [1, 1], h8: [1, 1] }),
       turn: 0,
-      hands: [{ fu: 3, gin: 0, kin: 0, hi: 0 }, { fu: 3, gin: 0, kin: 0, hi: 0 }],
+      hands: [{ fu: 3, yoko: 0, gin: 0, kaku: 0, kin: 0, hi: 0 }, { fu: 3, yoko: 0, gin: 0, kaku: 0, kin: 0, hi: 0 }],
     };
     const n = play(again, "f1");
     expect(lastMoveOf(n)!.targets.map((t) => [t.r, t.c])).toEqual([at("e1")]);

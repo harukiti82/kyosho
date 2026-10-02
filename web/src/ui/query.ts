@@ -1,6 +1,8 @@
 // ルール設定 ⇔ URL クエリ。外部入力なので、型と範囲を検証してから使う（不正な項目は既定値に戻す）。
 // 例: ?take=flip&gate=1&dmg=sum&heal=none&hp1=40&hp2=40&fu=20&gin=0&kin=8&hi=4&limit=0&king=0
 // 隠し王ありなら &king=1&kpen=hp&kdmg=20&kdue=5（なしのときは king=0 だけを載せる）
+// 方向駒の項目（dir=piece・横と角の数 yoko / kaku・駒の数字 vfu〜vhi）は既定値と違うときだけ末尾に載せる。
+// そのため既存プリセットの URL は方向駒の追加前と同じで、方向駒の項目がない古い URL は「全方向・既定の数字・横と角は 0 個」になる
 
 import {
   defaultRules,
@@ -8,8 +10,10 @@ import {
   LIMITS,
   type Action,
   type DamageRule,
+  type DirRule,
   type HealRule,
   type KingPenalty,
+  type PieceKind,
   type RuleSet,
 } from "../engine/rules";
 
@@ -18,10 +22,19 @@ const DAMAGE: Record<string, DamageRule> = { sum: "sum", max: "maxCount" };
 const HEAL: Record<string, HealRule> = { none: "none", avg: "avg", low: "lowMinus1" };
 const GATE: Record<string, boolean> = { "0": false, "1": true };
 const KING_PENALTY: Record<string, KingPenalty> = { hp: "hp", lose: "lose" };
+const DIRS: Record<string, DirRule> = { all: "all", piece: "piece" };
+/** 駒の数字のキー（例: vfu） */
+const valueKey = (k: PieceKind) => `v${k}`;
+/** 追加前からある駒（数のキーを常に載せる）と、方向駒で足した駒（既定値と違うときだけ載せる） */
+const OLD_KINDS: readonly PieceKind[] = ["fu", "gin", "kin", "hi"];
+const NEW_KINDS: readonly PieceKind[] = KIND_ORDER.filter((k) => !OLD_KINDS.includes(k));
 const keyOf = <T>(table: Record<string, T>, v: T) => Object.keys(table).find((k) => table[k] === v)!;
 
 /** クエリに載せるキー（これ以外のキーは無視する） */
-export const QUERY_KEYS = ["take", "gate", "dmg", "heal", "hp1", "hp2", ...KIND_ORDER, "limit", "king", "kpen", "kdmg", "kdue"] as const;
+export const QUERY_KEYS = [
+  "take", "gate", "dmg", "heal", "hp1", "hp2", ...KIND_ORDER, "limit", "king", "kpen", "kdmg", "kdue",
+  "dir", ...KIND_ORDER.map(valueKey),
+] as const;
 
 export function encodeRules(r: RuleSet): string {
   const q = new URLSearchParams();
@@ -31,7 +44,7 @@ export function encodeRules(r: RuleSet): string {
   q.set("heal", keyOf(HEAL, r.heal));
   q.set("hp1", String(r.hp[0]));
   q.set("hp2", String(r.hp[1]));
-  for (const k of KIND_ORDER) q.set(k, String(r.hand[k]));
+  for (const k of OLD_KINDS) q.set(k, String(r.hand[k]));
   q.set("limit", String(r.maxPlies));
   q.set("king", r.king.on ? "1" : "0");
   if (r.king.on) {
@@ -39,6 +52,11 @@ export function encodeRules(r: RuleSet): string {
     q.set("kdmg", String(r.king.amount));
     q.set("kdue", String(r.king.deadline));
   }
+  // 方向駒の項目は、読むときの既定値と違うものだけ
+  const def = defaultRules();
+  if (r.dirs !== def.dirs) q.set("dir", keyOf(DIRS, r.dirs));
+  for (const k of NEW_KINDS) if (r.hand[k] !== def.hand[k]) q.set(k, String(r.hand[k]));
+  for (const k of KIND_ORDER) if (r.values[k] !== def.values[k]) q.set(valueKey(k), String(r.values[k]));
   return q.toString();
 }
 
@@ -78,10 +96,12 @@ export function decodeRules(search: string): Decoded {
   const rules: RuleSet = {
     action: pick("take", own(ACTION), def.action),
     gate: pick("gate", own(GATE), def.gate),
+    dirs: pick("dir", own(DIRS), def.dirs),
     damage: pick("dmg", own(DAMAGE), def.damage),
     heal: pick("heal", own(HEAL), def.heal),
     hp: [pick("hp1", (s) => intIn(s, LIMITS.hp), def.hp[0]), pick("hp2", (s) => intIn(s, LIMITS.hp), def.hp[1])],
     hand: { ...def.hand },
+    values: { ...def.values },
     maxPlies: pick("limit", (s) => intIn(s, LIMITS.maxPlies), def.maxPlies),
     // 追加設定はなしのときも読む（「あり」に切り替えたときの値）。ない項目は既定値
     king: {
@@ -92,5 +112,6 @@ export function decodeRules(search: string): Decoded {
     },
   };
   for (const k of KIND_ORDER) rules.hand[k] = pick(k, (s) => intIn(s, LIMITS.pieces), def.hand[k]);
+  for (const k of KIND_ORDER) rules.values[k] = pick(valueKey(k), (s) => intIn(s, LIMITS.value), def.values[k]);
   return { rules, present, invalid };
 }

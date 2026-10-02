@@ -12,7 +12,7 @@ describe("URL クエリ", () => {
     expect(d).toEqual({ rules, present: true, invalid: [] });
   });
   it("カスタム設定（後手の体力だけ違う・銀だけ・手数上限あり）も往復できる", () => {
-    const r = rulesOf("orig", { gate: true, hp: [7, 199], hand: { fu: 0, gin: 40, kin: 0, hi: 0 }, maxPlies: 123 });
+    const r = rulesOf("orig", { gate: true, hp: [7, 199], hand: { fu: 0, yoko: 0, gin: 40, kaku: 0, kin: 0, hi: 0 }, maxPlies: 123 });
     expect(decodeRules(encodeRules(r)).rules).toEqual(r);
     expect(matchPreset(r)).toBeNull();
   });
@@ -76,8 +76,9 @@ describe("URL クエリ", () => {
 
 describe("ルールカードの文言", () => {
   const card = (id: string) => ruleLines(PRESETS.find((p) => p.id === id)!.rules).map(sentenceText);
-  it("プリセットは 3〜5 行", () => {
-    for (const p of PRESETS) {
+  it("プリセットは 3〜5 行（方向駒は方向の 1 行が増えて 6 行）", () => {
+    expect(ruleLines(rulesOf("dir"))).toHaveLength(6);
+    for (const p of PRESETS.filter((p) => p.id !== "dir")) {
       const n = ruleLines(p.rules).length;
       expect(n).toBeGreaterThanOrEqual(3);
       expect(n).toBeLessThanOrEqual(5);

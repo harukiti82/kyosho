@@ -14,7 +14,7 @@ import {
   viewFor,
   type GameState,
 } from "../src/engine/game";
-import { NO_KING, PRESETS, type PieceKind, type RuleSet } from "../src/engine/rules";
+import { DEFAULT_VALUES, NO_KING, PRESETS, type PieceKind, type RuleSet } from "../src/engine/rules";
 import { at, boardOf, rulesOf, stateOf } from "./helpers";
 
 const names = (cells: readonly (readonly [number, number])[]) =>
@@ -34,24 +34,24 @@ describe("プリセットと初期状態", () => {
   it("5 つのプリセットの値（隠し王は「隠し王」プリセットだけ）", () => {
     const byId = Object.fromEntries(PRESETS.map((p) => [p.id, p.rules]));
     expect(byId.v04).toEqual({
-      action: "flip", gate: false, damage: "maxCount", heal: "lowMinus1",
-      hp: [65, 66], hand: { fu: 14, gin: 10, kin: 6, hi: 2 }, maxPlies: 0, king: NO_KING,
+      action: "flip", gate: false, dirs: "all", damage: "maxCount", heal: "lowMinus1",
+      hp: [65, 66], hand: { fu: 14, yoko: 0, gin: 10, kaku: 0, kin: 6, hi: 2 }, values: DEFAULT_VALUES, maxPlies: 0, king: NO_KING,
     });
     expect(byId.v10).toEqual({
-      action: "capture", gate: false, damage: "sum", heal: "none",
-      hp: [20, 20], hand: { fu: 8, gin: 0, kin: 4, hi: 2 }, maxPlies: 80, king: NO_KING,
+      action: "capture", gate: false, dirs: "all", damage: "sum", heal: "none",
+      hp: [20, 20], hand: { fu: 8, yoko: 0, gin: 0, kaku: 0, kin: 4, hi: 2 }, values: DEFAULT_VALUES, maxPlies: 80, king: NO_KING,
     });
     expect(byId.v2).toEqual({
-      action: "flip", gate: true, damage: "sum", heal: "none",
-      hp: [40, 40], hand: { fu: 20, gin: 0, kin: 8, hi: 4 }, maxPlies: 0, king: NO_KING,
+      action: "flip", gate: true, dirs: "all", damage: "sum", heal: "none",
+      hp: [40, 40], hand: { fu: 20, yoko: 0, gin: 0, kaku: 0, kin: 8, hi: 4 }, values: DEFAULT_VALUES, maxPlies: 0, king: NO_KING,
     });
     expect(byId.orig).toEqual({
-      action: "flip", gate: false, damage: "sum", heal: "avg",
-      hp: [40, 40], hand: { fu: 14, gin: 10, kin: 6, hi: 2 }, maxPlies: 0, king: NO_KING,
+      action: "flip", gate: false, dirs: "all", damage: "sum", heal: "avg",
+      hp: [40, 40], hand: { fu: 14, yoko: 0, gin: 10, kaku: 0, kin: 6, hi: 2 }, values: DEFAULT_VALUES, maxPlies: 0, king: NO_KING,
     });
     expect(byId.king).toEqual({
-      action: "flip", gate: false, damage: "sum", heal: "none",
-      hp: [70, 60], hand: { fu: 14, gin: 10, kin: 6, hi: 2 }, maxPlies: 0,
+      action: "flip", gate: false, dirs: "all", damage: "sum", heal: "none",
+      hp: [70, 60], hand: { fu: 14, yoko: 0, gin: 10, kaku: 0, kin: 6, hi: 2 }, values: DEFAULT_VALUES, maxPlies: 0,
       king: { on: true, penalty: "hp", amount: 20, deadline: 5 },
     });
     expect(NO_KING).toEqual({ on: false, penalty: "hp", amount: 20, deadline: 5 });
@@ -63,7 +63,7 @@ describe("プリセットと初期状態", () => {
     ]);
     const g = createGame(rulesOf("v04"));
     expect(g.hp).toEqual([65, 66]);
-    expect(g.hands[1]).toEqual({ fu: 14, gin: 10, kin: 6, hi: 2 });
+    expect(g.hands[1]).toEqual({ fu: 14, yoko: 0, gin: 10, kaku: 0, kin: 6, hi: 2 });
     expect(g.turn).toBe(0);
   });
   it("createGame は設定をコピーする（後から元の設定を変えても対局に影響しない）", () => {
@@ -89,7 +89,7 @@ describe("挟んだ駒を: 裏返す", () => {
     expect([n.board[0][0], n.board[0][1], n.board[0][2]]).toEqual([
       { owner: 0, kind: "fu" }, { owner: 0, kind: "hi" }, { owner: 0, kind: "kin" },
     ]);
-    expect(n.hands[0]).toEqual({ fu: 1, gin: 0, kin: 0, hi: 0 });
+    expect(n.hands[0]).toEqual({ fu: 1, yoko: 0, gin: 0, kaku: 0, kin: 0, hi: 0 });
     expect(lastMove(n)).toMatchObject({ damage: 8, heal: 0, targets: [{ r: 0, c: 1, kind: "hi" }, { r: 0, c: 2, kind: "kin" }] });
     expect(n.hp).toEqual([40, 32]);
   });
@@ -99,7 +99,7 @@ describe("挟んだ駒を: 取って持ち駒にする", () => {
   it("挟めない空きマスにも置ける（何も取らずダメージ 0）", () => {
     const n = play(createGame(CAPTURE), "a1", "hi");
     expect(n.board[0][0]).toEqual({ owner: 0, kind: "hi" });
-    expect(n.hands[0]).toEqual({ fu: 8, gin: 0, kin: 4, hi: 1 });
+    expect(n.hands[0]).toEqual({ fu: 8, yoko: 0, gin: 0, kaku: 0, kin: 4, hi: 1 });
     expect(lastMove(n)).toMatchObject({ targets: [], damage: 0, heal: 0 });
     expect(legalCells(createGame(CAPTURE), "fu")).toHaveLength(60);
   });
@@ -109,8 +109,8 @@ describe("挟んだ駒を: 取って持ち駒にする", () => {
     });
     const n = play(s, "a1", "kin");
     expect([n.board[0][1], n.board[0][2], n.board[0][3]]).toEqual([null, null, null]);
-    expect(n.hands[0]).toEqual({ fu: 1, gin: 1, kin: 0, hi: 1 });
-    expect(n.hands[1]).toEqual({ fu: 1, gin: 0, kin: 0, hi: 0 });
+    expect(n.hands[0]).toEqual({ fu: 1, yoko: 0, gin: 1, kaku: 0, kin: 0, hi: 1 });
+    expect(n.hands[1]).toEqual({ fu: 1, yoko: 0, gin: 0, kaku: 0, kin: 0, hi: 0 });
   });
   it("挟まれる位置へ自分から置いても取られない", () => {
     const s = stateOf(boardOf({ a1: [1, 1], c1: [1, 1] }));
@@ -260,10 +260,10 @@ describe("対局の進行", () => {
     expect(canMove(done, 1)).toBe(false);
   });
   it("駒の数がすべて 0 なら、始まった時点で終局（体力も石数も同じなので引き分け）", () => {
-    const g = createGame(rulesOf("v2", { hand: { fu: 0, gin: 0, kin: 0, hi: 0 } }));
+    const g = createGame(rulesOf("v2", { hand: { fu: 0, yoko: 0, gin: 0, kaku: 0, kin: 0, hi: 0 } }));
     expect(g.result).toEqual({ winner: null, reason: "stalled", byDiscs: false });
     expect(g.ply).toBe(0);
-    const g2 = createGame(rulesOf("v10", { hand: { fu: 0, gin: 0, kin: 0, hi: 0 }, hp: [30, 20] }));
+    const g2 = createGame(rulesOf("v10", { hand: { fu: 0, yoko: 0, gin: 0, kaku: 0, kin: 0, hi: 0 }, hp: [30, 20] }));
     expect(g2.result).toEqual({ winner: 0, reason: "stalled", byDiscs: false });
   });
   it("applyLines は元の盤面を変更しない", () => {

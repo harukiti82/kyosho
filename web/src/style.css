@@ -534,6 +534,53 @@ button {
 .stone.ghost {
   opacity: 0.55;
 }
+/* 方向駒: 挟める方向のマーク（石の上部。↕ ↔ ✕ ✚ ✱）。名前と数字は少し下げる */
+.stone.has-dir {
+  padding-top: 16%;
+}
+.stone-dir,
+.mini-dir {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 3.2;
+  stroke-linecap: round;
+  pointer-events: none;
+}
+.stone-dir {
+  position: absolute;
+  top: 6%;
+  left: 50%;
+  width: 3.6cqi;
+  height: 3.6cqi;
+  transform: translateX(-50%);
+}
+.stone.p0 .stone-dir {
+  color: #e8c77a;
+}
+.stone.p1 .stone-dir {
+  color: #9a6b12;
+}
+.piece-btn .stone.has-dir {
+  position: relative;
+}
+.piece-btn .stone-dir {
+  width: 0.85rem;
+  height: 0.85rem;
+}
+.stone.flyer .stone-dir {
+  width: 34cqi;
+  height: 34cqi;
+}
+.mini-dir {
+  width: 0.7rem;
+  height: 0.7rem;
+  color: var(--ink-muted);
+}
+.key-dir {
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: #9a6b12;
+}
 /* 予測: この手で取れる駒 */
 .cell.will-take {
   background: #c98a6c;
@@ -831,7 +878,8 @@ button {
 }
 .hand-buttons {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(3.6rem, 1fr));
+  /* 方向駒の 5 種がスマホ幅でも 1 行に収まる幅 */
+  grid-template-columns: repeat(auto-fit, minmax(3.3rem, 1fr));
   gap: 0.4rem;
 }
 .piece-btn {
@@ -1209,6 +1257,37 @@ button {
 .nums-4 .num input {
   width: 100%;
 }
+/* 設定画面: 駒種ごとの 数・数字（方向は種類で固定。全方向では薄く） */
+.piece-table {
+  display: grid;
+  gap: 0.35rem;
+}
+.piece-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 0.5rem;
+}
+.piece-row-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.piece-row-dir {
+  color: var(--ink-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.piece-table.dirs-all .piece-row-dir {
+  opacity: 0.4;
+}
+.piece-row .num input {
+  width: 3.6rem;
+}
 .setup-preview {
   margin: 0 0 0.9rem;
   padding: 0.6rem 0.8rem 0.6rem 0.4rem;
@@ -1332,6 +1411,11 @@ button {
   .rules4-list {
     font-size: 0.8rem;
   }
+  /* 6 行以上（方向駒・強さ制限＋隠し王など）は詰めて、盤が最初の画面に収まるようにする */
+  .rules4-list.dense {
+    font-size: 0.76rem;
+    line-height: 1.32;
+  }
   .status {
     font-size: 0.85rem;
   }
@@ -1341,6 +1425,10 @@ button {
   }
   .hp-num {
     font-size: 1.35rem;
+  }
+  /* 体力カードの持ち駒は方向のマークを省く（盤上の駒と持ち駒欄に出ている） */
+  .mini-dir {
+    display: none;
   }
 }
 

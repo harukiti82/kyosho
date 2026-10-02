@@ -2,9 +2,9 @@
 // 評価 = 自分の (ダメージ + 回復) − 相手の最善応手の (ダメージ + 回復)。同点はランダム。
 // 隠し王ありでは、相手の王の「候補」（公開情報）と自分の王だけを見て罰を評価に足す（PlayerView は相手の王の正体を持たない）。
 
-import { applyLines, damageOf, emptyCells, gateLines, healOf, rawLines, SIZE, type Cell } from "./board";
+import { applyLines, damageOf, emptyCells, healOf, pieceLines, rawLines, SIZE, type Cell } from "./board";
 import { availableKinds, bestReply, type PlayerView } from "./game";
-import { other, PIECES, type PieceKind, type Player } from "./rules";
+import { other, type PieceKind, type Player } from "./rules";
 
 export interface Choice {
   r: number;
@@ -39,18 +39,19 @@ export function lookaheadCandidates(view: PlayerView, opts: { designate?: boolea
   let cands: Choice[] = [];
 
   for (const [r, c] of emptyCells(board)) {
-    const raw = rawLines(board, r, c, p);
+    const raw = rawLines(board, r, c, p, rules.values);
     const myKing: Cell | null = opts.designate ? [r, c] : view.myKing.cell;
     for (const kind of myKinds) {
-      const v = PIECES[kind].value;
-      const lines = gateLines(raw, v, rules.gate);
+      const v = rules.values[kind];
+      // 挟める方向が「駒ごと」なら、その駒の方向の列だけ
+      const lines = pieceLines(raw, kind, rules);
       if (rules.action === "flip" && lines.length === 0) continue;
       let own = damageOf(board, lines, rules) + healOf(lines, v, rules);
       if (oppPenalty > 0) {
         const hits = lines.reduce((n, l) => n + l.cells.filter(([y, x]) => oppCands.has(y * SIZE + x)).length, 0);
         own += oppPenalty * hits;
       }
-      // 置いた駒の数字によって相手の返せる量が変わるので、駒種ごとに読む
+      // 置いた駒の数字・方向によって相手の返せる量が変わるので、駒種ごとに読む
       const next = applyLines(board, p, r, c, kind, lines, rules);
       const reply = bestReply(rules, next, oppHand, q, myKing ? { cell: myKing, penalty: myPenalty } : undefined).score;
       const s = own - reply;
