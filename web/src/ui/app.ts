@@ -270,8 +270,9 @@ export class App {
     if (!isLegal(g, r, c, kind)) {
       // 裏返すルールで挟めない空きマスを押したときは理由を出す
       if (g.board[r][c] === null && g.rules.action === "flip") {
-        // 駒ごとの方向なら、選んでいる駒の方向も添える（他の駒なら返せることがある）
-        const reach = g.rules.dirs === "piece" ? `${PIECES[kind].name}は${dirMark(g.rules, kind)} ${REACH_MARK[PIECES[kind].reach].name}だけ挟める。` : "";
+        // 駒ごとの方向で、選んでいる駒の方向が限られるなら添える（他の駒なら返せることがある）
+        const limited = g.rules.dirs === "piece" && PIECES[kind].reach !== "all";
+        const reach = limited ? `${PIECES[kind].name}は${dirMark(g.rules, kind)} ${REACH_MARK[PIECES[kind].reach].name}だけ挟める。` : "";
         this.showToast(`${cellName(r, c)} に ${pieceLabel(g.rules, kind)} を置いても返せる駒がありません（${reach}● のマスに置けます）`);
       }
       this.clearFocus();
