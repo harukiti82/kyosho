@@ -192,6 +192,7 @@ button {
 }
 .topbar-actions {
   display: flex;
+  align-items: center;
   gap: 0.4rem;
 }
 
@@ -845,6 +846,286 @@ button {
     transform: translate(var(--pop-x, -50%), -60%) scale(1);
   }
 }
+/* ---- ダメージの段階の演出（ui/impact.ts の段階・ui/fx.ts） ---- */
+/* 中以上はダメージ数を大きく。暖色＝攻めた側、赤＝CPU から受けた */
+.dmg-pop.t-mid {
+  font-size: max(1rem, 4.6cqi);
+  background: linear-gradient(135deg, #e0893a, #c2412b);
+  box-shadow: 0 0 0 2px #fff, 0 6px 18px -6px rgba(194, 65, 43, 0.7);
+}
+.dmg-pop.t-big {
+  z-index: 5;
+  font-size: max(1.15rem, 5.6cqi);
+  background: linear-gradient(135deg, #f2b33d, #d4542b);
+  box-shadow: 0 0 0 2.5px #fff, 0 0 22px 2px rgba(242, 179, 61, 0.75);
+}
+.dmg-pop.t-huge {
+  z-index: 5;
+  font-size: max(1.35rem, 6.8cqi);
+  background: linear-gradient(135deg, #ffd65a, #f08a24 55%, #c2412b);
+  color: #2a1a06;
+  box-shadow: 0 0 0 3px #fff, 0 0 34px 6px rgba(255, 196, 70, 0.85);
+  animation-name: pop-huge;
+  animation-duration: 1.9s;
+}
+.dmg-pop.hurt.t-mid,
+.dmg-pop.hurt.t-big,
+.dmg-pop.hurt.t-huge {
+  background: linear-gradient(135deg, #e5484d, #8e1b12);
+  color: #fff;
+  box-shadow: 0 0 0 2.5px #fff, 0 0 26px 4px rgba(229, 72, 77, 0.7);
+}
+@keyframes pop-huge {
+  0% {
+    opacity: 0;
+    transform: translate(var(--pop-x, -50%), 40%) scale(0.3);
+  }
+  12% {
+    opacity: 1;
+    transform: translate(var(--pop-x, -50%), -10%) scale(1.45);
+  }
+  24% {
+    transform: translate(var(--pop-x, -50%), 0) scale(1.05);
+  }
+  80% {
+    opacity: 1;
+    transform: translate(var(--pop-x, -50%), -20%) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(var(--pop-x, -50%), -60%) scale(1);
+  }
+}
+/* 特大の溜め: 遅れて始まるアニメーションの最初の姿（めくる前の駒・出る前の数字）で待つ */
+.cell > .fx-wait,
+.board .stone.flipped.fx-wait {
+  animation-fill-mode: both;
+}
+/* 盤の揺れ（transform だけ） */
+.board.fx-shake.t-big {
+  animation: shake 0.4s ease-out;
+}
+.board.fx-shake.t-huge {
+  animation: shake-hard 0.6s ease-out;
+}
+@keyframes shake {
+  0%,
+  100% {
+    transform: none;
+  }
+  20% {
+    transform: translate(-4px, 2px);
+  }
+  40% {
+    transform: translate(4px, -2px);
+  }
+  60% {
+    transform: translate(-3px, -1px);
+  }
+  80% {
+    transform: translate(2px, 1px);
+  }
+}
+@keyframes shake-hard {
+  0%,
+  100% {
+    transform: none;
+  }
+  10% {
+    transform: translate(-8px, 4px) rotate(-0.6deg);
+  }
+  25% {
+    transform: translate(8px, -4px) rotate(0.6deg);
+  }
+  40% {
+    transform: translate(-6px, -3px) rotate(-0.4deg);
+  }
+  55% {
+    transform: translate(5px, 3px);
+  }
+  75% {
+    transform: translate(-2px, 1px);
+  }
+}
+/* 受けた側の体力カード */
+.player-card.fx-hurt {
+  animation: card-hit 0.6s ease-out;
+}
+.player-card.fx-hurt.t-mid {
+  animation: card-flash 0.6s ease-out;
+}
+@keyframes card-hit {
+  0% {
+    box-shadow: 0 0 0 3px #e5484d, 0 0 26px 4px rgba(229, 72, 77, 0.7);
+    transform: none;
+  }
+  15% {
+    transform: translateX(-5px);
+  }
+  30% {
+    transform: translateX(5px);
+  }
+  45% {
+    transform: translateX(-3px);
+  }
+  60% {
+    transform: none;
+  }
+  100% {
+    box-shadow: var(--glass-shadow);
+  }
+}
+@keyframes card-flash {
+  0% {
+    box-shadow: 0 0 0 3px #e5484d, 0 0 18px 2px rgba(229, 72, 77, 0.55);
+  }
+  100% {
+    box-shadow: var(--glass-shadow);
+  }
+}
+/* 演出層（画面に固定。はみ出した粒は切って横スクロールを生まない） */
+.fx-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 15;
+  overflow: hidden;
+  pointer-events: none;
+}
+.fx-banner {
+  position: absolute;
+  /* 発光・赤い縁より手前 */
+  z-index: 2;
+  transform: translate(-50%, -50%);
+  white-space: nowrap;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  line-height: 1.1;
+  color: #fff7de;
+  -webkit-text-stroke: 0.06em #b4471f;
+  paint-order: stroke fill;
+  text-shadow: 0 0.07em 0 #7a2c10, 0 0 0.5em rgba(255, 190, 80, 0.95), 0 0.15em 0.6em rgba(80, 30, 5, 0.45);
+  animation: banner 1.3s ease-out forwards;
+}
+.fx-banner.t-mid {
+  font-size: min(1.9rem, 9vw);
+  animation-duration: 1s;
+}
+.fx-banner.t-big {
+  font-size: min(2.8rem, 12vw);
+}
+.fx-banner.t-huge {
+  font-size: min(3.6rem, 13vw);
+  color: #fffbe8;
+  -webkit-text-stroke-color: #c2412b;
+  text-shadow: 0 0.07em 0 #7a2c10, 0 0 0.35em #ffd65a, 0 0 1em rgba(255, 160, 40, 0.95);
+}
+.fx-banner.hurt {
+  color: #fff;
+  -webkit-text-stroke-color: #8e1b12;
+  text-shadow: 0 0.07em 0 #4a0a06, 0 0 0.5em rgba(229, 72, 77, 0.95), 0 0.15em 0.6em rgba(40, 0, 0, 0.5);
+}
+@keyframes banner {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.4);
+  }
+  14% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1.18);
+  }
+  26% {
+    transform: translate(-50%, -50%) scale(1);
+  }
+  78% {
+    opacity: 1;
+    transform: translate(-50%, -55%) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -80%) scale(1);
+  }
+}
+/* 光の粒 */
+.fx-spark {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  margin: -5px 0 0 -5px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #fffbe6 0 30%, #ffc44d 60%, #f08a24);
+  box-shadow: 0 0 10px 2px rgba(255, 196, 70, 0.8);
+  opacity: 0;
+  animation: spark 0.85s cubic-bezier(0.15, 0.7, 0.3, 1) both;
+}
+.fx-spark.big {
+  width: 15px;
+  height: 15px;
+  margin: -7.5px 0 0 -7.5px;
+}
+.fx-spark.hurt {
+  background: radial-gradient(circle, #ffe3e0 0 30%, #ff6b5b 60%, #a8132a);
+  box-shadow: 0 0 10px 2px rgba(229, 72, 77, 0.8);
+}
+@keyframes spark {
+  0% {
+    opacity: 1;
+    transform: translate(0, 0) scale(1.2);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(var(--dx), var(--dy)) scale(0.3);
+  }
+}
+/* 特大: 画面全体の発光 */
+.fx-flash {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  background: radial-gradient(circle at 50% 45%, rgba(255, 240, 190, 0.75), rgba(255, 190, 90, 0.35) 45%, rgba(255, 160, 60, 0) 80%);
+  animation: flash 0.85s ease-out forwards;
+}
+.fx-flash.hurt {
+  background: radial-gradient(circle at 50% 45%, rgba(255, 120, 110, 0.45), rgba(200, 30, 30, 0.22) 50%, rgba(160, 0, 0, 0.1) 90%);
+}
+@keyframes flash {
+  0% {
+    opacity: 0;
+  }
+  12% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+/* CPU から受けた: 画面の縁が赤く脈打つ（段階が上がるほど回数と濃さを増す） */
+.fx-vignette {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  box-shadow: inset 0 0 min(70px, 14vw) min(18px, 4vw) rgba(205, 30, 30, 0.75);
+  animation: vignette 0.5s ease-in-out 1;
+}
+.fx-vignette.t-mid {
+  box-shadow: inset 0 0 min(50px, 10vw) min(8px, 2vw) rgba(205, 30, 30, 0.55);
+}
+.fx-vignette.t-big {
+  animation-iteration-count: 2;
+}
+.fx-vignette.t-huge {
+  box-shadow: inset 0 0 min(90px, 16vw) min(30px, 5vw) rgba(205, 30, 30, 0.85);
+  animation-iteration-count: 3;
+  animation-duration: 0.42s;
+}
+@keyframes vignette {
+  0%,
+  100% {
+    opacity: 0;
+  }
+  40% {
+    opacity: 1;
+  }
+}
 /* 取った駒が持ち駒へ飛んでいく（body 直下に固定配置） */
 .stone.flyer {
   position: fixed;
@@ -1095,6 +1376,40 @@ button {
   width: 1.8rem;
   text-align: right;
   color: var(--ink-muted);
+}
+
+/* ---- 消音ボタン（上部の操作の左に小さく） ---- */
+.mute-btn {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid var(--glass-border);
+  background: var(--glass-bg);
+  color: var(--ink-muted);
+  cursor: pointer;
+}
+.mute-btn svg {
+  width: 1rem;
+  height: 1rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.mute-btn svg path:first-child {
+  fill: currentColor;
+}
+.mute-btn[aria-pressed="true"] {
+  opacity: 0.7;
+}
+.mute-btn:focus-visible {
+  outline: 2px solid var(--accent-to);
+  outline-offset: 2px;
 }
 
 /* ---- トースト ---- */
@@ -1414,6 +1729,41 @@ button {
   font-size: 0.85rem;
   color: var(--ink-muted);
   font-variant-numeric: tabular-nums;
+}
+/* 終局の成績 */
+.result-stats {
+  display: grid;
+  gap: 0.5rem;
+  margin-top: 0.7rem;
+}
+.result-stats:empty {
+  display: none;
+}
+.stats {
+  padding: 0.5rem 0.75rem 0.6rem;
+  border-radius: 0.9rem;
+  background: rgba(255, 255, 255, 0.6);
+  border: 1px solid rgba(31, 27, 20, 0.08);
+}
+.stats-title {
+  margin: 0 0 0.25rem;
+  font-size: 0.85rem;
+}
+.stats-list {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.15rem 0.75rem;
+  margin: 0;
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+}
+.stats-list dt {
+  color: var(--ink-muted);
+  font-weight: 600;
+}
+.stats-list dd {
+  margin: 0;
+  min-width: 0;
 }
 .rules-body {
   font-size: 0.9rem;

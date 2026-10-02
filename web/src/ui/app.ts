@@ -38,8 +38,11 @@ import {
 } from "../engine/rules";
 import { dirIcon } from "./diricon";
 import { byId, h } from "./dom";
+import { Fx, fxTiming, speakerIcon, type FxTiming } from "./fx";
+import { hitOf, statsOf, tierOf, tierText, type HitBreakdown, type PlayerStats, type Tier } from "./impact";
 import { dirMark, endDetails, handText, hpText, kingPenaltyText, pieceLabel, ruleDetails, ruleLines, verb } from "./ruletext";
 import { fillSentences, SetupDialog, type PlaySettings } from "./setup";
+import { Sound } from "./sound";
 
 /** CPU が打つまでの待ち時間（盤面の変化を目で追えるように） */
 const CPU_DELAY_MS = 900;
@@ -48,6 +51,15 @@ const RESULT_DELAY_MS = 900;
 const TOAST_MS = 2800;
 /** 取った駒が持ち駒へ飛んでいくアニメーションの長さ */
 const FLY_MS = 650;
+
+/** 新しい手の演出の計画（段階・攻めた側か受けた側か・文言・長さ） */
+interface ImpactPlan extends FxTiming {
+  tier: Tier;
+  hit: HitBreakdown;
+  hurt: boolean;
+  text: string | null;
+  reduce: boolean;
+}
 
 const idx = ([y, x]: Cell) => y * SIZE + x;
 const ruleName = (r: RuleSet) => matchPreset(r)?.name ?? "カスタム";
@@ -65,6 +77,9 @@ export class App {
   private cpuTimer: number | undefined;
   private resultTimer: number | undefined;
   private toastTimer: number | undefined;
+  private fxTimer: number | undefined;
+  /** 大・特大の演出中は、次の入力と CPU の着手を待たせる */
+  private fxLock = false;
   /** トースト通知済みのイベント数 */
   private seenEvents = 0;
   /** 取った・減ったのアニメーションを再生する手数（新しい手の直後の描画だけ） */
@@ -76,6 +91,8 @@ export class App {
 
   private readonly cells: HTMLButtonElement[][] = [];
   private readonly setup: SetupDialog;
+  private readonly sound = new Sound();
+  private readonly fx = new Fx(byId("fx"));
   private readonly el = {
     game: byId("game"),
     board: byId("board"),
@@ -153,6 +170,17 @@ export class App {
     byId("btn-rules").addEventListener("click", () => this.showRules(this.settings?.rules ?? null));
     byId("btn-new").addEventListener("click", () => this.setup.open(this.settings?.rules));
     byId("rules-close").addEventListener("click", () => rules.close());
+    const mute = byId("btn-mute");
+    const showMute = () => {
+      mute.setAttribute("aria-pressed", String(this.sound.muted));
+      mute.setAttribute("title", this.sound.muted ? "効果音: オフ" : "効果音: オン");
+      mute.replaceChildren(speakerIcon(this.sound.muted));
+    };
+    mute.addEventListener("click", () => {
+      this.sound.setMuted(!this.sound.muted);
+      showMute();
+    });
+    showMute();
     byId("result-view").addEventListener("click", () => result.close());
     byId("result-setup").addEventListener("click", () => {
       result.close();
@@ -169,6 +197,9 @@ export class App {
   private start(settings: PlaySettings) {
     window.clearTimeout(this.cpuTimer);
     window.clearTimeout(this.resultTimer);
+    window.clearTimeout(this.fxTimer);
+    this.fxLock = false;
+    this.fx.clear();
     this.hideToast();
     document.querySelectorAll(".flyer").forEach((f) => f.remove());
     this.settings = settings;
@@ -191,7 +222,7 @@ export class App {
   }
 
   private canAct(): boolean {
-    return !!this.game && !this.game.result && this.isHuman(this.game.turn);
+    return !!this.game && !this.game.result && !this.fxLock && this.isHuman(this.game.turn);
   }
 
   private place(r: number, c: number, kind: PieceKind, king = false) {
@@ -207,19 +238,31 @@ export class App {
   private afterChange() {
     const g = this.game!;
     this.notifyNewEvents(g.history);
+    const last = lastMoveOf(g);
+    const fresh = last?.ply === g.ply && g.ply > 0 ? last : undefined;
+    const plan = fresh ? this.impactPlan(fresh) : null;
+    // 大・特大は演出が終わるまで入力を受けない（描画の前に決めて、盤を操作できない表示にする）
+    const hold = plan?.hold ?? 0;
+    window.clearTimeout(this.fxTimer);
+    this.fxLock = hold > 0;
     this.animatePly = g.ply;
     this.render();
     this.animatePly = -1;
-    const last = lastMoveOf(g);
-    if (last?.ply === g.ply && g.ply > 0) this.playMoveEffects(last);
+    if (fresh) this.playMoveEffects(fresh, plan!);
+    if (hold > 0) {
+      this.fxTimer = window.setTimeout(() => {
+        this.fxLock = false;
+        if (this.game === g) this.render();
+      }, hold);
+    }
     if (g.result) {
-      this.resultTimer = window.setTimeout(() => this.showResult(g.result!), g.ply > 0 ? RESULT_DELAY_MS : 0);
+      this.resultTimer = window.setTimeout(() => this.showResult(g.result!), g.ply > 0 ? Math.max(RESULT_DELAY_MS, hold + 300) : 0);
     } else {
-      this.scheduleCpu();
+      this.scheduleCpu(Math.max(CPU_DELAY_MS, hold + 200));
     }
   }
 
-  private scheduleCpu() {
+  private scheduleCpu(delay: number) {
     const g = this.game;
     if (!g || g.result || this.isHuman(g.turn)) return;
     this.cpuTimer = window.setTimeout(() => {
@@ -227,7 +270,16 @@ export class App {
       // CPU には自分の視点（相手の王の正体を含まない）だけを渡す
       const ch = chooseLookahead(viewFor(g, g.turn));
       if (ch) this.place(ch.r, ch.c, ch.kind, ch.king);
-    }, CPU_DELAY_MS);
+    }, delay);
+  }
+
+  /** 新しい手の段階と演出。CPU 対戦で CPU から受けた手は被弾の演出、それ以外（2 人対戦は常に）は攻めた側の祝福の演出 */
+  private impactPlan(m: MoveEvent): ImpactPlan {
+    const r = this.game!.rules;
+    const tier = tierOf(r, m);
+    const hurt = this.settings?.mode === "cpu" && m.player !== this.settings.human;
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    return { tier, hit: hitOf(r, m), hurt, text: tierText(tier, m, hurt ? "hurt" : "attack"), reduce, ...fxTiming(tier, m.targets.length, reduce) };
   }
 
   private notifyNewEvents(history: GameEvent[]) {
@@ -844,24 +896,60 @@ export class App {
 
   // ---- 着手の演出 ----
 
-  /** ダメージ数の表示と、返した駒の裏返り（flip）／取った駒が持ち駒へ飛んでいく（capture）演出 */
-  private playMoveEffects(m: MoveEvent) {
+  /**
+   * ダメージ数の表示と、返した駒の裏返り（flip）／取った駒が持ち駒へ飛んでいく（capture）演出、効果音。
+   * 段階（impact.ts）が上がるほど数字を大きくし、大・特大は fx.ts の文言・揺れ・粒・発光を重ねる。
+   * 特大は返す駒を置いたマスに近い順にめくる溜めのあとで弾ける
+   */
+  private playMoveEffects(m: MoveEvent, plan: ImpactPlan) {
+    const g = this.game!;
+    this.sound.place();
     if (m.targets.length === 0) return;
-    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const { tier, step, burstAt, reduce } = plan;
+    // 溜めの後に出すもの（特大のダメージ数・王の印）は、それまで隠しておく
+    const delayed = (el: HTMLElement) => {
+      if (burstAt > 0) {
+        el.classList.add("fx-wait");
+        el.style.animationDelay = `${burstAt}ms`;
+      }
+      return el;
+    };
     // 置いたマスにダメージ数を出す（次の描画で消える）
     const pop = m.heal > 0 ? `${m.damage} ダメージ ＋${m.heal} 回復` : `${m.damage} ダメージ`;
-    this.cells[m.r][m.c].append(h("span", { class: `dmg-pop${edgeClass(m.c)}`, text: pop }));
+    this.cells[m.r][m.c].append(delayed(h("span", { class: `dmg-pop t-${tier}${plan.hurt ? " hurt" : ""}${edgeClass(m.c)}`, text: pop })));
     // 上乗せに使った端の駒に足した数字を出す
     for (const a of m.anchors ?? []) {
-      this.cells[a.r][a.c].append(h("span", { class: `anchor-pop${edgeClass(a.c)}`, text: `+${this.game!.rules.values[a.kind]}` }));
+      this.cells[a.r][a.c].append(h("span", { class: `anchor-pop${edgeClass(a.c)}`, text: `+${g.rules.values[a.kind]}` }));
     }
     // 王を返した: 王だった駒に「王！」と罰を出す（公開の演出）
     if (m.king) {
       const text = m.king.lose ? "王！" : `王！ −${m.king.penalty}`;
-      this.cells[m.king.r][m.king.c].append(h("span", { class: `king-pop${edgeClass(m.king.c)}`, text }));
+      this.cells[m.king.r][m.king.c].append(delayed(h("span", { class: `king-pop${edgeClass(m.king.c)}`, text })));
     }
-    if (this.game!.rules.action === "flip") {
-      for (const t of m.targets) this.cells[t.r][t.c].querySelector(".stone")?.classList.add("flipped");
+    // 置いたマスに近い順（特大は 1 つずつめくる）
+    const order = [...m.targets].sort((x, y) => Math.max(Math.abs(x.r - m.r), Math.abs(x.c - m.c)) - Math.max(Math.abs(y.r - m.r), Math.abs(y.c - m.c)));
+    this.sound.flip(order.length, (step || 60) / 1000);
+    if (plan.hit.total > 0) this.sound.hit(tier, plan.hurt, burstAt / 1000);
+    this.fx.burst({
+      tier,
+      hurt: plan.hurt,
+      text: plan.text,
+      cell: this.cells[m.r][m.c],
+      board: this.el.board,
+      victim: this.el.players[other(m.player)],
+      delay: burstAt,
+      reduce,
+    });
+    if (g.rules.action === "flip") {
+      order.forEach((t, i) => {
+        const stone = this.cells[t.r][t.c].querySelector<HTMLElement>(".stone");
+        if (!stone) return;
+        stone.classList.add("flipped");
+        if (step > 0) {
+          stone.classList.add("fx-wait");
+          stone.style.animationDelay = `${i * step}ms`;
+        }
+      });
       return;
     }
     // 増えた持ち駒の表示を光らせる
@@ -871,7 +959,7 @@ export class App {
     if (reduce) return;
 
     const victim = other(m.player);
-    m.targets.forEach((x, i) => {
+    order.forEach((x, i) => {
       const from = this.cells[x.r][x.c].getBoundingClientRect();
       // 画面内に見えている受け取り先（持ち駒パネル優先、なければ体力カード）へ飛ばす
       const dest = targets(x.kind).sort((a, b) => Number(b.matches(".piece-btn")) - Number(a.matches(".piece-btn")));
@@ -892,7 +980,7 @@ export class App {
           { transform: `translate(${dx * 0.5}px, ${dy * 0.5 - 30}px) scale(1.1)`, opacity: 1, offset: 0.45 },
           { transform: `translate(${dx}px, ${dy}px) scale(0.5)`, opacity: 0.2 },
         ],
-        { duration: FLY_MS, delay: i * 70, easing: "ease-in-out", fill: "forwards" },
+        { duration: FLY_MS, delay: i * (step || 70), easing: "ease-in-out", fill: "forwards" },
       );
       anim.finished.then(() => fly.remove(), () => fly.remove());
     });
@@ -932,8 +1020,44 @@ export class App {
     byId("result-detail").textContent =
       `${this.name(0)} 体力 ${g.hp[0]} ／ ${this.name(1)} 体力 ${g.hp[1]} ／ 石数 ${d0} 対 ${d1}（${g.ply} 手・ルール ${ruleName(g.rules)}）` +
       this.kingSummary(g);
+    this.renderStats(g);
     this.hideToast();
     if (!this.el.result.open) this.el.result.showModal();
+  }
+
+  /** 終局画面の成績（CPU 対戦は自分だけ、2 人対戦は両者） */
+  private renderStats(g: GameState) {
+    const stats = statsOf(g);
+    const cpu = this.settings?.mode === "cpu";
+    const who: Player[] = cpu ? [this.settings!.human] : [0, 1];
+    byId("result-stats").replaceChildren(
+      ...who.map((p) =>
+        h("section", { class: `stats p${p}`, attrs: { "data-player": String(p) } }, [
+          h("h3", { class: "stats-title", text: cpu ? "あなたの成績" : `${PLAYER_NAME[p]}の成績` }),
+          h("dl", { class: "stats-list" }, this.statsRows(g, stats[p]).flatMap(([k, v]) => [h("dt", { text: k }), h("dd", { text: v })])),
+        ]),
+      ),
+    );
+  }
+
+  private statsRows(g: GameState, s: PlayerStats): [string, string][] {
+    const r = g.rules;
+    const v = verb(r);
+    let best = "なし";
+    if (s.best) {
+      const { move: m, hit } = s.best;
+      const parts = [`${v.past}駒 ${m.targets.length} 個で ${hit.base}`];
+      if (hit.anchor > 0) parts.push(`端の駒 ${hit.anchor}`);
+      if (hit.penalty > 0) parts.push(`王の罰 ${hit.penalty}`);
+      best = `${hit.total}（${m.ply} 手目 ${cellName(m.r, m.c)} に${pieceLabel(r, m.kind)}: ${parts.join(" ＋ ")}）`;
+    }
+    const rows: [string, string][] = [
+      ["最大ダメージ", best],
+      ["会心以上", `${s.bigHits} 回`],
+    ];
+    if (r.anchor === "attack") rows.push(["端の駒の上乗せ", `合計 ${s.anchorTotal}`]);
+    if (r.king.on) rows.push(["相手の王", s.kingHit ? `${v.past}` : `${v.cannot.slice(0, -1)}かった`]);
+    return rows;
   }
 
   /** 終局後の王の答え合わせ（例: 「／ 王: 先手 d3（隠れたまま）・後手 e5（返された）」） */
