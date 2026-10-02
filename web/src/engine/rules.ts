@@ -169,7 +169,8 @@ export const PRESETS: readonly Preset[] = [
     note: "駒ごとに挟める方向が違う（歩↕ 横↔ 角✕ 飛✚ 金✱）＋隠し王",
     rules: {
       action: "flip", gate: false, dirs: "piece", damage: "sum", heal: "none",
-      hp: [60, 60],
+      // 体力 60・60 だと 2 手読み同士の先手勝率が 60.9%（2000 局）だったため、後手に 5 上乗せ（48.9%）
+      hp: [60, 65],
       hand: { fu: 8, yoko: 8, gin: 0, kaku: 6, kin: 4, hi: 6 },
       // 便利な駒ほど数字が大きい（返されると痛い）。既存プリセットの金3・飛5 とは逆
       values: { ...DEFAULT_VALUES, hi: 3, kin: 5 },
