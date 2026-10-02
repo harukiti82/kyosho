@@ -7,10 +7,10 @@ import {
   damageOf,
   discCount,
   emptyCells,
-  gateLines,
   healOf,
   linesFor,
   newBoard,
+  pieceLines,
   rawLines,
   SIZE,
   targetsOf,
@@ -23,7 +23,6 @@ import {
   defaultRules,
   KIND_ORDER,
   other,
-  PIECES,
   type Hand,
   type PieceKind,
   type Player,
@@ -140,9 +139,11 @@ function hasMove(rules: RuleSet, board: Board, hand: Hand, p: Player): boolean {
   if (kinds.length === 0) return false;
   const empties = emptyCells(board);
   if (rules.action === "capture") return empties.length > 0;
-  // 強さ制限があっても、数字の最も大きい駒で返せなければどの駒でも返せない
-  const strongest = PIECES[kinds[kinds.length - 1]].value;
-  return empties.some(([r, c]) => gateLines(rawLines(board, r, c, p), strongest, rules.gate).length > 0);
+  // 駒の方向・強さ制限で返せる列は駒ごとに違うので、持っている駒すべてで調べる
+  return empties.some(([r, c]) => {
+    const raw = rawLines(board, r, c, p, rules.values);
+    return raw.length > 0 && kinds.some((k) => pieceLines(raw, k, rules).length > 0);
+  });
 }
 
 export function canMove(state: Pick<GameState, "rules" | "board" | "hands">, p: Player): boolean {
@@ -208,16 +209,21 @@ export function targetsAt(state: GameState, r: number, c: number, kind: PieceKin
   return lines ? targetsOf(lines) : [];
 }
 
-/** attacker が次の 1 手で返せる（取れる）駒の座標（持ち駒のどれかでどこかに置けば返せる駒すべて） */
+/**
+ * attacker が次の 1 手で返せる（取れる）駒の座標（持ち駒のどれかでどこかに置けば返せる駒すべて）。
+ * 挟める方向が「駒ごと」なら、attacker の持ち駒の方向で挟める列だけ
+ */
 export function attackable(rules: RuleSet, board: Board, hand: Hand, attacker: Player): Cell[] {
   const kinds = availableKinds(hand);
   if (kinds.length === 0) return [];
-  // 強さ制限があっても、最も大きい駒で返せる列が返せる列のすべて
-  const strongest = PIECES[kinds[kinds.length - 1]].value;
   const seen = new Set<number>();
   const out: Cell[] = [];
   for (const [r, c] of emptyCells(board)) {
-    for (const [y, x] of targetsOf(gateLines(rawLines(board, r, c, attacker), strongest, rules.gate))) {
+    const raw = rawLines(board, r, c, attacker, rules.values);
+    if (raw.length === 0) continue;
+    // 列は方向ごとに 1 本なので、どれかの駒で返せる列を集めれば重複しない
+    const lines = raw.filter((l) => kinds.some((k) => pieceLines([l], k, rules).length > 0));
+    for (const [y, x] of targetsOf(lines)) {
       if (seen.has(y * SIZE + x)) continue;
       seen.add(y * SIZE + x);
       out.push([y, x]);
@@ -241,11 +247,11 @@ export function bestReply(
   let damage = 0;
   let score = 0;
   for (const [r, c] of emptyCells(board)) {
-    const raw = rawLines(board, r, c, p);
+    const raw = rawLines(board, r, c, p, rules.values);
     if (raw.length === 0) continue;
     for (const k of kinds) {
-      const v = PIECES[k].value;
-      const lines = gateLines(raw, v, rules.gate);
+      const v = rules.values[k];
+      const lines = pieceLines(raw, k, rules);
       if (lines.length === 0) continue;
       const d = damageOf(board, lines, rules);
       damage = Math.max(damage, d);
@@ -277,7 +283,7 @@ export function previewMove(state: GameState, r: number, c: number, kind: PieceK
   if (!lines) return null;
   const targets = targetsOf(lines);
   const damage = damageOf(state.board, lines, rules);
-  const heal = healOf(lines, PIECES[kind].value, rules);
+  const heal = healOf(lines, rules.values[kind], rules);
   const board = applyLines(state.board, p, r, c, kind, lines, rules);
   const ends = damage >= state.hp[q] || (rules.maxPlies > 0 && state.ply + 1 >= rules.maxPlies);
   if (ends) return { targets, damage, heal, exposed: [], exposedDamage: 0 };
@@ -313,7 +319,7 @@ export function playMove(state: GameState, r: number, c: number, kind: PieceKind
 
   const targets: Target[] = targetsOf(lines).map(([y, x]) => ({ r: y, c: x, kind: state.board[y][x]!.kind }));
   const damage = damageOf(state.board, lines, rules);
-  const heal = healOf(lines, PIECES[kind].value, rules);
+  const heal = healOf(lines, rules.values[kind], rules);
   const board = applyLines(state.board, p, r, c, kind, lines, rules);
   const hands: [Hand, Hand] = [{ ...state.hands[0] }, { ...state.hands[1] }];
   hands[p][kind]--;

@@ -1,9 +1,10 @@
-// 2 手読み CPU 同士で対局させ、先手勝率・王が返された割合・決着の手数などを集計する（隠し王プリセットのバランス確認用）。
+// 2 手読み CPU 同士で対局させ、先手勝率・王が返された割合・決着の手数・パス・駒種ごとの使用回数などを集計する
+// （隠し王・方向駒プリセットのバランス確認用）。
 // 乱数は種付き（mulberry32）。局 i は種 i で、結果は毎回同じになる。
 
 import { chooseLookahead } from "../src/engine/cpu";
 import { createGame, kingInfo, playMove, viewFor, type EndReason } from "../src/engine/game";
-import { cloneRules, presetById, type Player, type PresetId } from "../src/engine/rules";
+import { cloneRules, kindsInRules, PIECES, presetById, type PieceKind, type Player, type PresetId } from "../src/engine/rules";
 
 function rng(seed: number) {
   let a = seed >>> 0;
@@ -35,6 +36,8 @@ export function main(args: string[]) {
   const revealPlies: number[] = [];
   const revealedBy: [number, number] = [0, 0];
   const designateTurn: number[] = Array(rules.king.deadline + 1).fill(0);
+  let passes = 0;
+  const used: Partial<Record<PieceKind, number>> = {};
   const t0 = Date.now();
 
   for (let i = 0; i < games; i++) {
@@ -56,6 +59,8 @@ export function main(args: string[]) {
       if (kingInfo(s, p).status === "hidden" || kingInfo(s, p).status === "revealed") designated++;
     }
     for (const e of s.history) {
+      if (e.type === "pass") passes++;
+      else used[e.kind] = (used[e.kind] ?? 0) + 1;
       if (e.type === "move" && e.king) {
         revealed++;
         revealPlies.push(e.ply);
@@ -67,7 +72,7 @@ export function main(args: string[]) {
   const k = rules.king;
   console.log(`## バランス確認: ${presetById(preset).name}（2 手読み同士・${games} 局・${((Date.now() - t0) / 1000).toFixed(1)} 秒）`);
   console.log(
-    `設定: 体力 ${rules.hp[0]}・${rules.hp[1]} / 隠し王 ${k.on ? `あり（罰 ${k.penalty === "lose" ? "即負け" : `−${k.amount}`}・期限 ${k.deadline} 手）` : "なし"}`,
+    `設定: 体力 ${rules.hp[0]}・${rules.hp[1]} / 挟める方向 ${rules.dirs === "piece" ? "駒ごと" : "全方向"} / 隠し王 ${k.on ? `あり（罰 ${k.penalty === "lose" ? "即負け" : `−${k.amount}`}・期限 ${k.deadline} 手）` : "なし"}`,
   );
   console.log("");
   console.log("| 項目 | 値 |");
@@ -78,6 +83,9 @@ export function main(args: string[]) {
   );
   console.log(`| 平均手数（全局） | ${avg(plies)} |`);
   console.log(`| 体力 0 決着の平均手数 | ${avg(koPlies)} |`);
+  console.log(`| パス（1 局あたり） | ${(passes / games).toFixed(2)}（全 ${passes} 回） |`);
+  const perKind = kindsInRules(rules).map((k) => `${PIECES[k].name}${rules.values[k]}: ${((used[k] ?? 0) / games).toFixed(1)}`);
+  console.log(`| 駒種ごとの使用回数（1 局あたり・両者計） | ${perKind.join(" / ")} |`);
   console.log(`| 王が返された割合 | ${pct(revealed, designated)}（指定 ${designated} のうち ${revealed}。先手が返した ${revealedBy[0]} / 後手が返した ${revealedBy[1]}） |`);
   console.log(`| 王が返された手数（総手数の平均） | ${avg(revealPlies)} |`);
   console.log(`| 王を決めた手（自分の何手目: 回数） | ${designateTurn.slice(1).map((n, j) => `${j + 1}: ${n}`).join(" / ")} |`);

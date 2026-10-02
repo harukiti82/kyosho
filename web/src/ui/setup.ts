@@ -6,10 +6,13 @@ import {
   KIND_ORDER,
   LIMITS,
   matchPreset,
+  PIECES,
   PRESETS,
+  REACH_MARK,
   type Player,
   type RuleSet,
 } from "../engine/rules";
+import { dirIcon } from "./diricon";
 import { byId, h } from "./dom";
 import { decodeRules, encodeRules } from "./query";
 import { ruleLines, verb, type Sentence } from "./ruletext";
@@ -41,8 +44,8 @@ function clampInt(raw: string, range: { min: number; max: number }, fallback: nu
 
 const KEY_LABEL: Record<string, string> = {
   take: "挟んだ駒を", gate: "強さ制限", dmg: "ダメージ", heal: "回復", hp1: "先手の体力", hp2: "後手の体力",
-  fu: "歩の数", gin: "銀の数", kin: "金の数", hi: "飛の数", limit: "手数上限",
-  king: "隠し王", kpen: "王の罰", kdmg: "王の罰の体力", kdue: "王の指定期限",
+  limit: "手数上限", king: "隠し王", kpen: "王の罰", kdmg: "王の罰の体力", kdue: "王の指定期限", dir: "挟める方向",
+  ...Object.fromEntries(KIND_ORDER.flatMap((k) => [[k, `${PIECES[k].name}の数`], [`v${k}`, `${PIECES[k].name}の数字`]])),
 };
 
 export class SetupDialog {
@@ -54,6 +57,7 @@ export class SetupDialog {
     form: byId<HTMLFormElement>("setup-form"),
     presets: byId("presets"),
     customTag: byId("custom-tag"),
+    pieceTable: byId("piece-table"),
     gateOn: byId("gate-on-label"),
     kingSub: byId("king-sub"),
     kingHp: byId("king-hp-label"),
@@ -83,6 +87,7 @@ export class SetupDialog {
       this.showNote("URL の設定を読み込みました。");
     }
     this.buildPresets();
+    this.buildPieceTable();
     this.bind();
     this.writeForm(this.rules);
   }
@@ -113,6 +118,34 @@ export class SetupDialog {
         this.reflectUrl();
       });
       this.el.presets.append(b);
+    }
+  }
+
+  /** 駒種ごとの 数・数字 の欄（方向は種類で固定なので表示だけ） */
+  private buildPieceTable() {
+    const num = (name: string, label: string, range: { min: number; max: number }, aria: string) =>
+      h("label", { class: "num" }, [
+        h("span", { text: label }),
+        h("input", {
+          attrs: {
+            type: "number", name, inputmode: "numeric", min: String(range.min), max: String(range.max), step: "1", required: "",
+            "aria-label": aria,
+          },
+        }),
+      ]);
+    for (const k of KIND_ORDER) {
+      const { name, reach } = PIECES[k];
+      const m = REACH_MARK[reach];
+      this.el.pieceTable.append(
+        h("div", { class: "piece-row", attrs: { "data-kind": k } }, [
+          h("span", { class: "piece-row-name" }, [
+            h("span", { class: "mini-stone p0", text: name }),
+            h("span", { class: "piece-row-dir", attrs: { title: m.name } }, [dirIcon(reach, "mini-dir"), m.short]),
+          ]),
+          num(k, "数", LIMITS.pieces, `${name}の数`),
+          num(`v${k}`, "数字", LIMITS.value, `${name}の数字`),
+        ]),
+      );
     }
   }
 
@@ -157,11 +190,15 @@ export class SetupDialog {
   private writeForm(r: RuleSet) {
     this.radio("action", r.action);
     this.radio("gate", r.gate ? "1" : "0");
+    this.radio("dirs", r.dirs);
     this.radio("damage", r.damage);
     this.radio("heal", r.heal);
     this.input("hp0").value = String(r.hp[0]);
     this.input("hp1").value = String(r.hp[1]);
-    for (const k of KIND_ORDER) this.input(k).value = String(r.hand[k]);
+    for (const k of KIND_ORDER) {
+      this.input(k).value = String(r.hand[k]);
+      this.input(`v${k}`).value = String(r.values[k]);
+    }
     this.input("maxPlies").value = String(r.maxPlies);
     this.radio("king", r.king.on ? "1" : "0");
     this.radio("kingPenalty", r.king.penalty);
@@ -181,14 +218,20 @@ export class SetupDialog {
       return v;
     };
     const hand = { ...prev.hand };
-    for (const k of KIND_ORDER) hand[k] = num(k, LIMITS.pieces, prev.hand[k]);
+    const values = { ...prev.values };
+    for (const k of KIND_ORDER) {
+      hand[k] = num(k, LIMITS.pieces, prev.hand[k]);
+      values[k] = num(`v${k}`, LIMITS.value, prev.values[k]);
+    }
     return {
       action: f.get("action") === "flip" ? "flip" : "capture",
       gate: f.get("gate") === "1",
+      dirs: f.get("dirs") === "piece" ? "piece" : "all",
       damage: f.get("damage") === "maxCount" ? "maxCount" : "sum",
       heal: f.get("heal") === "avg" ? "avg" : f.get("heal") === "lowMinus1" ? "lowMinus1" : "none",
       hp: [num("hp0", LIMITS.hp, prev.hp[0]), num("hp1", LIMITS.hp, prev.hp[1])],
       hand,
+      values,
       maxPlies: num("maxPlies", LIMITS.maxPlies, prev.maxPlies),
       king: {
         on: f.get("king") === "1",
@@ -209,6 +252,8 @@ export class SetupDialog {
     this.el.customTag.textContent = match ? `— ${match.name}` : "— カスタム（どのプリセットとも違う）";
     const v = verb(this.rules);
     this.el.gateOn.textContent = `置いた駒より強い駒は${v.cannot}`;
+    // 方向は「駒ごと」のときだけ効くので、全方向では薄く表示する
+    this.el.pieceTable.classList.toggle("dirs-all", this.rules.dirs === "all");
     // 隠し王の追加設定は「あり」のときだけ見せる。減る体力の欄は罰が体力のときだけ
     this.el.kingSub.hidden = !this.rules.king.on;
     this.el.kingAmount.hidden = this.rules.king.penalty !== "hp";

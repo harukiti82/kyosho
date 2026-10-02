@@ -128,13 +128,17 @@
           </div>
 
           <div class="opt">
-            <span class="opt-name">駒の数（両者同じ）</span>
-            <div class="nums nums-4">
-              <label class="num"><span>歩1</span><input type="number" name="fu" inputmode="numeric" min="0" max="40" step="1" required /></label>
-              <label class="num"><span>銀2</span><input type="number" name="gin" inputmode="numeric" min="0" max="40" step="1" required /></label>
-              <label class="num"><span>金3</span><input type="number" name="kin" inputmode="numeric" min="0" max="40" step="1" required /></label>
-              <label class="num"><span>飛5</span><input type="number" name="hi" inputmode="numeric" min="0" max="40" step="1" required /></label>
+            <span class="opt-name" id="opt-dirs">挟める方向</span>
+            <div class="seg" role="radiogroup" aria-labelledby="opt-dirs">
+              <label><input type="radio" name="dirs" value="all" /><span>全方向（8 方向）</span></label>
+              <label><input type="radio" name="dirs" value="piece" /><span>駒ごと（駒の矢印の方向だけ）</span></label>
             </div>
+          </div>
+
+          <div class="opt">
+            <span class="opt-name" id="opt-pieces">駒（両者同じ。方向は駒の種類で決まる）</span>
+            <!-- 駒種ごとの 数・数字 の欄は ui/setup.ts が KIND_ORDER から作る -->
+            <div class="piece-table" id="piece-table" role="group" aria-labelledby="opt-pieces"></div>
           </div>
 
           <div class="opt">
@@ -160,7 +164,7 @@
               </div>
             </div>
           </div>
-          <p class="opt-help">体力 5〜200、駒 0〜40、手数 0〜300、王の罰 1〜200、期限 1〜20。範囲外の値は自動で直します。</p>
+          <p class="opt-help">体力 5〜200、駒の数 0〜40、駒の数字 1〜20、手数 0〜300、王の罰 1〜200、期限 1〜20。範囲外の値は自動で直します。</p>
         </fieldset>
 
         <section class="setup-preview" aria-labelledby="setup-preview-title">

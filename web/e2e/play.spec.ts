@@ -3,8 +3,8 @@
 
 import { expect, test, type Page } from "@playwright/test";
 import { cellName } from "../src/engine/board";
-import { createGame, legalCells, playableKinds, playMove, threatenedPieces, type GameState } from "../src/engine/game";
-import { defaultRules, KIND_ORDER, PIECES, PRESETS, presetById, type PieceKind, type RuleSet } from "../src/engine/rules";
+import { createGame, legalCells, playableKinds, playMove, targetsAt, threatenedPieces, type GameState } from "../src/engine/game";
+import { defaultRules, kindsByValue, KIND_ORDER, PIECES, PRESETS, presetById, type PieceKind, type RuleSet } from "../src/engine/rules";
 import { encodeRules } from "../src/ui/query";
 import { ruleLines, sentenceText } from "../src/ui/ruletext";
 import { noHorizontalScroll, readSetup, rng, startGame, waitHumanTurnOrEnd } from "./helpers";
@@ -84,8 +84,9 @@ async function checkBoardFrozen(page: Page, touch = false) {
 async function handsMatch(page: Page, s: GameState) {
   for (const p of [0, 1] as const) {
     const shown = await page.locator(`#player-${p} .mini`).allTextContents();
-    const kinds = KIND_ORDER.filter(
-      (k) => s.rules.hand[k] > 0 || (s.rules.action === "capture" && k === "fu") || s.hands[0][k] + s.hands[1][k] > 0,
+    const kinds = kindsByValue(
+      s.rules,
+      KIND_ORDER.filter((k) => s.rules.hand[k] > 0 || (s.rules.action === "capture" && k === "fu") || s.hands[0][k] + s.hands[1][k] > 0),
     );
     expect(shown).toEqual(kinds.map((k) => `${PIECES[k].name}×${s.hands[p][k]}`));
   }
@@ -188,10 +189,14 @@ test.describe("PC 幅", () => {
       await expect(page.locator("#player-0 .hp-num")).toHaveText(String(r.hp[0]));
       await expect(page.locator("#player-1 .hp-max")).toHaveText(`/ ${r.hp[1]}`);
       await expect(page.locator("#ply")).toHaveText(r.maxPlies > 0 ? `手数 0 / ${r.maxPlies}` : "手数 0");
-      await handsMatch(page, createGame(r));
-      // 置けるマス: 裏返すルールは初手 4 マス、取るルールは空き 60 マス
-      await expect(page.locator(".cell.open")).toHaveCount(r.action === "flip" ? 4 : 60);
-      await expect(page.locator(".cell.can-take")).toHaveCount(4);
+      const g0 = createGame(r);
+      await handsMatch(page, g0);
+      // 置けるマス: 裏返すルールは初手 4 マス（方向駒の歩は縦の 2 マス）、取るルールは空き 60 マス
+      const first = kindsByValue(r, playableKinds(g0))[0];
+      const open = legalCells(g0, first);
+      expect(open.length).toBe(r.action === "flip" ? (r.dirs === "piece" ? 2 : 4) : 60);
+      await expect(page.locator(".cell.open")).toHaveCount(open.length);
+      await expect(page.locator(".cell.can-take")).toHaveCount(open.filter(([y, x]) => targetsAt(g0, y, x, first).length > 0).length);
       const verbRe = r.action === "flip" ? /を返す → 1 ダメージ/ : /を取る → 1 ダメージ/;
       await page.locator(".cell.can-take").first().hover();
       await expect(page.locator("#preview .preview-main")).toHaveText(verbRe);
@@ -296,7 +301,7 @@ test.describe("PC 幅", () => {
   test("エッジケース: 駒の数がすべて 0 なら即終局、体力 5 なら早く決着する", async ({ page }) => {
     const errors: string[] = [];
     page.on("pageerror", (e) => errors.push(String(e)));
-    const zero = { ...presetById("v2").rules, hand: { fu: 0, gin: 0, kin: 0, hi: 0 } };
+    const zero = { ...presetById("v2").rules, hand: { fu: 0, yoko: 0, gin: 0, kaku: 0, kin: 0, hi: 0 } };
     await page.goto(`/?${encodeRules(zero)}`);
     await startGame(page);
     await expect(page.locator("#result")).toBeVisible();
