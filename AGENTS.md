@@ -3,7 +3,7 @@
 オセロの盤で、挟んだ相手の駒の数字がダメージになる二人対戦ゲーム。ルール設計（`RULES.md`）、Python のバランス検証（`sim/`）、ルールを組み合わせて遊び比べるブラウザの試遊版（`web/`）からなる。
 
 > ルールの正は `RULES.md`（v1.0「取った駒が持ち駒になる」）。解釈が曖昧なときは `sim/capture.py` の実装を正とする。
-> Web 試遊版の設定項目とプリセット（隠し王を含む）は `RULES.md` の「Web 試遊版」節。プリセット v0.4 / v1.0 / v2 案は `sim/kyosho.py` / `sim/capture.py` / `sim/gate.py` と全手一致させる。
+> Web 試遊版の設定項目とプリセット（隠し王・方向駒を含む）は `RULES.md` の「Web 試遊版」節。プリセット v0.4 / v1.0 / v2 案は `sim/kyosho.py` / `sim/capture.py` / `sim/gate.py` と全手一致させる。
 > 旧ルール v0.4 は `docs/RULES-v0.4.md` と `sim/kyosho.py` に履歴として残す（変更しない）。
 > ユーザー向けの説明は README.md にある。
 
@@ -11,8 +11,8 @@
 
 - 目的: ルールを詰め、人間の試遊で面白さを確かめる
 - 対象: 作者と試遊する人（ブラウザ版は同じ端末での 2 人対戦と CPU 対戦。ルールは設定画面で組み合わせる）
-- 状況: v0.4 は「難しい」「普通のオセロと変わらない」、v1.0 は「オセロじゃなくてもよくなって悪化」。読み合いを足すため「隠し王」（相手に見えない王）を設定項目とプリセットに追加した。どの組み合わせが面白いかをユーザー自身が遊び比べる段階（ルールの決定はユーザーがする）
-- 最重要要件: **ルールが一目で分かること**（設定から生成するルールカードの常時表示・返せる駒とダメージ・回復の予測・返されうる駒の警告）
+- 状況: v0.4 は「難しい」「普通のオセロと変わらない」、v1.0 は「オセロじゃなくてもよくなって悪化」。読み合いを足すため「隠し王」（相手に見えない王）、戦略性を足すため「方向駒」（駒ごとに挟める方向が違う）を設定項目とプリセットに追加した。どの組み合わせが面白いかをユーザー自身が遊び比べる段階（ルールの決定はユーザーがする）
+- 最重要要件: **ルールが一目で分かること**（設定から生成するルールカードの常時表示・返せる駒とダメージ・回復の予測・返されうる駒の警告・方向駒のアイコン）
 
 ## 技術スタック
 
@@ -37,9 +37,9 @@ kyosho/
 │   └── kyosho.py ほか    ← v0.4 のシミュレーター（履歴。ロジックは変更しない）
 └── web/
     ├── src/engine/   ← ルールエンジン（DOM に依存しない。RuleSet で全組み合わせを扱う。ここだけでゲームが完結する）
-    ├── src/ui/       ← 画面の表示と入力（app.ts: 対局画面 / setup.ts: 設定画面 / query.ts: URL ⇔ 設定 / ruletext.ts: ルール文）
+    ├── src/ui/       ← 画面の表示と入力（app.ts: 対局画面 / setup.ts: 設定画面 / query.ts: URL ⇔ 設定 / ruletext.ts: ルール文 / diricon.ts: 方向のアイコン）
     ├── test/         ← Vitest（engine・URL・ルール文のユニットテスト + Python 棋譜の再生テスト）
-    ├── e2e/          ← Playwright（ヘッドレスで実際に終局まで打つ。king.spec.ts は種付き乱数の鏡の対局で隠し王を確かめる）
+    ├── e2e/          ← Playwright（ヘッドレスで実際に終局まで打つ。king.spec.ts / direction.spec.ts は種付き乱数の鏡の対局で隠し王・方向駒を確かめる）
     ├── scripts/      ← バランス確認（balance.ts を Vite の runnerImport で Node 実行。`npm run balance`）
     └── screenshots/  ← e2e が保存するスクリーンショット
 ```
@@ -47,7 +47,8 @@ kyosho/
 - `src/engine/` に DOM・タイマー・乱数の直接参照を入れない（CPU の乱数は引数で受ける）
 - `src/ui/` に取り・ダメージなどのルール計算を書かない（予測・警告もエンジンの `previewMove` / `threatenedPieces` を使う）
 - 隠し王の真の場所（`GameState.kings`）は隠し情報。`src/ui/` と `engine/cpu.ts` からは直接読まず、CPU は `viewFor(state, 自分)`、UI は `kingInfo(state, 見せてよい人)` を使う（`test/king.test.ts` がソースを検査する）
-- URL クエリは外部入力。`ui/query.ts` の `decodeRules` で型・範囲を検証し、不正な項目は既定値に戻す
+- URL クエリは外部入力。`ui/query.ts` の `decodeRules` で型・範囲を検証し、不正な項目は既定値に戻す。方向駒の項目は既定値と違うときだけ載せる（既存プリセットの URL を変えない・古い URL は全方向として読む）
+- 盤上の駒は種類だけを持ち、数字は `RuleSet.values[kind]`、方向は `PIECES[kind].reach`（種類で固定）。数字を `PIECES[kind].value`（既定値）から直接読まない
 - 動的な文字列は `textContent` / `ui/dom.ts` の `h()` で入れる。`innerHTML` は使わない
 
 ## コマンド
@@ -59,7 +60,7 @@ kyosho/
 | typecheck | `cd web && npm run typecheck` |
 | test | `cd web && npm test` |
 | e2e | `cd web && npm run e2e`（ビルド → `vite preview :4179` を自動起動） |
-| バランス確認 | `cd web && npm run balance -- 400 king`（2 手読み同士。第 3 引数で体力 "先手,後手"） |
+| バランス確認 | `cd web && npm run balance -- 400 king`（2 手読み同士。方向駒は `400 dir`。第 3 引数で体力 "先手,後手"） |
 | 棋譜の再生成 | `python3 sim/export_replays.py`（v0.4 / v1.0 / v2 案、約 30 秒） |
 | 公開 | main への merge で自動デプロイ → https://harukiti82.github.io/kyosho/ （workflow は main 直 push せず PR 経由で変更） |
 | シミュレーター | `RULES.md` のシミュレーター節を参照 |
@@ -74,7 +75,7 @@ kyosho/
 ## AI 向け詳細仕様
 
 - ルール: `RULES.md`（必要時に Read）
-- エンジンの公開関数: `web/src/engine/game.ts`（`createGame(rules)` / `playMove(state, r, c, kind, { king })` / `legalCells` / `playableKinds` / `previewMove` / `threatenedPieces` / `canMove` / `judge` / 隠し王の `kingInfo` / `kingCandidates` / `viewFor`）と `cpu.ts`（`chooseLookahead(viewFor(state, turn))`）。設定の型とプリセットは `rules.ts`（`RuleSet` / `PRESETS` / `NO_KING`）
+- エンジンの公開関数: `web/src/engine/game.ts`（`createGame(rules)` / `playMove(state, r, c, kind, { king })` / `legalCells` / `playableKinds` / `previewMove` / `threatenedPieces` / `canMove` / `judge` / 隠し王の `kingInfo` / `kingCandidates` / `viewFor`）と `cpu.ts`（`chooseLookahead(viewFor(state, turn))`）。返せる列は `board.ts` の `rawLines`（8 方向）→ `pieceLines`（駒の方向 `dirs` と強さ制限で絞る）。設定の型とプリセットは `rules.ts`（`RuleSet`（`dirs` / `values` を含む） / `PRESETS` / `NO_KING` / `KIND_ORDER` / `kindsByValue`）
 
 ### 作業履歴メモ（毎ターン参照・更新）
 
