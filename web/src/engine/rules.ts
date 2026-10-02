@@ -188,7 +188,9 @@ export const PRESETS: readonly Preset[] = [
     note: "方向駒＋挟んだ端の自分の駒の数字もダメージに足す",
     rules: {
       action: "flip", gate: false, dirs: "piece", damage: "sum", anchor: "attack", heal: "none",
-      hp: [60, 65],
+      // 方向駒と同じ 60・65 だと上乗せでダメージが増え、2 手読み同士の平均手数が 16.9 手（2000 局）と短すぎるため、
+      // 平均 30 手以上になるよう引き上げた（125・130: 先手勝率 47.3%・平均 31.3 手、4000 局）
+      hp: [125, 130],
       hand: { fu: 8, yoko: 8, gin: 0, kaku: 6, kin: 4, hi: 6 },
       values: { ...DEFAULT_VALUES, hi: 3, kin: 5 },
       maxPlies: 0,
