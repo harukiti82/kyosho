@@ -3,6 +3,7 @@
 // 消音の状態は localStorage に保存する（使えない環境では保存せずに動く）。
 
 import type { Tier } from "./impact";
+import type { OutcomeKind } from "./outcome";
 
 const MUTE_KEY = "kyosho.muted";
 
@@ -173,5 +174,29 @@ export class Sound {
     }
     this.noise(dur * 0.8, 0.12 + depth * 0.06, 400, delay);
     if (tier === "huge") this.tone({ freq: 90, to: 35, type: "sine", dur: 0.8, gain: 0.6 }, delay);
+  }
+
+  /** 決着の音。win: 短いファンファーレ / lose: 低く短い下降音 / draw: 落ち着いた 2 音 */
+  finale(kind: OutcomeKind) {
+    if (this.muted) return;
+    if (kind === "win") {
+      // ド・ミ・ソと駆け上がり、上のドを足した和音で伸ばす
+      [523, 659, 784].forEach((f, i) => this.tone({ freq: f, type: "triangle", at: i * 0.11, dur: 0.14, gain: 0.22 }));
+      for (const f of [523, 659, 784, 1047]) {
+        this.tone({ freq: f, type: "triangle", at: 0.36, dur: 1.0, gain: 0.15 });
+        this.tone({ freq: f * 2, type: "sine", at: 0.36, dur: 0.8, gain: 0.04 });
+      }
+      this.noise(0.6, 0.12, 5000, 0.36);
+      return;
+    }
+    if (kind === "lose") {
+      // ソ・ミ♭・ドと低く下がる（短調）
+      [196, 156, 131].forEach((f, i) => this.tone({ freq: f, type: "triangle", at: i * 0.24, dur: i === 2 ? 0.8 : 0.3, gain: 0.2 }));
+      this.tone({ freq: 65, to: 45, type: "sine", at: 0.48, dur: 0.8, gain: 0.3 });
+      return;
+    }
+    // ラ・レの穏やかな 4 度
+    this.tone({ freq: 440, type: "sine", dur: 0.45, gain: 0.16 });
+    this.tone({ freq: 587, type: "sine", at: 0.2, dur: 0.7, gain: 0.14 });
   }
 }

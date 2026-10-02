@@ -5,67 +5,23 @@
 
 import { expect, test, type Page } from "@playwright/test";
 import { chooseLookahead } from "../src/engine/cpu";
-import { createGame, lastMoveOf, legalCells, playableKinds, playMove, viewFor, type GameState } from "../src/engine/game";
-import { presetById, type PieceKind, type RuleSet } from "../src/engine/rules";
+import { createGame, lastMoveOf, playMove, viewFor } from "../src/engine/game";
+import { presetById, type RuleSet } from "../src/engine/rules";
 import { hitOf, statsOf, tierOf, type Tier } from "../src/ui/impact";
 import { encodeRules } from "../src/ui/query";
-import { noHorizontalScroll, rng, startGame, waitHumanTurnOrEnd } from "./helpers";
+import { cellAt, greedy, noHorizontalScroll, play, rng, seedPage, startGame, waitHumanTurnOrEnd } from "./helpers";
 
 const SHOT = "screenshots";
 const ORIG = presetById("orig").rules;
 const withHp = (hp: [number, number]): RuleSet => ({ ...ORIG, hp });
 const TEXT: Record<Exclude<Tier, "small">, string> = { mid: "ナイス！", big: "会心！", huge: "痛恨！" };
 
-const cellAt = (page: Page, r: number, c: number) => page.locator(`.cell[data-r="${r}"][data-c="${c}"]`);
 const moveCount = (page: Page) => page.locator("#log .log-item.move").count();
 const isMobile = (name: string) => name === "mobile";
-
-/** ページの Math.random を種付き乱数（e2e/helpers.ts の rng と同じ mulberry32）にする */
-async function seedPage(page: Page, seed: number) {
-  await page.addInitScript((s) => {
-    let a = s >>> 0;
-    Math.random = () => {
-      a = (a + 0x6d2b79f5) >>> 0;
-      let t = a;
-      t = Math.imul(t ^ (t >>> 15), t | 1);
-      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-    };
-  }, seed);
-}
 
 async function open(page: Page, rules: RuleSet, mode: "cpu" | "pvp" = "cpu") {
   await page.goto(`/?${encodeRules(rules)}`);
   await startGame(page, { mode });
-}
-
-/** 人間の手。マウスは 1 回、タッチは 1 回目で予測・2 回目で確定 */
-async function play(page: Page, r: number, c: number, kind: PieceKind, touch: boolean) {
-  const btn = page.locator(`#hand-buttons .piece-btn[data-kind=${kind}]`);
-  if ((await btn.getAttribute("aria-pressed")) !== "true") {
-    if (touch) await btn.tap();
-    else await btn.click();
-  }
-  await expect(btn).toHaveAttribute("aria-pressed", "true");
-  const cell = cellAt(page, r, c);
-  if (touch) {
-    await cell.tap();
-    await cell.tap();
-  } else {
-    await cell.click();
-  }
-}
-
-/** 返す駒が最も多い手（同じなら先に見つけた手） */
-function greedy(s: GameState) {
-  let best: { r: number; c: number; kind: PieceKind; n: number } | null = null;
-  for (const kind of playableKinds(s)) {
-    for (const [r, c] of legalCells(s, kind)) {
-      const n = lastMoveOf(playMove(s, r, c, kind))!.targets.length;
-      if (!best || n > best.n) best = { r, c, kind, n };
-    }
-  }
-  return best!;
 }
 
 /** 演出が終わって人間が操作できるようになったら、置けるマスに 1 手打てる（打てたら true） */
