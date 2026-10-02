@@ -14,6 +14,7 @@
     <header class="topbar">
       <h1 class="title">挟将<span class="title-sub">きょうしょう 試遊版</span></h1>
       <div class="topbar-actions">
+        <button type="button" class="mute-btn" id="btn-mute" aria-label="消音" aria-pressed="false"></button>
         <button type="button" class="btn ghost" id="btn-rules">ルール詳細</button>
         <button type="button" class="btn ghost" id="btn-new">新しい対局</button>
       </div>
@@ -56,6 +57,8 @@
     </main>
 
     <div class="toast" id="toast" role="alert" hidden></div>
+    <!-- ダメージの段階の演出（文言・粒・発光）。画面に固定し、はみ出しは切る -->
+    <div class="fx-layer" id="fx" aria-hidden="true"></div>
 
     <!-- 対局設定（ルールの組み合わせ・対戦相手） -->
     <dialog class="modal modal-wide" id="setup" aria-labelledby="setup-title">
@@ -200,6 +203,7 @@
         <h2 class="result-winner" id="result-winner"></h2>
         <p class="result-reason" id="result-reason"></p>
         <p class="result-detail" id="result-detail"></p>
+        <div class="result-stats" id="result-stats"></div>
         <div class="modal-actions">
           <button type="button" class="btn ghost" id="result-view">盤面を見る</button>
           <button type="button" class="btn ghost" id="result-setup">設定を変える</button>
