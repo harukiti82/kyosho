@@ -4,13 +4,14 @@
 
 ## 現在の対象
 
-- 何を / どこを: 試遊版（`web/`）に「方向駒」（駒ごとに挟める方向）と、独立した設定「端の駒の力」（挟んだ端の自分の駒の数字もダメージに足す）＋プリセット「拠点」を追加した（https://harukiti82.github.io/kyosho/）。ユーザーの試遊待ち
-- ステータス: 隠し王・方向駒・拠点が面白いか・どの組み合わせを採るかのユーザー判断待ち（ルールの決定はユーザーがする）
+- 何を / どこを: 試遊版（`web/`）に、大ダメージほど派手になる段階的な演出・効果音・終局の成績を追加した（ルール計算は不変。https://harukiti82.github.io/kyosho/）。その前に方向駒・端の駒の力（プリセット「拠点」）・隠し王を追加済み
+- ステータス: 演出の手応えと、隠し王・方向駒・拠点のどの組み合わせを採るかのユーザー判断待ち（ルールの決定はユーザーがする）
 - 最終更新: 2026-10-02
 
 ## 直近の観点・指摘
 
 - 最重要要件は「ルールが一目で分かること」。ルールカードは設定から自動生成（`ui/ruletext.ts`、最大 8 行。7 行以上は `.denser`）。予測の赤枠＋ダメージ・回復、返されうる自駒の「!」、自分の王の赤い「!」、駒の方向アイコン、端の駒の青枠＋左下の「+数字」と内訳（返した駒 ＋ 端の金5 ＝ 7）を崩さない
+- 手応えの演出: 段階は `ui/impact.ts` の `tierOf`（合計（上乗せ・王の罰込み）÷ 受けた側の体力上限。5% / 10% / 20% は `TIER_THRESHOLDS`、王を返した手は特大）。演出は `ui/fx.ts`（`#fx` 層・transform / opacity のみ）、効果音は `ui/sound.ts`（Web Audio 合成・消音は localStorage）。大・特大は `App.fxLock` で入力と CPU を最大 1.5 秒待たせる。`src/ui/` で `Math.random` を使わない（e2e の鏡の対局がずれる）
 - 端の駒の力: ダメージは `damageOf` ＝ `baseDamageOf` ＋ `anchorBonusOf`（返した列ごとの反対端 `Line.end` / `endAt`）。予測・警告・CPU はすべてこれを通す。`MoveEvent.anchors` は上乗せがあるときだけ
 - プリセット「拠点」は方向駒＋上乗せ、体力 125・130（4000 局で先手 47.3%・平均 31.3 手）。隅の端の上乗せは全体の約 1%、隅を取った側の勝率は同じ手数の方向駒より低い（RULES.md「拠点」）
 - 方向駒: 盤上の駒は種類だけを持ち、数字は `RuleSet.values`、方向は `PIECES[kind].reach`。プリセット「方向駒」は体力 60・65
@@ -21,6 +22,7 @@
 
 ## 未解決・次の一手
 
+- [ ] ユーザーの試遊で演出の手応え（段階の差・音量・テンポ・被弾の赤の強さ）を聞く。実機の音は未確認
 - [ ] ユーザーの試遊で方向駒・隠し王・拠点の感想を聞く（青枠と内訳で「端の駒もダメージに効く」が分かるか、強い駒を置くリスクとリターンが感じられるか、人間が隅に金を置く戦術で拠点が強すぎにならないか）
 - [ ] 採用する組み合わせが決まったら RULES.md を新版に改稿し、既定プリセットを切り替える
 
@@ -28,9 +30,10 @@
 
 - 設定項目・プリセットの変更: `RULES.md` の「Web 試遊版」節 → `web/src/engine/rules.ts` → AGENTS.md の「ルール・設定項目を変えるとき」
 - ダメージ・端の駒: `web/src/engine/board.ts`（`damageOf` / `anchorsOf`）, `web/test/anchor.test.ts`。方向駒: `board.ts`（`pieceLines`）, `test/direction.test.ts`。隠し王: `game.ts`（隠し王節）, `cpu.ts`, `test/king.test.ts`
+- 演出・効果音・成績: `web/src/ui/impact.ts`, `web/src/ui/fx.ts`, `web/src/ui/sound.ts`, `web/test/impact.test.ts`, `web/e2e/impact.spec.ts`
 - 画面の修正: `web/src/ui/app.ts`（対局）, `web/src/ui/setup.ts`（設定）, `web/src/style.css`, `web/index.html`
 
 ## 関連ファイル / リンク
 
-- E2E のスクリーンショット: `web/screenshots/`（pc-* / sp-* 、隠し王は *-king-*、方向駒は *-dir*、拠点は *-anchor*）
+- E2E のスクリーンショット: `web/screenshots/`（pc-* / sp-* 、隠し王は *-king-*、方向駒は *-dir*、拠点は *-anchor*、演出は *-impact-*）
 - デプロイ: `.github/workflows/pages.yml`（PR はテスト+ビルドのみ、main への push でデプロイ）
