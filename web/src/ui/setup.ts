@@ -12,6 +12,7 @@ import {
   type Player,
   type RuleSet,
 } from "../engine/rules";
+import { dirIcon } from "./diricon";
 import { byId, h } from "./dom";
 import { decodeRules, encodeRules } from "./query";
 import { ruleLines, verb, type Sentence } from "./ruletext";
@@ -139,7 +140,7 @@ export class SetupDialog {
         h("div", { class: "piece-row", attrs: { "data-kind": k } }, [
           h("span", { class: "piece-row-name" }, [
             h("span", { class: "mini-stone p0", text: name }),
-            h("span", { class: "piece-row-dir", text: `${m.mark} ${m.name}` }),
+            h("span", { class: "piece-row-dir", attrs: { title: m.name } }, [dirIcon(reach, "mini-dir"), m.short]),
           ]),
           num(k, "数", LIMITS.pieces, `${name}の数`),
           num(`v${k}`, "数字", LIMITS.value, `${name}の数字`),

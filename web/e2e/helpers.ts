@@ -1,7 +1,7 @@
 // e2e の共通ヘルパー（設定画面の操作・待ち合わせ・横スクロールの確認・種付き乱数）
 
 import { expect, type Page } from "@playwright/test";
-import type { PresetId, RuleSet } from "../src/engine/rules";
+import { KIND_ORDER, type PresetId, type RuleSet } from "../src/engine/rules";
 
 export async function noHorizontalScroll(page: Page, width: number) {
   const sw = await page.evaluate(() => document.documentElement.scrollWidth);
@@ -10,20 +10,22 @@ export async function noHorizontalScroll(page: Page, width: number) {
 
 /** 設定画面のフォームから読んだ設定 */
 export function readSetup(page: Page): Promise<RuleSet> {
-  return page.locator("#setup-form").evaluate((form: HTMLFormElement) => {
+  return page.locator("#setup-form").evaluate((form: HTMLFormElement, kinds) => {
     const f = new FormData(form);
     const n = (k: string) => Number((form.elements.namedItem(k) as HTMLInputElement).value);
     return {
       action: f.get("action"),
       gate: f.get("gate") === "1",
+      dirs: f.get("dirs"),
       damage: f.get("damage"),
       heal: f.get("heal"),
       hp: [n("hp0"), n("hp1")],
-      hand: { fu: n("fu"), gin: n("gin"), kin: n("kin"), hi: n("hi") },
+      hand: Object.fromEntries(kinds.map((k) => [k, n(k)])),
+      values: Object.fromEntries(kinds.map((k) => [k, n(`v${k}`)])),
       maxPlies: n("maxPlies"),
       king: { on: f.get("king") === "1", penalty: f.get("kingPenalty"), amount: n("kingAmount"), deadline: n("kingDeadline") },
     } as unknown as RuleSet;
-  });
+  }, [...KIND_ORDER]);
 }
 
 export async function startGame(page: Page, opts: { mode?: "cpu" | "pvp"; side?: 0 | 1; preset?: PresetId } = {}) {

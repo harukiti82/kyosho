@@ -26,13 +26,13 @@ export const PIECES: Record<PieceKind, PieceSpec> = {
   hi: { kind: "hi", name: "飛", value: 5, reach: "orthogonal" },
 };
 
-/** 方向のマーク（盤上の駒・持ち駒・ルールカード）と読み上げ用の名前 */
-export const REACH_MARK: Record<Reach, { mark: string; name: string }> = {
-  vertical: { mark: "↕", name: "縦（上下）" },
-  horizontal: { mark: "↔", name: "横（左右）" },
-  diagonal: { mark: "✕", name: "斜め 4 方向" },
-  orthogonal: { mark: "✚", name: "縦横 4 方向" },
-  all: { mark: "✱", name: "全 8 方向" },
+/** 方向のマーク（ルールカード・持ち駒の一覧の文字）・名前（ルール詳細・読み上げ）・短い名前（設定画面） */
+export const REACH_MARK: Record<Reach, { mark: string; name: string; short: string }> = {
+  vertical: { mark: "↕", name: "縦（上下）", short: "縦" },
+  horizontal: { mark: "↔", name: "横（左右）", short: "横" },
+  diagonal: { mark: "✕", name: "斜め 4 方向", short: "斜め" },
+  orthogonal: { mark: "✚", name: "縦横 4 方向", short: "縦横" },
+  all: { mark: "✱", name: "全 8 方向", short: "全方向" },
 };
 
 /**

@@ -1277,10 +1277,15 @@ button {
   font-weight: 600;
 }
 .piece-row-dir {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
   color: var(--ink-muted);
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+}
+/* 設定画面の方向アイコンは幅が狭くても常に出す（体力カードの持ち駒とは別） */
+.piece-row-dir .mini-dir {
+  display: inline;
 }
 .piece-table.dirs-all .piece-row-dir {
   opacity: 0.4;
