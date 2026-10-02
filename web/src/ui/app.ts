@@ -38,8 +38,9 @@ import {
 } from "../engine/rules";
 import { dirIcon } from "./diricon";
 import { byId, h } from "./dom";
-import { Fx, fxTiming, speakerIcon, type FxTiming } from "./fx";
+import { finaleMs, Fx, fxTiming, speakerIcon, type FxTiming } from "./fx";
 import { hitOf, statsOf, tierOf, tierText, type HitBreakdown, type PlayerStats, type Tier } from "./impact";
+import { outcomeOf, type Outcome } from "./outcome";
 import { dirMark, endDetails, handText, hpText, kingPenaltyText, pieceLabel, ruleDetails, ruleLines, verb } from "./ruletext";
 import { fillSentences, SetupDialog, type PlaySettings } from "./setup";
 import { Sound } from "./sound";
@@ -80,6 +81,9 @@ export class App {
   private fxTimer: number | undefined;
   /** 大・特大の演出中は、次の入力と CPU の着手を待たせる */
   private fxLock = false;
+  /** 決着の演出中の対局（終われば終局画面を出す）。演出中でなければ null */
+  private finale: GameState | null = null;
+  private finaleTimer: number | undefined;
   /** トースト通知済みのイベント数 */
   private seenEvents = 0;
   /** 取った・減ったのアニメーションを再生する手数（新しい手の直後の描画だけ） */
@@ -190,6 +194,28 @@ export class App {
       result.close();
       if (this.settings) this.start(this.settings);
     });
+    // 決着の演出は Enter / Esc（押した時）・スペース（離した時。ボタンの起動と同じ）で飛ばす。
+    // 下のボタンが一緒に反応しないよう、演出中のこれらのキーは既定の動作を止める
+    document.addEventListener(
+      "keydown",
+      (e) => {
+        if (!this.finale || !["Enter", "Escape", " "].includes(e.key)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.key !== " " && !e.repeat) this.endFinale();
+      },
+      true,
+    );
+    document.addEventListener(
+      "keyup",
+      (e) => {
+        if (!this.finale || e.key !== " ") return;
+        e.preventDefault();
+        e.stopPropagation();
+        this.endFinale();
+      },
+      true,
+    );
   }
 
   // ---- 対局の進行 ----
@@ -198,7 +224,9 @@ export class App {
     window.clearTimeout(this.cpuTimer);
     window.clearTimeout(this.resultTimer);
     window.clearTimeout(this.fxTimer);
+    window.clearTimeout(this.finaleTimer);
     this.fxLock = false;
+    this.finale = null;
     this.fx.clear();
     this.hideToast();
     document.querySelectorAll(".flyer").forEach((f) => f.remove());
@@ -256,7 +284,8 @@ export class App {
       }, hold);
     }
     if (g.result) {
-      this.resultTimer = window.setTimeout(() => this.showResult(g.result!), g.ply > 0 ? Math.max(RESULT_DELAY_MS, hold + 300) : 0);
+      // 最後の一手の演出（特大なら出し切る）→ 決着の演出 → 終局画面
+      this.resultTimer = window.setTimeout(() => this.playFinale(g), g.ply > 0 ? Math.max(RESULT_DELAY_MS, hold + 300) : 0);
     } else {
       this.scheduleCpu(Math.max(CPU_DELAY_MS, hold + 200));
     }
@@ -988,6 +1017,33 @@ export class App {
 
   // ---- 終局・通知・ルール詳細 ----
 
+  /** 決着の目線（CPU 対戦は人間、2 人対戦は勝った側） */
+  private outcome(g: GameState): Outcome {
+    const s = this.settings!;
+    return outcomeOf(g, { mode: s.mode, human: s.human })!;
+  }
+
+  /** 決着の演出。finaleMs の後か、タップ／クリック／Enter で終局画面へ進む */
+  private playFinale(g: GameState) {
+    if (this.game !== g || !g.result) return;
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const o = this.outcome(g);
+    this.finale = g;
+    this.hideToast();
+    this.fx.finale({ outcome: o, reduce, onSkip: () => this.endFinale() });
+    this.sound.finale(o.kind);
+    this.finaleTimer = window.setTimeout(() => this.endFinale(), finaleMs(reduce));
+  }
+
+  private endFinale() {
+    const g = this.finale;
+    if (!g) return;
+    this.finale = null;
+    window.clearTimeout(this.finaleTimer);
+    this.fx.endFinale();
+    if (this.game === g) this.showResult(g.result!);
+  }
+
   private resultHeadline(r: GameResult): string {
     if (r.winner === null) return "引き分け";
     if (this.settings?.mode === "cpu") return r.winner === this.settings.human ? "あなたの勝ち" : "CPU の勝ち";
@@ -1021,6 +1077,12 @@ export class App {
       `${this.name(0)} 体力 ${g.hp[0]} ／ ${this.name(1)} 体力 ${g.hp[1]} ／ 石数 ${d0} 対 ${d1}（${g.ply} 手・ルール ${ruleName(g.rules)}）` +
       this.kingSummary(g);
     this.renderStats(g);
+    // 負けたときは接戦の励ましを添え、「再戦」を強調する
+    const o = this.outcome(g);
+    const cheer = byId("result-cheer");
+    cheer.textContent = o.cheer ?? "";
+    cheer.hidden = !o.cheer;
+    byId("result-rematch").classList.toggle("urge", o.urgeRematch);
     this.hideToast();
     if (!this.el.result.open) this.el.result.showModal();
   }

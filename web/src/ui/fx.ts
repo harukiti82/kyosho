@@ -4,6 +4,7 @@
 
 import { TIER_RANK, type Tier } from "./impact";
 import { h } from "./dom";
+import type { Outcome, OutcomeTone } from "./outcome";
 
 /** 演出の長さ（ミリ秒）。step: 返す駒を順にめくる間隔 / burstAt: 文言・粒を出す時刻 / hold: 入力と CPU を待たせる長さ */
 export interface FxTiming {
@@ -48,8 +49,23 @@ export interface BurstOptions {
 /** 粒の数（低性能の端末でも重くしないよう控えめに） */
 const SPARKS: Partial<Record<Tier, number>> = { big: 10, huge: 18 };
 
+/** 決着の演出の長さ（ミリ秒）。この後に終局画面を出す。動きを減らす設定では文字を読める間だけ */
+export const FINALE_MS = 2300;
+export const FINALE_REDUCED_MS = 1600;
+export const finaleMs = (reduce: boolean) => (reduce ? FINALE_REDUCED_MS : FINALE_MS);
+/** 紙吹雪の数（控えめに） */
+export const CONFETTI = 28;
+
+export interface FinaleOptions {
+  outcome: Outcome;
+  reduce: boolean;
+  /** 演出をタップ／クリックした（終局画面へ進める） */
+  onSkip: () => void;
+}
+
 export class Fx {
   private timers: number[] = [];
+  private finaleEl: HTMLElement | null = null;
 
   constructor(private readonly layer: HTMLElement) {}
 
@@ -57,7 +73,46 @@ export class Fx {
   clear() {
     for (const t of this.timers) window.clearTimeout(t);
     this.timers = [];
+    this.finaleEl = null;
     this.layer.replaceChildren();
+  }
+
+  /**
+   * 決着の演出。勝利は紙吹雪と暖色（2 人対戦は勝った側の駒色）の発光、敗北は彩度を落として静かに沈む、引き分けは穏やかな幕。
+   * 画面全体を覆ってタップ／クリックを受け、終局画面へ進める（盤や見出しのボタンには届かない）。
+   * 動きを減らす設定では文字と副題だけ
+   */
+  finale(o: FinaleOptions) {
+    // 最後の一手の演出の残り（動きを減らす設定で時間で消す文言など）を片付けてから出す
+    this.clear();
+    const oc = o.outcome;
+    const root = h("div", {
+      class: `fx-finale ${oc.kind} tone-${oc.tone}${o.reduce ? " reduce" : ""}`,
+      attrs: { "data-kind": oc.kind },
+    });
+    if (!o.reduce) {
+      if (oc.kind === "win") root.append(h("div", { class: "fx-glow" }), confetti(oc.tone));
+      else if (oc.kind === "lose") root.append(h("div", { class: "fx-sink" }));
+      else root.append(h("div", { class: "fx-calm" }));
+    }
+    root.append(
+      h("div", { class: "fin-card" }, [
+        oc.winner !== null ? h("span", { class: `fin-stone p${oc.winner}`, attrs: { "aria-hidden": "true" } }) : null,
+        h("p", { class: "fin-title", text: oc.title }),
+        h("p", { class: "fin-sub", text: oc.subtitle }),
+        oc.cheer ? h("p", { class: "fin-cheer", text: oc.cheer }) : null,
+        h("p", { class: "fin-skip", text: "タップ／Enter で結果へ" }),
+      ]),
+    );
+    root.addEventListener("click", () => o.onSkip());
+    this.layer.append(root);
+    this.finaleEl = root;
+  }
+
+  /** 決着の演出を消す */
+  endFinale() {
+    this.finaleEl?.remove();
+    this.finaleEl = null;
   }
 
   burst(o: BurstOptions) {
@@ -119,6 +174,22 @@ export class Fx {
       this.add(s, 1000);
     }
   }
+}
+
+/** 紙吹雪。位置・揺れ・回転・速さは番号から決める（Math.random を使わない）。色は基調（tone）ごとに CSS で決める */
+function confetti(tone: OutcomeTone): HTMLElement {
+  const box = h("div", { class: `fx-confetti tone-${tone}` });
+  for (let i = 0; i < CONFETTI; i++) {
+    const p = h("span", { class: `fx-confetto c${i % 5}` });
+    // 黄金比で横に散らす
+    p.style.left = `${(((i * 0.618034) % 1) * 96 + 2).toFixed(1)}%`;
+    p.style.setProperty("--drift", `${((i * 37) % 9) * 12 - 48}px`);
+    p.style.setProperty("--spin", `${(i % 2 ? 1 : -1) * (360 + ((i * 53) % 360))}deg`);
+    p.style.animationDuration = `${1500 + ((i * 7) % 5) * 130}ms`;
+    p.style.animationDelay = `${(i % 7) * 60}ms`;
+    box.append(p);
+  }
+  return box;
 }
 
 /** 同じアニメーションをもう一度再生できるよう、クラスを外してから付け直す（段階の付いたクラスは入れ替える） */
