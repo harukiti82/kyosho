@@ -34,23 +34,23 @@ describe("プリセットと初期状態", () => {
   it("5 つのプリセットの値（隠し王は「隠し王」プリセットだけ）", () => {
     const byId = Object.fromEntries(PRESETS.map((p) => [p.id, p.rules]));
     expect(byId.v04).toEqual({
-      action: "flip", gate: false, dirs: "all", damage: "maxCount", heal: "lowMinus1",
+      action: "flip", gate: false, dirs: "all", damage: "maxCount", anchor: "none", heal: "lowMinus1",
       hp: [65, 66], hand: { fu: 14, yoko: 0, gin: 10, kaku: 0, kin: 6, hi: 2 }, values: DEFAULT_VALUES, maxPlies: 0, king: NO_KING,
     });
     expect(byId.v10).toEqual({
-      action: "capture", gate: false, dirs: "all", damage: "sum", heal: "none",
+      action: "capture", gate: false, dirs: "all", damage: "sum", anchor: "none", heal: "none",
       hp: [20, 20], hand: { fu: 8, yoko: 0, gin: 0, kaku: 0, kin: 4, hi: 2 }, values: DEFAULT_VALUES, maxPlies: 80, king: NO_KING,
     });
     expect(byId.v2).toEqual({
-      action: "flip", gate: true, dirs: "all", damage: "sum", heal: "none",
+      action: "flip", gate: true, dirs: "all", damage: "sum", anchor: "none", heal: "none",
       hp: [40, 40], hand: { fu: 20, yoko: 0, gin: 0, kaku: 0, kin: 8, hi: 4 }, values: DEFAULT_VALUES, maxPlies: 0, king: NO_KING,
     });
     expect(byId.orig).toEqual({
-      action: "flip", gate: false, dirs: "all", damage: "sum", heal: "avg",
+      action: "flip", gate: false, dirs: "all", damage: "sum", anchor: "none", heal: "avg",
       hp: [40, 40], hand: { fu: 14, yoko: 0, gin: 10, kaku: 0, kin: 6, hi: 2 }, values: DEFAULT_VALUES, maxPlies: 0, king: NO_KING,
     });
     expect(byId.king).toEqual({
-      action: "flip", gate: false, dirs: "all", damage: "sum", heal: "none",
+      action: "flip", gate: false, dirs: "all", damage: "sum", anchor: "none", heal: "none",
       hp: [70, 60], hand: { fu: 14, yoko: 0, gin: 10, kaku: 0, kin: 6, hi: 2 }, values: DEFAULT_VALUES, maxPlies: 0,
       king: { on: true, penalty: "hp", amount: 20, deadline: 5 },
     });

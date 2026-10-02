@@ -44,7 +44,7 @@ function clampInt(raw: string, range: { min: number; max: number }, fallback: nu
 
 const KEY_LABEL: Record<string, string> = {
   take: "挟んだ駒を", gate: "強さ制限", dmg: "ダメージ", heal: "回復", hp1: "先手の体力", hp2: "後手の体力",
-  limit: "手数上限", king: "隠し王", kpen: "王の罰", kdmg: "王の罰の体力", kdue: "王の指定期限", dir: "挟める方向",
+  limit: "手数上限", anc: "端の駒の力", king: "隠し王", kpen: "王の罰", kdmg: "王の罰の体力", kdue: "王の指定期限", dir: "挟める方向",
   ...Object.fromEntries(KIND_ORDER.flatMap((k) => [[k, `${PIECES[k].name}の数`], [`v${k}`, `${PIECES[k].name}の数字`]])),
 };
 
@@ -192,6 +192,7 @@ export class SetupDialog {
     this.radio("gate", r.gate ? "1" : "0");
     this.radio("dirs", r.dirs);
     this.radio("damage", r.damage);
+    this.radio("anchor", r.anchor);
     this.radio("heal", r.heal);
     this.input("hp0").value = String(r.hp[0]);
     this.input("hp1").value = String(r.hp[1]);
@@ -228,6 +229,7 @@ export class SetupDialog {
       gate: f.get("gate") === "1",
       dirs: f.get("dirs") === "piece" ? "piece" : "all",
       damage: f.get("damage") === "maxCount" ? "maxCount" : "sum",
+      anchor: f.get("anchor") === "attack" ? "attack" : "none",
       heal: f.get("heal") === "avg" ? "avg" : f.get("heal") === "lowMinus1" ? "lowMinus1" : "none",
       hp: [num("hp0", LIMITS.hp, prev.hp[0]), num("hp1", LIMITS.hp, prev.hp[1])],
       hand,

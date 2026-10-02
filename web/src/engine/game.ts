@@ -3,7 +3,9 @@
 // 隠し王の真の状態（GameState.kings）は、UI・CPU からは viewFor() / kingInfo() を通してしか見ない。
 
 import {
+  anchorsOf,
   applyLines,
+  baseDamageOf,
   damageOf,
   discCount,
   emptyCells,
@@ -56,8 +58,11 @@ export interface MoveEvent {
   kind: PieceKind;
   /** 返した駒（flip）・取って持ち駒に入れた駒（capture） */
   targets: Target[];
+  /** ダメージ（端の駒の上乗せを含む） */
   damage: number;
   heal: number;
+  /** 端の駒の上乗せに使った自分の駒（返した列ごとの反対端）。端の駒の力が「なし」か、何も返していなければキー自体がない */
+  anchors?: Target[];
   /** 相手の隠し王を返した（取った）。王はこの手で公開される。返していなければキー自体がない */
   king?: KingHit;
 }
@@ -265,7 +270,12 @@ export function bestReply(
 export interface Preview {
   /** 返せる（取れる）相手の駒 */
   targets: Cell[];
+  /** ダメージ（端の駒の上乗せを含む） */
   damage: number;
+  /** 返した（取った）駒の分のダメージ（上乗せを除く） */
+  base: number;
+  /** 端の駒の上乗せに使う自分の駒（列ごとの反対端）。端の駒の力が「なし」なら空 */
+  anchors: Target[];
   heal: number;
   /** この手の後、相手が次の 1 手で返せる（取れる）自分の駒（置いた駒を含む）。対局が終わる手なら空 */
   exposed: Cell[];
@@ -283,18 +293,27 @@ export function previewMove(state: GameState, r: number, c: number, kind: PieceK
   if (!lines) return null;
   const targets = targetsOf(lines);
   const damage = damageOf(state.board, lines, rules);
+  const base = baseDamageOf(state.board, lines, rules);
+  const anchors = anchorTargets(state.board, lines, rules);
   const heal = healOf(lines, rules.values[kind], rules);
   const board = applyLines(state.board, p, r, c, kind, lines, rules);
   const ends = damage >= state.hp[q] || (rules.maxPlies > 0 && state.ply + 1 >= rules.maxPlies);
-  if (ends) return { targets, damage, heal, exposed: [], exposedDamage: 0 };
+  if (ends) return { targets, damage, base, anchors, heal, exposed: [], exposedDamage: 0 };
   // 相手の持ち駒は自分の着手で変わらない（取った駒は自分の持ち駒に入る）
   return {
     targets,
     damage,
+    base,
+    anchors,
     heal,
     exposed: attackable(rules, board, state.hands[q], q),
     exposedDamage: bestReply(rules, board, state.hands[q], q).damage,
   };
+}
+
+/** 端の駒の上乗せに使う自分の駒（マスと駒種） */
+function anchorTargets(board: Board, lines: readonly Line[], rules: RuleSet): Target[] {
+  return anchorsOf(lines, rules).map(([y, x]) => ({ r: y, c: x, kind: board[y][x]!.kind }));
 }
 
 /** victim の駒のうち、相手が次の 1 手で返せる（取れる）もの */
@@ -343,6 +362,8 @@ export function playMove(state: GameState, r: number, c: number, kind: PieceKind
   hp[p] += heal;
   const ply = state.ply + 1;
   const move: MoveEvent = { type: "move", ply, player: p, r, c, kind, targets, damage, heal };
+  const anchors = anchorTargets(state.board, lines, rules);
+  if (anchors.length > 0) move.anchors = anchors;
   if (hit) move.king = hit;
   const history: GameEvent[] = [...state.history, move];
   const next: GameState = { ...state, board, hands, hp, ply, history, kings };

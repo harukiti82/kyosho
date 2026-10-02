@@ -24,6 +24,8 @@ export interface Line {
   cells: Cell[];
   /** 反対端の自分の駒の数字 */
   end: number;
+  /** 反対端の自分の駒のマス（方向ごとに別のマス） */
+  endAt: Cell;
   /** 挟んだ駒の数字の最大値（強さ制限の判定に使う） */
   top: number;
 }
@@ -76,7 +78,7 @@ export function rawLines(b: Board, r: number, c: number, p: Player, values: Piec
       x += dc;
     }
     const end = inside(y, x) ? b[y][x] : null;
-    if (cells.length > 0 && end?.owner === p) out.push({ dir: [dr, dc], cells, end: values[end.kind], top });
+    if (cells.length > 0 && end?.owner === p) out.push({ dir: [dr, dc], cells, end: values[end.kind], endAt: [y, x], top });
   }
   return out;
 }
@@ -104,13 +106,32 @@ export const targetsOf = (lines: readonly Line[]): Cell[] => lines.flatMap((l) =
 const valuesOf = (b: Board, lines: readonly Line[], values: PieceValues) =>
   lines.flatMap((l) => l.cells.map((cell) => valueAt(b, cell, values)));
 
-/** ダメージ。何も返さなければ 0 */
-export function damageOf(b: Board, lines: readonly Line[], rules: RuleSet): number {
+/** 返した（取った）駒によるダメージ（端の駒の上乗せを除く）。何も返さなければ 0 */
+export function baseDamageOf(b: Board, lines: readonly Line[], rules: RuleSet): number {
   const vs = valuesOf(b, lines, rules.values);
   if (vs.length === 0) return 0;
   if (rules.damage === "sum") return vs.reduce((s, v) => s + v, 0);
   return Math.max(...vs) + Math.floor(vs.length / 4);
 }
+
+/**
+ * 端の駒の上乗せに使う駒のマス（端の駒の力が「攻撃に上乗せ」のときだけ）。
+ * 返した（取った）列ごとに反対端の自分の駒。列は方向ごとに 1 本なので同じ駒が 2 回入ることはない
+ */
+export const anchorsOf = (lines: readonly Line[], rules: RuleSet): Cell[] =>
+  rules.anchor === "attack" ? lines.map((l) => l.endAt) : [];
+
+/** 端の駒の上乗せ（列ごとの反対端の自分の駒の数字の合計）。なしなら 0 */
+export function anchorBonusOf(lines: readonly Line[], rules: RuleSet): number {
+  if (rules.anchor !== "attack") return 0;
+  let n = 0;
+  for (const l of lines) n += l.end;
+  return n;
+}
+
+/** ダメージ（返した駒の分 ＋ 端の駒の上乗せ）。何も返さなければ 0 */
+export const damageOf = (b: Board, lines: readonly Line[], rules: RuleSet): number =>
+  baseDamageOf(b, lines, rules) + anchorBonusOf(lines, rules);
 
 /** 回復。挟んだ両端（置いた駒と反対端の自駒）から方向ごとに求め、最大の 1 方向分 */
 export function healOf(lines: readonly Line[], placed: number, rules: RuleSet): number {
