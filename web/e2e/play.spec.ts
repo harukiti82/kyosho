@@ -3,7 +3,7 @@
 
 import { expect, test, type Page } from "@playwright/test";
 import { cellName } from "../src/engine/board";
-import { createGame, legalCells, playableKinds, playMove, targetsAt, threatenedPieces, type GameState } from "../src/engine/game";
+import { createGame, legalCells, playableKinds, playMove, previewMove, targetsAt, threatenedPieces, type GameState } from "../src/engine/game";
 import { defaultRules, kindsByValue, KIND_ORDER, PIECES, PRESETS, presetById, type PieceKind, type RuleSet } from "../src/engine/rules";
 import { encodeRules } from "../src/ui/query";
 import { ruleLines, sentenceText } from "../src/ui/ruletext";
@@ -197,11 +197,15 @@ test.describe("PC 幅", () => {
       expect(open.length).toBe(r.action === "flip" ? (r.dirs === "piece" ? 2 : 4) : 60);
       await expect(page.locator(".cell.open")).toHaveCount(open.length);
       await expect(page.locator(".cell.can-take")).toHaveCount(open.filter(([y, x]) => targetsAt(g0, y, x, first).length > 0).length);
-      const verbRe = r.action === "flip" ? /を返す → 1 ダメージ/ : /を取る → 1 ダメージ/;
+      // 歩1 を 1 枚返す（取る）ので 1 ダメージ。端の駒の力が「攻撃に上乗せ」なら端の歩1 を足して 2
+      const [fy, fx] = open.find(([y, x]) => targetsAt(g0, y, x, first).length > 0)!;
+      const dmg = previewMove(g0, fy, fx, first)!.damage;
+      expect(dmg).toBe(r.anchor === "attack" ? 2 : 1);
+      const verbRe = new RegExp(`を${r.action === "flip" ? "返す" : "取る"} → ${dmg} ダメージ`);
       await page.locator(".cell.can-take").first().hover();
       await expect(page.locator("#preview .preview-main")).toHaveText(verbRe);
       await expect(page.locator(".cell.will-take")).toHaveCount(1);
-      await expect(page.locator(".dmg-badge")).toHaveText("1");
+      await expect(page.locator(".dmg-badge")).toHaveText(String(dmg));
       if (r.heal === "avg") {
         // 歩1 と端の歩1 の平均 = 1 回復
         await expect(page.locator(".heal-badge")).toHaveText("+1");

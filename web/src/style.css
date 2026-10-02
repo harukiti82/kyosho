@@ -12,6 +12,8 @@
   --ink-muted: #5c6b4d;
   --danger: #a8432a;
   --heal: #3f7a3a;
+  /* 端の駒の力: ダメージに上乗せする端の自分の駒（赤＝返す駒・黄＝警告・金＝王と区別する青） */
+  --anchor: #2f5ea8;
   --glass-bg: rgba(255, 255, 255, 0.55);
   --glass-bg-hi: rgba(255, 255, 255, 0.72);
   --glass-border: rgba(255, 255, 255, 0.7);
@@ -599,6 +601,32 @@ button {
     transform: scale(0.8);
   }
 }
+/* 予測: ダメージに上乗せする端の自分の駒（青枠と左下の「+数字」） */
+.cell.anchor {
+  background: #8fa9b4;
+  box-shadow: inset 0 0 0 3px var(--anchor);
+}
+.cell.anchor .stone {
+  outline: 3px solid var(--anchor);
+  outline-offset: 1px;
+}
+/* 左下（石の数字は右下にあるので隠さない） */
+.anchor-badge {
+  position: absolute;
+  z-index: 2;
+  left: -4%;
+  bottom: -4%;
+  min-width: 40%;
+  padding: 0 0.2em;
+  border-radius: 999px;
+  background: var(--anchor);
+  color: #fff;
+  font-size: 3.8cqi;
+  font-weight: 800;
+  line-height: 1.35;
+  box-shadow: 0 0 0 2px #fff;
+  pointer-events: none;
+}
 /* 予測: 置いたら取れるダメージ */
 .dmg-badge {
   position: absolute;
@@ -737,26 +765,51 @@ button {
   white-space: nowrap;
   box-shadow: 0 0 0 2px #fff, 0 6px 16px -4px rgba(31, 27, 20, 0.5);
   pointer-events: none;
-  transform: translate(-50%, -50%);
+  transform: translate(var(--pop-x, -50%), -50%);
   animation: king-pop 1.6s ease-out forwards;
 }
 @keyframes king-pop {
   0% {
-    transform: translate(-50%, -50%) scale(0.4);
+    transform: translate(var(--pop-x, -50%), -50%) scale(0.4);
     opacity: 0;
   }
   15% {
-    transform: translate(-50%, -50%) scale(1.25);
+    transform: translate(var(--pop-x, -50%), -50%) scale(1.25);
     opacity: 1;
   }
   80% {
-    transform: translate(-50%, -110%) scale(1);
+    transform: translate(var(--pop-x, -50%), -110%) scale(1);
     opacity: 1;
   }
   100% {
-    transform: translate(-50%, -130%) scale(1);
+    transform: translate(var(--pop-x, -50%), -130%) scale(1);
     opacity: 0;
   }
+}
+/* 着手の直後: 上乗せに使った端の駒の数字 */
+.anchor-pop {
+  position: absolute;
+  z-index: 3;
+  left: 50%;
+  bottom: 60%;
+  padding: 0.05em 0.45em;
+  border-radius: 999px;
+  background: var(--anchor);
+  color: #fff;
+  font-size: max(0.75rem, 3.2cqi);
+  font-weight: 800;
+  white-space: nowrap;
+  pointer-events: none;
+  animation: pop 1.6s ease-out forwards;
+}
+/* 盤の左右の端の列では、着手の演出を盤の内側に寄せる（画面の横にはみ出さない） */
+.cell > .edge-l {
+  --pop-x: 0%;
+  left: 0;
+}
+.cell > .edge-r {
+  --pop-x: -100%;
+  left: 100%;
 }
 /* 取った直後のダメージ数 */
 .dmg-pop {
@@ -777,19 +830,19 @@ button {
 @keyframes pop {
   0% {
     opacity: 0;
-    transform: translate(-50%, 40%) scale(0.6);
+    transform: translate(var(--pop-x, -50%), 40%) scale(0.6);
   }
   15% {
     opacity: 1;
-    transform: translate(-50%, 0) scale(1.15);
+    transform: translate(var(--pop-x, -50%), 0) scale(1.15);
   }
   75% {
     opacity: 1;
-    transform: translate(-50%, -20%) scale(1);
+    transform: translate(var(--pop-x, -50%), -20%) scale(1);
   }
   100% {
     opacity: 0;
-    transform: translate(-50%, -60%) scale(1);
+    transform: translate(var(--pop-x, -50%), -60%) scale(1);
   }
 }
 /* 取った駒が持ち駒へ飛んでいく（body 直下に固定配置） */
@@ -851,6 +904,16 @@ button {
 }
 .preview-main .heal {
   color: var(--heal);
+}
+/* 予測: ダメージの内訳（返した駒 ＋ 端の駒） */
+.breakdown {
+  margin: 0.3rem 0 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.breakdown .anchor-part {
+  color: var(--anchor);
+  font-weight: 800;
 }
 .warn {
   margin: 0.4rem 0 0;
@@ -1389,6 +1452,15 @@ button {
   box-shadow: 0 0 0 2.5px var(--danger);
   vertical-align: -0.1em;
 }
+.key-anchor {
+  display: inline-block;
+  width: 0.95em;
+  height: 0.95em;
+  border-radius: 3px;
+  background: #fffdf6;
+  box-shadow: 0 0 0 2.5px var(--anchor);
+  vertical-align: -0.1em;
+}
 .legend {
   display: flex;
   flex-wrap: wrap;
@@ -1420,6 +1492,10 @@ button {
   .rules4-list.dense {
     font-size: 0.76rem;
     line-height: 1.32;
+  }
+  /* 7 行以上（拠点など）はさらに行間を詰める */
+  .rules4-list.denser {
+    line-height: 1.26;
   }
   .status {
     font-size: 0.85rem;

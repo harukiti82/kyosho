@@ -18,6 +18,7 @@ export function readSetup(page: Page): Promise<RuleSet> {
       gate: f.get("gate") === "1",
       dirs: f.get("dirs"),
       damage: f.get("damage"),
+      anchor: f.get("anchor"),
       heal: f.get("heal"),
       hp: [n("hp0"), n("hp1")],
       hand: Object.fromEntries(kinds.map((k) => [k, n(k)])),
