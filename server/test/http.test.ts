@@ -63,6 +63,17 @@ describe("不正なルール・本文", () => {
     expect(await res.json()).toMatchObject({ error: { code: "bad_rules" } });
   });
 
+  it("preset の ID でも作れる。知らない ID・rules との両方指定・どちらもなしは 400", async () => {
+    const res = await post(JSON.stringify({ preset: "anchor" }));
+    expect(res.status).toBe(201);
+    const { roomId } = await res.json<{ roomId: string }>();
+    const info: RoomInfoResponse = await (await call(`/rooms/${roomId}`)).json();
+    expect(info.rules).toEqual(presetById("anchor").rules);
+    for (const body of [{ preset: "nope" }, { preset: "__proto__" }, { preset: "v10", rules: base() }, {}]) {
+      expect((await post(JSON.stringify(body))).status).toBe(400);
+    }
+  });
+
   it("hostSeat が不正なら 400", async () => {
     const res = await post(JSON.stringify({ rules: base(), hostSeat: "middle" }));
     expect(res.status).toBe(400);

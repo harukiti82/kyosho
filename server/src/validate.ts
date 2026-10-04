@@ -1,7 +1,7 @@
 // 外部入力（POST /rooms の本文・WebSocket のメッセージ）の検証。不正なものは例外を投げずに null / エラーを返す。
 
 import { SIZE } from "../../web/src/engine/board";
-import { PIECES, sameRules, type PieceKind, type RuleSet } from "../../web/src/engine/rules";
+import { cloneRules, PIECES, PRESETS, sameRules, type PieceKind, type RuleSet } from "../../web/src/engine/rules";
 import type { ClientMessage, HostSeat, WsErrorCode } from "../../web/src/net/protocol";
 import { MAX_MESSAGE_BYTES, TOKEN_PATTERN } from "../../web/src/net/protocol";
 import { decodeRules, encodeRules } from "../../web/src/ui/query";
@@ -26,7 +26,10 @@ export function parseRules(x: unknown): RuleSet | null {
 
 export function parseCreate(x: unknown): { rules: RuleSet; hostSeat: HostSeat } | null {
   if (!isObject(x)) return null;
-  const rules = parseRules(x.rules);
+  // rules と preset はどちらか一方
+  if ((x.rules === undefined) === (x.preset === undefined)) return null;
+  const preset = PRESETS.find((p) => p.id === x.preset);
+  const rules = x.rules !== undefined ? parseRules(x.rules) : preset ? cloneRules(preset.rules) : null;
   if (!rules) return null;
   const seat = x.hostSeat ?? "random";
   if (seat !== "first" && seat !== "second" && seat !== "random") return null;

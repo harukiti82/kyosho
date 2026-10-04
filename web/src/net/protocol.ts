@@ -2,7 +2,7 @@
 // 説明は .agent/online-protocol.md。ここには型と定数だけを置き、実行時の処理は書かない（サーバー・画面のどちらからも import する）。
 
 import type { PlayerView } from "../engine/game";
-import type { PieceKind, Player, RuleSet } from "../engine/rules";
+import type { PieceKind, Player, PresetId, RuleSet } from "../engine/rules";
 
 /** 部屋 ID（ランダム 16 バイトの base64url、22 文字）。招待 URL に載せる */
 export const ROOM_ID_PATTERN = /^[A-Za-z0-9_-]{22}$/;
@@ -28,12 +28,18 @@ export const PONG_TEXT = '{"type":"pong"}';
 /** 作成者の席。first: 先手 / second: 後手 / random: 部屋を作るときにランダム（既定） */
 export type HostSeat = "first" | "second" | "random";
 
-/** POST /rooms の本文 */
-export interface CreateRoomRequest {
-  /** 対局のルール（プリセットなら presetById(id).rules）。範囲・型は ui/query.ts の decodeRules と同じ基準で検証する */
-  rules: RuleSet;
-  hostSeat?: HostSeat;
-}
+/** POST /rooms の本文。rules と preset はどちらか一方 */
+export type CreateRoomRequest =
+  | {
+      /** 対局のルール。範囲・型は ui/query.ts の decodeRules と同じ基準で検証する */
+      rules: RuleSet;
+      hostSeat?: HostSeat;
+    }
+  | {
+      /** プリセットの ID（rules.ts の PRESETS） */
+      preset: PresetId;
+      hostSeat?: HostSeat;
+    };
 
 /** POST /rooms の応答（201） */
 export interface CreateRoomResponse {

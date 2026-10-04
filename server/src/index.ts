@@ -61,7 +61,7 @@ async function createRoom(req: Request, env: Env): Promise<Response> {
     return httpError(400, "bad_request", "本文が JSON として読めません");
   }
   const parsed = parseCreate(body);
-  if (!parsed) return httpError(400, "bad_rules", "rules（RuleSet）か hostSeat が不正です");
+  if (!parsed) return httpError(400, "bad_rules", "rules（RuleSet）・preset・hostSeat のどれかが不正です");
   // 部屋 ID は 128 ビットの乱数なので衝突はまず起きないが、起きたら作り直す
   for (let i = 0; i < 3; i++) {
     const roomId = randomId(16);
