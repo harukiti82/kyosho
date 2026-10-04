@@ -185,8 +185,8 @@ export class Room extends DurableObject<Env> {
       room.tokens[player] = mine;
     }
     // 同じ席の古い接続（再読み込み前のタブなど）は閉じる
-    for (const other of this.ctx.getWebSockets()) {
-      if (other !== ws && attachmentOf(other).player === player) closeQuietly(other, CLOSE.replaced, "replaced");
+    for (const old of this.ctx.getWebSockets()) {
+      if (old !== ws && attachmentOf(old).player === player) closeQuietly(old, CLOSE.replaced, "replaced");
     }
     ws.serializeAttachment({ ...att, player } satisfies Attachment);
     // 新しい参加なら席を保存する。復帰でも放置の期限は延ばす
