@@ -1,0 +1,21 @@
+{
+  "name": "kyosho-server",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "types": "wrangler types",
+    "pretypecheck": "wrangler types",
+    "typecheck": "tsc --noEmit",
+    "pretest": "wrangler types",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.22.0",
+    "typescript": "^7.0.2",
+    "vitest": "~4.1.11",
+    "wrangler": "^4.147.0"
+  }
+}

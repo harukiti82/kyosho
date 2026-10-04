@@ -1,6 +1,6 @@
 # 挟将 — エージェント向けガイド
 
-オセロの盤で、挟んだ相手の駒の数字がダメージになる二人対戦ゲーム。ルール設計（`RULES.md`）、Python のバランス検証（`sim/`）、ルールを組み合わせて遊び比べるブラウザの試遊版（`web/`）からなる。
+オセロの盤で、挟んだ相手の駒の数字がダメージになる二人対戦ゲーム。ルール設計（`RULES.md`）、Python のバランス検証（`sim/`）、ルールを組み合わせて遊び比べるブラウザの試遊版（`web/`）、オンライン対戦のサーバー（`server/`）からなる。
 
 > ルールの正は `RULES.md`（v1.0「取った駒が持ち駒になる」）。解釈が曖昧なときは `sim/capture.py` の実装を正とする。
 > Web 試遊版の設定項目とプリセット（隠し王・方向駒・拠点を含む）は `RULES.md` の「Web 試遊版」節。プリセット v0.4 / v1.0 / v2 案は `sim/kyosho.py` / `sim/capture.py` / `sim/gate.py` と全手一致させる。
@@ -21,6 +21,7 @@
 |---|---|---|
 | シミュレーター | Python 3.12 | 標準ライブラリのみ |
 | ブラウザ版 | TypeScript 7 + Vite 8 | UI フレームワークなし（DOM API 直書き） |
+| オンライン対戦サーバー | Cloudflare Workers + Durable Objects（wrangler 4） | `web/src/engine` を import して手を検証する権威サーバー。テストは vitest 4 + `@cloudflare/vitest-pool-workers` |
 | テスト | Vitest 5 / Playwright（chromium ヘッドレス） | |
 
 ## ディレクトリ規約
@@ -28,6 +29,7 @@
 ```
 kyosho/
 ├── .github/workflows/pages.yml ← PR でテスト+ビルド、main への push で GitHub Pages にデプロイ
+├── .github/workflows/server.yml ← server/ の型チェックとテスト（デプロイはしない）
 ├── RULES.md          ← ルール本体（v1.0）・検証結果・改訂履歴（ルール変更はここが起点）
 ├── docs/RULES-v0.4.md ← 旧ルール v0.4 の本文（履歴）
 ├── sim/              ← Python のルールエンジンとバランス検証スクリプト
@@ -39,10 +41,12 @@ kyosho/
 └── web/
     ├── src/engine/   ← ルールエンジン（DOM に依存しない。RuleSet で全組み合わせを扱う。ここだけでゲームが完結する）
     ├── src/ui/       ← 画面の表示と入力（app.ts: 対局画面 / setup.ts: 設定画面 / query.ts: URL ⇔ 設定 / ruletext.ts: ルール文 / diricon.ts: 方向のアイコン / impact.ts: ダメージの段階と成績（DOM なし） / outcome.ts: 決着の演出の中身（DOM なし） / fx.ts: 段階・決着の演出 / sound.ts: 効果音）
+    ├── src/net/      ← オンライン対戦の通信仕様の型と定数（protocol.ts。画面とサーバーが共通で import する）
     ├── test/         ← Vitest（engine・URL・ルール文のユニットテスト + Python 棋譜の再生テスト）
     ├── e2e/          ← Playwright（ヘッドレスで実際に終局まで打つ。king.spec.ts / direction.spec.ts / anchor.spec.ts は種付き乱数の鏡の対局で隠し王・方向駒・拠点を確かめる。impact.spec.ts は段階の演出・効果音・成績、result.spec.ts は決着の演出）
     ├── scripts/      ← バランス確認（balance.ts を Vite の runnerImport で Node 実行。`npm run balance`）
     └── screenshots/  ← e2e が保存するスクリーンショット
+server/               ← オンライン対戦サーバー（Worker の入口 src/index.ts、1 部屋 = 1 Durable Object の src/room.ts、入力検証 src/validate.ts、Workers 上のテスト test/、2 クライアントで 1 局を通す scripts/play.mjs）
 ```
 
 - `src/engine/` に DOM・タイマー・乱数の直接参照を入れない（CPU の乱数は引数で受ける）
@@ -54,6 +58,7 @@ kyosho/
 - 動的な文字列は `textContent` / `ui/dom.ts` の `h()` で入れる。`innerHTML` は使わない
 - 演出の段階は `ui/impact.ts` の `tierOf`（閾値は `TIER_THRESHOLDS` の 1 か所。合計 ÷ 受けた側の `RuleSet.hp`、王を返した手は特大）。成績は `statsOf` で棋譜から集計する。演出は transform / opacity と画面固定の `#fx` 層だけで、レイアウトを動かさない。大・特大の演出中は `App.fxLock` で入力と CPU を待たせる（`fx.ts` の `fxTiming`、最大 1.5 秒）
 - 終局の流れは「最後の一手の演出 → 決着の演出（`App.playFinale`、`fx.ts` の `finaleMs`、最大 2.5 秒・タップ／クリック／Enter で飛ばす）→ 終局画面」。勝ち・負け・引き分け・副題・接戦の励まし（`CLOSE_PERCENT`）は `ui/outcome.ts` の `outcomeOf`。2 人対戦は敗北にしない
+- サーバーは engine をコピーせず `../web/src/engine` を import する。各プレイヤーには `viewFor(state, そのプレイヤー)` だけを送り、`GameState`（`kings` を含む）をそのまま送らない（`server/test/king.test.ts` が検査する）。通信の型を変えたら `web/src/net/protocol.ts` と `.agent/online-protocol.md` を揃える
 - `src/ui/` で `Math.random` を使わない（CPU の乱数と共有で、e2e は Math.random を種付きにして CPU の手を再現する）。効果音の AudioContext は最初のユーザー操作の後にだけ作る
 
 ## コマンド
@@ -69,6 +74,7 @@ kyosho/
 | 棋譜の再生成 | `python3 sim/export_replays.py`（v0.4 / v1.0 / v2 案、約 30 秒） |
 | 公開 | main への merge で自動デプロイ → https://harukiti82.github.io/kyosho/ （workflow は main 直 push せず PR 経由で変更） |
 | シミュレーター | `RULES.md` のシミュレーター節を参照 |
+| サーバー | `cd server && npm run dev`（:8787）/ `npm run typecheck` / `npm test` / `node scripts/play.mjs http://localhost:8787 king`（2 クライアントで 1 局）。デプロイは `npm run deploy`（Cloudflare へのログインが必要） |
 
 ## ルール・設定項目を変えるとき
 
@@ -80,6 +86,7 @@ kyosho/
 ## AI 向け詳細仕様
 
 - ルール: `RULES.md`（必要時に Read）
+- オンライン対戦の通信仕様と設計（エンドポイント・メッセージ・流れ・エラー・再接続）: `.agent/online-protocol.md`（必要時に Read）
 - エンジンの公開関数: `web/src/engine/game.ts`（`createGame(rules)` / `playMove(state, r, c, kind, { king })` / `legalCells` / `playableKinds` / `previewMove`（`base` / `anchors` で内訳） / `threatenedPieces` / `canMove` / `judge` / 隠し王の `kingInfo` / `kingCandidates` / `viewFor`）と `cpu.ts`（`chooseLookahead(viewFor(state, turn))`）。返せる列は `board.ts` の `rawLines`（8 方向。反対端の自駒 `end` / `endAt` を持つ）→ `pieceLines`（駒の方向 `dirs` と強さ制限で絞る）。設定の型とプリセットは `rules.ts`（`RuleSet`（`dirs` / `values` / `anchor` を含む） / `PRESETS` / `NO_KING` / `KIND_ORDER` / `kindsByValue`）
 
 ### 作業履歴メモ（毎ターン参照・更新）
