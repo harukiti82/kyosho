@@ -63,6 +63,17 @@ npm run dev        # 表示された URL（既定 http://localhost:5173）を開
 整合テストの棋譜（`web/test/fixtures/replays.json`）は `python3 sim/export_replays.py` で再生成できる（`sim/kyosho.py`・`sim/capture.py`・`sim/gate.py` の 3 本を、それぞれ対応するプリセットの設定で再生する）。
 シミュレーターのルールを変えたら TypeScript 側も直し、棋譜を作り直してから `npm test` を通す。
 
+## オンライン対戦サーバー（`server/`）
+
+Cloudflare Workers + Durable Objects の対戦サーバー（招待リンク方式、1 部屋 = 1 Durable Object）。手は `web/src/engine` で検証し、相手の隠し王は送らない。画面側のオンラインモードはまだない。通信仕様と設計は `.agent/online-protocol.md`。
+
+| 用途 | コマンド（`server/` で実行） |
+|---|---|
+| ローカルで起動（http://localhost:8787） | `npm run dev` |
+| 2 クライアントで 1 局を通す | `node scripts/play.mjs http://localhost:8787 king` |
+| 型チェック / テスト | `npm run typecheck` / `npm test` |
+| デプロイ（Cloudflare へのログインが必要） | `npx wrangler login` → `npm run deploy` |
+
 ## バランス検証（`sim/`）
 
 Python 3 のシミュレーター（標準ライブラリのみ）。v1.0 は `sim/capture.py` / `sim/check_capture.py`、v2 案（強い駒は返せない）は `sim/gate.py`。

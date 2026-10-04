@@ -25,3 +25,8 @@
 - 端の駒の力（攻撃に上乗せ）を追加: 返した列ごとに反対端の自駒の数字をダメージに足す（`damageOf` に集約、CPU・警告も上乗せ込み）、予測の内訳・端の駒の青枠・棋譜の内訳、URL `anc=atk`、プリセット「拠点」（体力 125・130、4000 局で先手 47.3%・平均 31.3 手）。既存 6 プリセットは旧エンジンと 1200 局 41,462 手で全手一致
 - 手応えの演出を追加: ダメージ ÷ 受けた側の体力上限で 4 段階（ナイス！／会心！／痛恨！・王を討った！）、揺れ・粒・発光・特大の溜め、CPU からの被弾は赤、Web Audio の効果音と消音、終局の成績。e2e `impact.spec.ts`
 - 決着の演出を追加: 終局画面の前に勝利（紙吹雪・暖色の光・ファンファーレ）／敗北（彩度を落として沈む・低い音・接戦の励まし・「再戦」の強調）／引き分け、2 人対戦は勝った側の駒色。タップ／クリック／Enter で飛ばす。`ui/outcome.ts`・e2e `result.spec.ts`
+
+## 2026-10-04
+
+- オンライン対戦サーバーを追加: `server/`（Workers + Durable Objects、1 部屋 = 1 DO、engine を import して手を検証、各自に `viewFor` だけを配信、トークンで再接続、alarm で放置部屋を削除、Origin 許可リスト）。通信仕様 `web/src/net/protocol.ts`・`.agent/online-protocol.md`
+- サーバーのテスト 46 件（vitest-pool-workers、隠し王の秘匿・退避からの復帰を含む）、CI `.github/workflows/server.yml`、`wrangler dev` に 2 クライアントで 1 局を通す `server/scripts/play.mjs`
