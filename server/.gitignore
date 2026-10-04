@@ -1,0 +1,4 @@
+# wrangler types が生成する（npm run typecheck / test の前に自動生成）
+worker-configuration.d.ts
+.wrangler/
+.dev.vars
