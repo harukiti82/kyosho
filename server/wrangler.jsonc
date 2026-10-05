@@ -1,10 +1,20 @@
-// 挟将のオンライン対戦サーバー（Cloudflare Workers + Durable Objects）。設計と通信仕様は ../.agent/online-protocol.md
+// 挟将の Worker: 画面（web/ のビルド成果物）とオンライン対戦サーバーを同じオリジンで配信する。
+// 画面はルート、API と WebSocket は /api の下。設計と通信仕様は ../.agent/online-protocol.md
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "kyosho",
   "main": "src/index.ts",
   // vitest-pool-workers 同梱の workerd が対応する日付以下にする
   "compatibility_date": "2026-08-01",
+  "assets": {
+    // web の vite build の出力。npm run deploy / dev が先にビルドする
+    "directory": "../web/dist",
+    // /api だけ Worker を先に通す（protocol.ts の API_PATH と揃える）。
+    // それ以外は静的アセットが直接返し、Worker も Durable Object も起こさない
+    "run_worker_first": ["/api", "/api/*"],
+    // アセットにないパスは Worker に落ち、Worker が 404（テキスト）を返す
+    "not_found_handling": "none"
+  },
   "durable_objects": {
     // 1 部屋 = 1 Durable Object（部屋 ID から idFromName で引く）
     "bindings": [{ "name": "ROOMS", "class_name": "Room" }]
@@ -12,7 +22,15 @@
   // 無料プランで使える SQLite 版の Durable Object
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Room"] }],
   "vars": {
-    // 接続を許可する画面のオリジン（カンマ区切り。末尾 :* は任意のポート）
-    "ALLOWED_ORIGINS": "https://harukiti82.github.io,http://localhost:*,http://127.0.0.1:*"
-  }
+    // 同一オリジン（独自ドメイン・workers.dev）からの接続は常に許可する。
+    // ここには、それに加えて許可するオリジンをカンマ区切りで書く（末尾 :* は任意のポート）。本番は公開ドメインだけ
+    // （同一オリジンの判定でも通るが、公開先として明示する）。ローカル開発の localhost は npm run dev が --var で足す
+    "ALLOWED_ORIGINS": "https://kyosho.rukiharukichi.com"
+  },
+  // 独自ドメイン（Custom Domain）: https://kyosho.rukiharukichi.com で配信する。次の本番デプロイで反映され、
+  // Cloudflare が DNS レコードと証明書を自動で作る（ゾーン rukiharukichi.com が同じアカウントにあること）。
+  // ルートの rukiharukichi.com はほかの用途に空けておくので、ここに足さない
+  "routes": [{ "pattern": "kyosho.rukiharukichi.com", "custom_domain": true }],
+  // workers.dev の URL（https://kyosho.<アカウント>.workers.dev）でも配信する
+  "workers_dev": true
 }

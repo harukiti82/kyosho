@@ -4,27 +4,31 @@
 
 ## 全体像
 
-- 画面は今までどおり GitHub Pages（https://harukiti82.github.io/kyosho/）の静的サイト。サーバーは別オリジンの Cloudflare Worker（`server/`）
+- 1 つの Cloudflare Worker（`server/`、名前 `kyosho`）が、画面（`web/dist` の静的アセット）と API・WebSocket（`/api` の下）を**同じオリジン**で配信する。公開先は https://kyosho.rukiharukichi.com （Custom Domain。`kyosho.<アカウント>.workers.dev` でも同じ）。ルートの `rukiharukichi.com` は使わない
+- `/api` と `/api/*` だけ Worker を先に通す（`wrangler.jsonc` の `assets.run_worker_first`）。それ以外は静的アセットが直接返し、Worker も Durable Object も起こさない。アセットにないパスだけ Worker に落ちて 404（テキスト）
+- GitHub Pages（https://harukiti82.github.io/kyosho/）の公開版は移行が済むまで残すが、オンライン対戦はつながらない（`/api` がない・別オリジンは拒否）。オンラインモードの画面は、`/api/health` に届かなければオンラインの入口を出さない、などで Pages 版でも壊れないようにする
 - 招待リンク方式。ログインなし。1 部屋 = 1 Durable Object（`server/src/room.ts`）
 - 権威サーバー: クライアントは手（r, c, kind, king?）だけを送る。サーバーが `web/src/engine` の `playMove` で検証して適用し、各プレイヤーに `viewFor(state, そのプレイヤー)` を送る。engine はコピーせず import している（ルールを変えるとサーバーにも効く）
 - 隠し王の真の状態（`GameState.kings`）は WebSocket に流さない。届く `view` は `PlayerView`（自分の王だけ `myKing.cell` で見える）
 
 ## エンドポイント
 
-ベース URL は Worker の URL（デプロイ後に決まる。例: `https://kyosho.<アカウント>.workers.dev`。ローカルは `http://localhost:8787`）。画面側は設定値として持つ（ハードコードしない）。
+画面と同じオリジンの `/api` の下（`protocol.ts` の `API_PATH`）。画面からは絶対パスで呼ぶ（HTTP は ``fetch(`${API_PATH}/rooms`)``、WebSocket は ``new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}${API_PATH}/rooms/${roomId}/ws`)``）。サーバーの URL を設定値として持つ必要はない。末尾のスラッシュはあってもなくても同じ。
 
 | メソッドとパス | 用途 | 成功 | 失敗 |
 |---|---|---|---|
-| `POST /rooms` | 部屋を作る。本文 `CreateRoomRequest`（`Content-Type: application/json`） | 201 `CreateRoomResponse` | 400 `bad_request`（JSON でない）/ 400 `bad_rules` / 413 `too_large`（8 KB 超） |
-| `GET /rooms/:id` | 参加前にルール・状態を見る | 200 `RoomInfoResponse` | 404 `not_found` |
-| `GET /rooms/:id/ws` | WebSocket（`wss://…/rooms/:id/ws`） | 101 | 426 `upgrade_required`（WebSocket 以外） |
-| `GET /health` | 死活確認 | 200 `{"ok":true}` | |
+| `POST /api/rooms` | 部屋を作る。本文 `CreateRoomRequest`（`Content-Type: application/json`） | 201 `CreateRoomResponse` | 400 `bad_request`（JSON でない）/ 400 `bad_rules` / 413 `too_large`（8 KB 超） |
+| `GET /api/rooms/:id` | 参加前にルール・状態を見る | 200 `RoomInfoResponse` | 404 `not_found` |
+| `GET /api/rooms/:id/ws` | WebSocket（`wss://<画面のホスト>/api/rooms/:id/ws`） | 101 | 426 `upgrade_required`（WebSocket 以外） |
+| `GET /api/health` | 死活確認 | 200 `{"ok":true}` | |
+| `/api` の下のそれ以外 | | | 404 `not_found`（JSON） |
 
 - HTTP のエラー本文は `HttpErrorBody`（`{ "error": { "code", "message" } }`）。`message` は日本語の説明で、画面の分岐には `code` を使う
 - 存在しない部屋に WebSocket でつないだ場合も 101 で受けてから `error`（`room_not_found`）を送って閉じる（ブラウザの WebSocket は HTTP の応答コードを読めないため）
-- 許可していない Origin は 403 `forbidden_origin`（WebSocket も）。許可は `server/wrangler.jsonc` の `ALLOWED_ORIGINS`（既定: `https://harukiti82.github.io`、`http://localhost:*`、`http://127.0.0.1:*`）。Origin を付けないクライアント（スクリプト・curl）は通す
+- Origin はリクエスト自身のオリジン（同一オリジン）を常に許可し、それ以外は `server/wrangler.jsonc` の `ALLOWED_ORIGINS`（本番は `https://kyosho.rukiharukichi.com` だけ。公開先を明示しているが、同一オリジンの判定でも通る）にあるものだけ。許可していない Origin は 403 `forbidden_origin`（WebSocket も）。Origin を付けないクライアント（スクリプト・curl）は通す。ローカルの `npm run dev` は `--var` でこれを `http://localhost:*` / `http://127.0.0.1:*` に置き換える（Vite の :5173 からプロキシ経由で来るため）
+- CORS のヘッダーは返さない（同一オリジンなので要らない）。OPTIONS は 405
 
-### POST /rooms の本文
+### POST /api/rooms の本文
 
 ```jsonc
 { "preset": "king", "hostSeat": "random" }         // プリセットで作る
@@ -95,12 +99,12 @@
 
 ```
 作成者                         サーバー                         参加者
-POST /rooms {preset} ───────▶ 201 {roomId, token, you}
+POST /api/rooms {preset} ───▶ 201 {roomId, token, you}
 （招待 URL に roomId を載せて相手に送る。token は作成者の端末にだけ保存）
-WS /rooms/:id/ws
+WS /api/rooms/:id/ws
 {type:join, token} ─────────▶ joined{you} → state{phase:waiting}
-                                                    ◀──── GET /rooms/:id（ルールの確認。open=true）
-                                                    ◀──── WS /rooms/:id/ws, {type:join}
+                                                    ◀──── GET /api/rooms/:id（ルールの確認。open=true）
+                                                    ◀──── WS /api/rooms/:id/ws, {type:join}
                               joined{you, token} ────────▶（token を保存）
 state{phase:playing} ◀─────── state{phase:playing} ──────▶
 {type:move,…}（手番の人）───▶ playMove で検証
@@ -109,9 +113,9 @@ state（相手の手も入った view）◀─ ─ ─ ─ ─ ─ ─ ─ ─ �
 state{phase:finished, view.result} ◀────────────────────────▶ 両者に届く
 ```
 
-1. 作成者: `POST /rooms` → `roomId` と `token` を受け取り、`token` を保存する。招待 URL（例: `https://harukiti82.github.io/kyosho/?room=<roomId>`）を作って相手に送る
+1. 作成者: `POST /api/rooms` → `roomId` と `token` を受け取り、`token` を保存する。招待 URL（例: `https://kyosho.rukiharukichi.com/?room=<roomId>`。`location.origin` から作る）を作って相手に送る
 2. 作成者: WebSocket をつなぎ、`{type:"join", token}`。`joined` → `state`（`phase: "waiting"`、`opponent.joined: false`）
-3. 参加者: 招待 URL を開いたら、`GET /rooms/:id` でルールを表示（`open: false` なら満員、404 なら部屋がない）。参加するなら WebSocket をつなぎ `{type:"join"}`。`joined` の `token` を保存する
+3. 参加者: 招待 URL を開いたら、`GET /api/rooms/:id` でルールを表示（`open: false` なら満員、404 なら部屋がない）。参加するなら WebSocket をつなぎ `{type:"join"}`。`joined` の `token` を保存する
 4. 両者に `state`（`phase: "playing"`）が届く。手番の人（`view.turn === you`）が `move` を送り、両者に新しい `state` が届く
 5. 終局すると、両者に `phase: "finished"` と `view.result`（`winner` / `reason` / `byDiscs`）入りの `state` が届く。以後の `move` は `game_over`
 
@@ -143,36 +147,43 @@ state{phase:finished, view.result} ◀──────────────
 - **手の直列化**: 手の処理は storage の書き込みしか待たないので、Durable Object の入力ゲートで 1 手ずつ処理される（同時に届いた手が混ざらない）
 - **後片付け**: 参加・手・復帰のたびに alarm を張り直す（待機中・対局中は 24 時間後 `ROOM_TTL_MS`、終局後は 1 時間後 `FINISHED_TTL_MS`）。alarm が発火した = それだけ放置されたので、接続を 4010 で閉じて storage を消す。ping では延びない
 - **不正な入力**: 本文は 8 KB、WebSocket は 1024 バイトまで。JSON・形・範囲を検証してから engine に渡す（engine の例外は `illegal_move` に変える）。Worker の想定外の例外は 500 `internal`。join せずに待つ接続は 1 部屋 4 つまで（超えたら古いものから閉じる）
-- **CORS**: 許可した Origin にだけ `Access-Control-Allow-Origin`（その Origin）を返す。プリフライト（OPTIONS）は 204
+- **Origin**: 画面と同じオリジンだけを受ける（CSRF・他サイトからの WebSocket 乗っ取りの対策）。CORS のヘッダーは返さない
+- **静的アセット**: `/api` の外は Workers の静的アセットが返す（無料・無制限で、Worker のリクエスト数にも数えない）。Worker の `fetch` は `/api` の外を受けたら Durable Object に触れずに 404 を返す
 
 ## ファイル
 
 | ファイル | 中身 |
 |---|---|
 | `web/src/net/protocol.ts` | 通信仕様の型と定数（画面・サーバー共通） |
-| `server/src/index.ts` | Worker: ルーティング・CORS / Origin・部屋の作成 |
+| `server/wrangler.jsonc` | Worker の設定: 静的アセット（`../web/dist`、`run_worker_first`）・Durable Object・`ALLOWED_ORIGINS`・独自ドメイン（`routes` の Custom Domain `kyosho.rukiharukichi.com`） |
+| `server/src/index.ts` | Worker: `/api` の下のルーティング・Origin・部屋の作成 |
 | `server/src/room.ts` | Durable Object `Room`: 参加・手の検証・配信・再接続・alarm |
 | `server/src/validate.ts` | 外部入力の検証（ルールは `ui/query.ts` の `encodeRules` / `decodeRules` を再利用） |
 | `server/test/` | Workers ランタイム上のテスト（`@cloudflare/vitest-pool-workers`） |
-| `server/scripts/play.mjs` | 動いているサーバーに 2 クライアントで 1 局を通すスクリプト |
+| `server/scripts/play.mjs` | 動いている Worker に 2 クライアントで 1 局を通すスクリプト（引数はサイトのオリジン。`/` の画面も確かめる） |
+| `web/vite.config.ts` | 開発時に Vite（:5173）が `/api` を wrangler dev（:8787）に渡すプロキシ |
+| `.github/workflows/deploy.yml` | main への push で Cloudflare にデプロイ（Secret が未設定なら飛ばす）。PR はテストと `--dry-run` |
 
 ## コマンド（`server/` で実行）
 
 | 用途 | コマンド |
 |---|---|
 | 依存のインストール | `npm ci` |
-| ローカルで起動（:8787） | `npm run dev` |
-| 2 クライアントで 1 局を通す | `node scripts/play.mjs http://localhost:8787 king` |
+| 本番と同じ構成でローカル起動（web をビルドしてから :8787 で画面と `/api`） | `npm run dev` |
+| 画面を直しながら開発（上を動かしたまま、別の端末で） | `cd ../web && npm run dev`（:5173、`/api` は :8787 へプロキシ） |
+| 2 クライアントで 1 局を通す | `node scripts/play.mjs http://localhost:8787 king`（Vite 経由なら `http://localhost:5173`） |
 | 型チェック（`wrangler types` で `worker-configuration.d.ts` を生成してから） | `npm run typecheck` |
 | テスト | `npm test` |
-| 本番デプロイ（Cloudflare へのログインが必要） | `npx wrangler login` → `npm run deploy` |
+| デプロイの確認（何も送らない） | `npm run deploy:check`（web のビルド → `wrangler deploy --dry-run`） |
+| 本番デプロイ（Cloudflare へのログインが必要） | `npx wrangler login` → `npm run deploy`（web のビルド → `wrangler deploy`） |
 
 - テストは vitest 4 で動かす（`@cloudflare/vitest-pool-workers` が vitest ^4.1 を要求するため。web は vitest 5 のまま）
 - npm 11.4 では `npm install` が `Cannot read properties of null (reading 'edgesOut')` で落ちることがある。新しい npm（`npx npm@11.21.0 install …`）で入れる。`npm ci` は問題ない
 
 ## デプロイと無料枠の注意
 
-- デプロイ後の Worker の URL を、画面側の設定（オンライン対戦のサーバー URL）に入れる。`ALLOWED_ORIGINS` に画面のオリジンが入っていることを確認する
+- 独自ドメイン: `server/wrangler.jsonc` の `routes` に `kyosho.rukiharukichi.com`（`custom_domain: true`）を設定済み。次の本番デプロイで DNS レコードと証明書ができる。手順は README の「独自ドメイン（kyosho.rukiharukichi.com）」。ドメインを変えるときは `routes` と `ALLOWED_ORIGINS` の 2 か所
+- CI（`deploy.yml`）の Secret: `CLOUDFLARE_API_TOKEN`（テンプレート「Edit Cloudflare Workers」、アカウントとゾーン `rukiharukichi.com` に絞る）、`CLOUDFLARE_ACCOUNT_ID`（任意）
 - Durable Object は SQLite 版（`new_sqlite_classes`）。Workers の無料プランで使える
 - 無料枠（2026 年時点の目安。最新は Cloudflare の料金表を確認）: Workers のリクエスト 10 万／日、Durable Object のリクエストと稼働時間・storage の行の書き込みにも日ごとの上限がある。1 局 = 手の数 ×（メッセージ 1 + storage 書き込み 2）程度なので、試遊の規模では収まる。WebSocket は Hibernation で待つので、つないだままでも待ち時間は課金されない
 - 本番のログに URL が残っても困る情報は入れていない（トークンは WebSocket の本文で送る）

@@ -14,9 +14,13 @@ import type {
 import type { Room } from "../src/room";
 
 const worker = (exports as unknown as { default: Fetcher }).default;
-const BASE = "https://kyosho.test";
+/** テストの Worker のオリジン（同一オリジンの Origin はこれ） */
+export const BASE = "https://kyosho.test";
 
-export const call = (path: string, init?: RequestInit) => worker.fetch(`${BASE}${path}`, init);
+/** サイトのパス（/ や /api/...）に Worker を直接呼ぶ。静的アセットの振り分け（run_worker_first）は通らない */
+export const site = (path: string, init?: RequestInit) => worker.fetch(`${BASE}${path}`, init);
+/** API のパス（/rooms など）。/api を前に付ける */
+export const call = (path: string, init?: RequestInit) => site(`/api${path}`, init);
 
 export async function createRoom(rules: RuleSet | PresetId = "v10", hostSeat?: HostSeat): Promise<CreateRoomResponse> {
   const body = { rules: typeof rules === "string" ? presetById(rules).rules : rules, hostSeat };

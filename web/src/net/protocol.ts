@@ -4,6 +4,12 @@
 import type { PlayerView } from "../engine/game";
 import type { PieceKind, Player, PresetId, RuleSet } from "../engine/rules";
 
+/**
+ * API と WebSocket のパスの接頭辞。画面と同じオリジンの Worker が /api の下だけを受け持ち、それ以外は静的アセット。
+ * 画面からは相対でなく絶対パス（`${API_PATH}/rooms`）で呼ぶ。変えたら server/wrangler.jsonc の run_worker_first も揃える
+ */
+export const API_PATH = "/api";
+
 /** 部屋 ID（ランダム 16 バイトの base64url、22 文字）。招待 URL に載せる */
 export const ROOM_ID_PATTERN = /^[A-Za-z0-9_-]{22}$/;
 /** 再接続のトークン（ランダム 32 バイトの base64url、43 文字）。部屋ごとに保存する */
@@ -11,7 +17,7 @@ export const TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 
 /** クライアントが送る 1 メッセージの上限（UTF-8 のバイト数）。超えると too_large */
 export const MAX_MESSAGE_BYTES = 1024;
-/** POST /rooms の本文の上限（バイト数）。超えると 413 too_large */
+/** POST /api/rooms の本文の上限（バイト数）。超えると 413 too_large */
 export const MAX_CREATE_BYTES = 8 * 1024;
 
 /** 最後の操作から部屋を消すまでの時間（待機中・対局中） */
@@ -28,7 +34,7 @@ export const PONG_TEXT = '{"type":"pong"}';
 /** 作成者の席。first: 先手 / second: 後手 / random: 部屋を作るときにランダム（既定） */
 export type HostSeat = "first" | "second" | "random";
 
-/** POST /rooms の本文。rules と preset はどちらか一方 */
+/** POST /api/rooms の本文。rules と preset はどちらか一方 */
 export type CreateRoomRequest =
   | {
       /** 対局のルール。範囲・型は ui/query.ts の decodeRules と同じ基準で検証する */
@@ -41,7 +47,7 @@ export type CreateRoomRequest =
       hostSeat?: HostSeat;
     };
 
-/** POST /rooms の応答（201） */
+/** POST /api/rooms の応答（201） */
 export interface CreateRoomResponse {
   roomId: string;
   /** 作成者のトークン。WebSocket の join に付けて送る */
@@ -53,7 +59,7 @@ export interface CreateRoomResponse {
 /** 待機中（相手の参加待ち）/ 対局中 / 終局 */
 export type RoomPhase = "waiting" | "playing" | "finished";
 
-/** GET /rooms/:id の応答（200）。招待された人が参加前にルールを確かめる用 */
+/** GET /api/rooms/:id の応答（200）。招待された人が参加前にルールを確かめる用 */
 export interface RoomInfoResponse {
   roomId: string;
   phase: RoomPhase;
@@ -73,7 +79,7 @@ export type HttpErrorCode =
   | "too_large" // 本文が MAX_CREATE_BYTES を超えた
   | "not_found" // 部屋（またはパス）がない
   | "method_not_allowed"
-  | "forbidden_origin" // 許可していない Origin
+  | "forbidden_origin" // 許可していない Origin（同一オリジンと ALLOWED_ORIGINS 以外）
   | "upgrade_required" // /ws に WebSocket 以外で来た
   | "internal";
 

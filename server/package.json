@@ -4,8 +4,10 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "wrangler dev",
-    "deploy": "wrangler deploy",
+    "build:web": "npm --prefix ../web run build",
+    "dev": "npm run build:web && wrangler dev --var \"ALLOWED_ORIGINS:http://localhost:*,http://127.0.0.1:*\"",
+    "deploy": "npm run build:web && wrangler deploy",
+    "deploy:check": "npm run build:web && wrangler deploy --dry-run",
     "types": "wrangler types",
     "pretypecheck": "wrangler types",
     "typecheck": "tsc --noEmit",
