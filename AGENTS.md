@@ -60,7 +60,7 @@ server/               ← 画面（web/dist の静的アセット）と /api（�
 - 演出の段階は `ui/impact.ts` の `tierOf`（閾値は `TIER_THRESHOLDS` の 1 か所。合計 ÷ 受けた側の `RuleSet.hp`、王を返した手は特大）。成績は `statsOf` で棋譜から集計する。演出は transform / opacity と画面固定の `#fx` 層だけで、レイアウトを動かさない。大・特大の演出中は `App.fxLock` で入力と CPU を待たせる（`fx.ts` の `fxTiming`、最大 1.5 秒）
 - 終局の流れは「最後の一手の演出 → 決着の演出（`App.playFinale`、`fx.ts` の `finaleMs`、最大 2.5 秒・タップ／クリック／Enter で飛ばす）→ 終局画面」。勝ち・負け・引き分け・副題・接戦の励まし（`CLOSE_PERCENT`）は `ui/outcome.ts` の `outcomeOf`。2 人対戦は敗北にしない
 - サーバーは engine をコピーせず `../web/src/engine` を import する。各プレイヤーには `viewFor(state, そのプレイヤー)` だけを送り、`GameState`（`kings` を含む）をそのまま送らない（`server/test/king.test.ts` が検査する）。通信の型を変えたら `web/src/net/protocol.ts` と `.agent/online-protocol.md` を揃える
-- API と WebSocket は画面と同じオリジンの `/api` の下（`protocol.ts` の `API_PATH`。変えたら `server/wrangler.jsonc` の `assets.run_worker_first` も）。画面はサーバーの URL を持たず絶対パスで呼ぶ。サーバーは同一オリジン（＋ `ALLOWED_ORIGINS`、本番は空）だけを受け、CORS のヘッダーは返さない。静的アセットへのリクエストで Worker・Durable Object を起こさない
+- API と WebSocket は画面と同じオリジンの `/api` の下（`protocol.ts` の `API_PATH`。変えたら `server/wrangler.jsonc` の `assets.run_worker_first` も）。画面はサーバーの URL を持たず絶対パスで呼ぶ。サーバーは同一オリジン（＋ `ALLOWED_ORIGINS`、本番は `https://kyosho.rukiharukichi.com`）だけを受け、CORS のヘッダーは返さない。静的アセットへのリクエストで Worker・Durable Object を起こさない
 - `src/ui/` で `Math.random` を使わない（CPU の乱数と共有で、e2e は Math.random を種付きにして CPU の手を再現する）。効果音の AudioContext は最初のユーザー操作の後にだけ作る
 
 ## コマンド
@@ -74,7 +74,7 @@ server/               ← 画面（web/dist の静的アセット）と /api（�
 | e2e | `cd web && npm run e2e`（ビルド → `vite preview :4179` を自動起動） |
 | バランス確認 | `cd web && npm run balance -- 400 king`（2 手読み同士。方向駒は `400 dir`、拠点は `400 anchor`。第 3 引数で体力 "先手,後手"） |
 | 棋譜の再生成 | `python3 sim/export_replays.py`（v0.4 / v1.0 / v2 案、約 30 秒） |
-| 公開 | main への merge で自動デプロイ → https://harukiti82.github.io/kyosho/ （GitHub Pages、移行が済むまで残す）と Cloudflare（`deploy.yml`、Secret 登録後。独自ドメインは README「独自ドメインを有効にする」）。workflow は main 直 push せず PR 経由で変更 |
+| 公開 | main への merge で自動デプロイ → https://harukiti82.github.io/kyosho/ （GitHub Pages、移行が済むまで残す）と Cloudflare https://kyosho.rukiharukichi.com/ （`deploy.yml`、Secret 登録後。手順は README「独自ドメイン（kyosho.rukiharukichi.com）」。ルートの rukiharukichi.com は使わない）。workflow は main 直 push せず PR 経由で変更 |
 | シミュレーター | `RULES.md` のシミュレーター節を参照 |
 | サーバー | `cd server && npm run dev`（web をビルドして :8787 で画面と `/api`。画面を直しながらなら併せて `cd web && npm run dev` の :5173 が `/api` をプロキシ）/ `npm run typecheck` / `npm test` / `node scripts/play.mjs http://localhost:8787 king`（2 クライアントで 1 局）。`npm run deploy:check`（dry-run）/ `npm run deploy`（web のビルド → wrangler deploy。Cloudflare へのログインが必要） |
 

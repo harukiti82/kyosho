@@ -166,9 +166,31 @@ describe("Origin（同一オリジンだけ）", () => {
     client.close();
   });
 
+  it("公開ドメイン（ALLOWED_ORIGINS）からも作成と WebSocket が通る", async () => {
+    const origin = "https://kyosho.rukiharukichi.com";
+    const res = await post(JSON.stringify({ preset: "v10" }), { Origin: origin });
+    expect(res.status).toBe(201);
+    expect(res.headers.get("Access-Control-Allow-Origin")).toBeNull();
+    const { roomId } = await res.json<{ roomId: string }>();
+    const client = await Client.connect(roomId, { Origin: origin });
+    client.send({ type: "join" });
+    expect((await client.expect("joined")).roomId).toBe(roomId);
+    client.close();
+  });
+
   it("別オリジン（旧 GitHub Pages・本番設定の localhost・ほか）は 403（WebSocket も）", async () => {
     const { roomId } = await createRoom();
-    for (const origin of ["https://evil.example", "https://harukiti82.github.io", "http://localhost:5173", "https://kyosho.test.evil.example", "http://kyosho.test"]) {
+    for (const origin of [
+      "https://evil.example",
+      "https://harukiti82.github.io",
+      "http://localhost:5173",
+      "https://kyosho.test.evil.example",
+      "http://kyosho.test",
+      // ルートのドメイン・http・似せたホストは公開ドメインではない
+      "https://rukiharukichi.com",
+      "http://kyosho.rukiharukichi.com",
+      "https://kyosho.rukiharukichi.com.evil.example",
+    ]) {
       const res = await post(JSON.stringify({ rules: presetById("v10").rules }), { Origin: origin });
       expect(res.status, origin).toBe(403);
       expect(await res.json(), origin).toMatchObject({ error: { code: "forbidden_origin" } });
@@ -186,7 +208,7 @@ describe("Origin（同一オリジンだけ）", () => {
     expect((await call("/rooms", { method: "OPTIONS" })).status).toBe(405);
   });
 
-  it("許可リストの照合（ALLOWED_ORIGINS。ローカル開発は npm run dev が localhost を足す）", () => {
+  it("許可リストの照合（ALLOWED_ORIGINS。本番は公開ドメインだけ、ローカル開発は npm run dev が localhost を足す）", () => {
     const list = "https://harukiti82.github.io,http://localhost:*";
     expect(originAllowed("https://harukiti82.github.io", list)).toBe(true);
     expect(originAllowed("http://localhost:5173", list)).toBe(true);
@@ -194,7 +216,7 @@ describe("Origin（同一オリジンだけ）", () => {
     expect(originAllowed("http://localhost:5173.evil.example", list)).toBe(false);
     expect(originAllowed("https://harukiti82.github.io.evil.example", list)).toBe(false);
     expect(originAllowed("http://harukiti82.github.io", list)).toBe(false);
-    // 本番の既定（空）は何も許可しない
+    // 空のリストは何も許可しない
     expect(originAllowed("", "")).toBe(false);
     expect(originAllowed("http://localhost:5173", "")).toBe(false);
   });

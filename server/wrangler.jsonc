@@ -23,13 +23,14 @@
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Room"] }],
   "vars": {
     // 同一オリジン（独自ドメイン・workers.dev）からの接続は常に許可する。
-    // ここには「それ以外に」許可するオリジンをカンマ区切りで書く（末尾 :* は任意のポート）。本番は空。
-    // ローカル開発の localhost は npm run dev が --var で足す
-    "ALLOWED_ORIGINS": ""
+    // ここには、それに加えて許可するオリジンをカンマ区切りで書く（末尾 :* は任意のポート）。本番は公開ドメインだけ
+    // （同一オリジンの判定でも通るが、公開先として明示する）。ローカル開発の localhost は npm run dev が --var で足す
+    "ALLOWED_ORIGINS": "https://kyosho.rukiharukichi.com"
   },
-  // 独自ドメイン: 次の行の "kyosho.example" を買ったドメイン名に替えてコメントを外し、npm run deploy する。
-  // Cloudflare が DNS レコードと証明書を自動で作る（ドメインが同じ Cloudflare アカウントのゾーンにあること）
-  // "routes": [{ "pattern": "kyosho.example", "custom_domain": true }],
+  // 独自ドメイン（Custom Domain）: https://kyosho.rukiharukichi.com で配信する。次の本番デプロイで反映され、
+  // Cloudflare が DNS レコードと証明書を自動で作る（ゾーン rukiharukichi.com が同じアカウントにあること）。
+  // ルートの rukiharukichi.com はほかの用途に空けておくので、ここに足さない
+  "routes": [{ "pattern": "kyosho.rukiharukichi.com", "custom_domain": true }],
   // workers.dev の URL（https://kyosho.<アカウント>.workers.dev）でも配信する
   "workers_dev": true
 }

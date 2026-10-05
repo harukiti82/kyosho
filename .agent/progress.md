@@ -33,4 +33,4 @@
 
 ## 2026-10-05
 
-- 画面とサーバーを 1 つの Cloudflare Worker・同一オリジンで配信する構成に: 静的アセット（`web/dist`、`run_worker_first` は `/api` だけ）、API・WebSocket を `/api` の下へ、Origin は同一オリジンのみ（CORS 撤去）、`npm run deploy` / `dev` / `deploy:check`、Vite の `/api` プロキシ、独自ドメインの `routes`（コメントアウト）、CI `deploy.yml`（Secret 未設定ならスキップ）
+- 画面とサーバーを 1 つの Cloudflare Worker・同一オリジンで配信する構成に: 静的アセット（`web/dist`、`run_worker_first` は `/api` だけ）、API・WebSocket を `/api` の下へ、Origin は同一オリジンのみ（CORS 撤去）、`npm run deploy` / `dev` / `deploy:check`、Vite の `/api` プロキシ、独自ドメイン `kyosho.rukiharukichi.com` の Custom Domain と `ALLOWED_ORIGINS`、CI `deploy.yml`（Secret 未設定ならスキップ）

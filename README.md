@@ -10,7 +10,7 @@
 
 ## ブラウザで遊ぶ（`web/`）
 
-公開版: **https://harukiti82.github.io/kyosho/**（main に push すると GitHub Actions で自動デプロイ）。Cloudflare（独自ドメイン）への移行を準備中（下の「オンライン対戦サーバーと Cloudflare での公開」）
+公開版: **https://harukiti82.github.io/kyosho/**（main に push すると GitHub Actions で自動デプロイ）。Cloudflare の **https://kyosho.rukiharukichi.com/** への移行を準備中（下の「オンライン対戦サーバーと Cloudflare での公開」）
 
 手元で動かす場合:
 
@@ -67,7 +67,7 @@ npm run dev        # 表示された URL（既定 http://localhost:5173）を開
 
 Cloudflare Workers + Durable Objects の対戦サーバー（招待リンク方式、1 部屋 = 1 Durable Object）。手は `web/src/engine` で検証し、相手の隠し王は送らない。画面側のオンラインモードはまだない。通信仕様と設計は `.agent/online-protocol.md`。
 
-1 つの Worker（`server/wrangler.jsonc`、名前 `kyosho`）が、画面（`web/dist` の静的アセット）と API・WebSocket（`/api` の下）を同じオリジンで配信する。`/api` 以外は静的アセットがそのまま返し、Worker も Durable Object も起こさない。GitHub Pages の公開版（上記）は当面そのまま残す（Cloudflare 側の配信を本番で確かめてから止める）。
+1 つの Worker（`server/wrangler.jsonc`、名前 `kyosho`、公開先 https://kyosho.rukiharukichi.com/ ）が、画面（`web/dist` の静的アセット）と API・WebSocket（`/api` の下）を同じオリジンで配信する。`/api` 以外は静的アセットがそのまま返し、Worker も Durable Object も起こさない。GitHub Pages の公開版（上記）は当面そのまま残す（Cloudflare 側の配信を本番で確かめてから止める）。
 
 | 用途 | コマンド（`server/` で実行。先に `web/` と `server/` で `npm ci`） |
 |---|---|
@@ -81,20 +81,22 @@ Cloudflare Workers + Durable Objects の対戦サーバー（招待リンク方�
 
 - 本番と同じ構成で確かめる: `cd server && npm run dev` → http://localhost:8787/ （画面は起動時のビルド。画面を直したら起動し直す）
 - 画面を直しながら開発する: 上の `npm run dev` を動かしたまま、別の端末で `cd web && npm run dev` → http://localhost:5173/ 。Vite が `/api`（HTTP と WebSocket）を :8787 に渡す（`web/vite.config.ts` の `server.proxy`）
-- 本番では同じオリジンからの接続だけを受ける。ローカルの `npm run dev` は `--var` で `http://localhost:*` / `http://127.0.0.1:*` も許可する（`server/wrangler.jsonc` の `ALLOWED_ORIGINS` は本番では空）
+- 本番では同じオリジンからの接続だけを受ける（`server/wrangler.jsonc` の `ALLOWED_ORIGINS` は `https://kyosho.rukiharukichi.com` だけ）。ローカルの `npm run dev` は `--var` でこれを `http://localhost:*` / `http://127.0.0.1:*` に置き換える
 
-### 独自ドメインを有効にする
+### 独自ドメイン（kyosho.rukiharukichi.com）
 
-1. Cloudflare Registrar でドメインを買う（同じアカウントのゾーンになる）
-2. `server/wrangler.jsonc` の末尾近くの `// "routes": [{ "pattern": "kyosho.example", "custom_domain": true }],` のコメントを外し、`kyosho.example` を買ったドメイン名に替える（`www.` も使うなら同じ形の要素をもう 1 つ足す）
-3. `cd server && npm run deploy`（または main へのマージで CI がデプロイ）。DNS レコードと証明書は Cloudflare が自動で作る
-4. `https://<ドメイン>/` で画面、`https://<ドメイン>/api/health` で `{"ok":true}` を確かめる。同一オリジンなので `ALLOWED_ORIGINS` は変えなくてよい
+ドメイン `rukiharukichi.com` は Cloudflare Registrar で購入済み（DNS も同じアカウント）。ゲームはサブドメイン `kyosho.rukiharukichi.com` で配信し、ルートの `rukiharukichi.com` はほかの用途に空けておく（Worker の設定に足さない）。
+
+1. 設定は済んでいる: `server/wrangler.jsonc` の `"routes": [{ "pattern": "kyosho.rukiharukichi.com", "custom_domain": true }]` と `ALLOWED_ORIGINS`
+2. `cd server && npx wrangler login && npm run deploy`（または Secret を登録して main へマージし、CI がデプロイ）。最初のデプロイで Cloudflare が `kyosho` の DNS レコードと証明書を自動で作る。同じ名前の DNS レコードが先にあると失敗するので、ダッシュボードの DNS で `kyosho` のレコードがないことを確かめておく
+3. https://kyosho.rukiharukichi.com/ で画面、https://kyosho.rukiharukichi.com/api/health で `{"ok":true}` を確かめる（証明書の発行に数分かかることがある）
+4. ドメインを変えるときは `routes` の `pattern` と `ALLOWED_ORIGINS` の 2 か所を直す
 
 ### CI からの自動デプロイ（`.github/workflows/deploy.yml`）
 
 main への push で web と server のテスト → web のビルド → `wrangler deploy`。PR ではテストと `--dry-run` だけ。リポジトリの Secret が未設定のうちはデプロイを飛ばして成功で終わる。
 
-- `CLOUDFLARE_API_TOKEN`（必須）: Cloudflare のダッシュボードの「API トークン」で、テンプレート「Edit Cloudflare Workers」から作る。対象のアカウントは自分のもの、ゾーンは買ったドメインに絞る
+- `CLOUDFLARE_API_TOKEN`（必須）: Cloudflare のダッシュボードの「API トークン」で、テンプレート「Edit Cloudflare Workers」から作る。対象のアカウントは自分のもの、ゾーンは `rukiharukichi.com` に絞る
 - `CLOUDFLARE_ACCOUNT_ID`（任意）: トークンが複数のアカウントにまたがるときだけ要る
 
 ## バランス検証（`sim/`）

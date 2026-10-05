@@ -4,7 +4,7 @@
 
 ## 全体像
 
-- 1 つの Cloudflare Worker（`server/`、名前 `kyosho`）が、画面（`web/dist` の静的アセット）と API・WebSocket（`/api` の下）を**同じオリジン**で配信する。独自ドメインと `kyosho.<アカウント>.workers.dev` のどちらでも同じ
+- 1 つの Cloudflare Worker（`server/`、名前 `kyosho`）が、画面（`web/dist` の静的アセット）と API・WebSocket（`/api` の下）を**同じオリジン**で配信する。公開先は https://kyosho.rukiharukichi.com （Custom Domain。`kyosho.<アカウント>.workers.dev` でも同じ）。ルートの `rukiharukichi.com` は使わない
 - `/api` と `/api/*` だけ Worker を先に通す（`wrangler.jsonc` の `assets.run_worker_first`）。それ以外は静的アセットが直接返し、Worker も Durable Object も起こさない。アセットにないパスだけ Worker に落ちて 404（テキスト）
 - GitHub Pages（https://harukiti82.github.io/kyosho/）の公開版は移行が済むまで残すが、オンライン対戦はつながらない（`/api` がない・別オリジンは拒否）。オンラインモードの画面は、`/api/health` に届かなければオンラインの入口を出さない、などで Pages 版でも壊れないようにする
 - 招待リンク方式。ログインなし。1 部屋 = 1 Durable Object（`server/src/room.ts`）
@@ -25,7 +25,7 @@
 
 - HTTP のエラー本文は `HttpErrorBody`（`{ "error": { "code", "message" } }`）。`message` は日本語の説明で、画面の分岐には `code` を使う
 - 存在しない部屋に WebSocket でつないだ場合も 101 で受けてから `error`（`room_not_found`）を送って閉じる（ブラウザの WebSocket は HTTP の応答コードを読めないため）
-- Origin はリクエスト自身のオリジン（同一オリジン）を常に許可し、それ以外は `server/wrangler.jsonc` の `ALLOWED_ORIGINS`（本番は空）にあるものだけ。許可していない Origin は 403 `forbidden_origin`（WebSocket も）。Origin を付けないクライアント（スクリプト・curl）は通す。ローカルの `npm run dev` は `--var` で `http://localhost:*` / `http://127.0.0.1:*` を足す（Vite の :5173 からプロキシ経由で来るため）
+- Origin はリクエスト自身のオリジン（同一オリジン）を常に許可し、それ以外は `server/wrangler.jsonc` の `ALLOWED_ORIGINS`（本番は `https://kyosho.rukiharukichi.com` だけ。公開先を明示しているが、同一オリジンの判定でも通る）にあるものだけ。許可していない Origin は 403 `forbidden_origin`（WebSocket も）。Origin を付けないクライアント（スクリプト・curl）は通す。ローカルの `npm run dev` は `--var` でこれを `http://localhost:*` / `http://127.0.0.1:*` に置き換える（Vite の :5173 からプロキシ経由で来るため）
 - CORS のヘッダーは返さない（同一オリジンなので要らない）。OPTIONS は 405
 
 ### POST /api/rooms の本文
@@ -113,7 +113,7 @@ state（相手の手も入った view）◀─ ─ ─ ─ ─ ─ ─ ─ ─ �
 state{phase:finished, view.result} ◀────────────────────────▶ 両者に届く
 ```
 
-1. 作成者: `POST /api/rooms` → `roomId` と `token` を受け取り、`token` を保存する。招待 URL（例: `https://<画面のホスト>/?room=<roomId>`。`location.origin` から作る）を作って相手に送る
+1. 作成者: `POST /api/rooms` → `roomId` と `token` を受け取り、`token` を保存する。招待 URL（例: `https://kyosho.rukiharukichi.com/?room=<roomId>`。`location.origin` から作る）を作って相手に送る
 2. 作成者: WebSocket をつなぎ、`{type:"join", token}`。`joined` → `state`（`phase: "waiting"`、`opponent.joined: false`）
 3. 参加者: 招待 URL を開いたら、`GET /api/rooms/:id` でルールを表示（`open: false` なら満員、404 なら部屋がない）。参加するなら WebSocket をつなぎ `{type:"join"}`。`joined` の `token` を保存する
 4. 両者に `state`（`phase: "playing"`）が届く。手番の人（`view.turn === you`）が `move` を送り、両者に新しい `state` が届く
@@ -155,7 +155,7 @@ state{phase:finished, view.result} ◀──────────────
 | ファイル | 中身 |
 |---|---|
 | `web/src/net/protocol.ts` | 通信仕様の型と定数（画面・サーバー共通） |
-| `server/wrangler.jsonc` | Worker の設定: 静的アセット（`../web/dist`、`run_worker_first`）・Durable Object・`ALLOWED_ORIGINS`・独自ドメイン（`routes`、コメントアウト中） |
+| `server/wrangler.jsonc` | Worker の設定: 静的アセット（`../web/dist`、`run_worker_first`）・Durable Object・`ALLOWED_ORIGINS`・独自ドメイン（`routes` の Custom Domain `kyosho.rukiharukichi.com`） |
 | `server/src/index.ts` | Worker: `/api` の下のルーティング・Origin・部屋の作成 |
 | `server/src/room.ts` | Durable Object `Room`: 参加・手の検証・配信・再接続・alarm |
 | `server/src/validate.ts` | 外部入力の検証（ルールは `ui/query.ts` の `encodeRules` / `decodeRules` を再利用） |
@@ -182,8 +182,8 @@ state{phase:finished, view.result} ◀──────────────
 
 ## デプロイと無料枠の注意
 
-- 独自ドメイン: `server/wrangler.jsonc` の `routes`（`custom_domain: true`）のコメントを外してドメイン名を入れ、デプロイする。手順は README の「独自ドメインを有効にする」。同一オリジンなので `ALLOWED_ORIGINS` は変えない
-- CI（`deploy.yml`）の Secret: `CLOUDFLARE_API_TOKEN`（テンプレート「Edit Cloudflare Workers」、アカウントとゾーンを絞る）、`CLOUDFLARE_ACCOUNT_ID`（任意）
+- 独自ドメイン: `server/wrangler.jsonc` の `routes` に `kyosho.rukiharukichi.com`（`custom_domain: true`）を設定済み。次の本番デプロイで DNS レコードと証明書ができる。手順は README の「独自ドメイン（kyosho.rukiharukichi.com）」。ドメインを変えるときは `routes` と `ALLOWED_ORIGINS` の 2 か所
+- CI（`deploy.yml`）の Secret: `CLOUDFLARE_API_TOKEN`（テンプレート「Edit Cloudflare Workers」、アカウントとゾーン `rukiharukichi.com` に絞る）、`CLOUDFLARE_ACCOUNT_ID`（任意）
 - Durable Object は SQLite 版（`new_sqlite_classes`）。Workers の無料プランで使える
 - 無料枠（2026 年時点の目安。最新は Cloudflare の料金表を確認）: Workers のリクエスト 10 万／日、Durable Object のリクエストと稼働時間・storage の行の書き込みにも日ごとの上限がある。1 局 = 手の数 ×（メッセージ 1 + storage 書き込み 2）程度なので、試遊の規模では収まる。WebSocket は Hibernation で待つので、つないだままでも待ち時間は課金されない
 - 本番のログに URL が残っても困る情報は入れていない（トークンは WebSocket の本文で送る）
