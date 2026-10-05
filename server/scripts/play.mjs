@@ -1,12 +1,13 @@
 // tako:run node scripts/play.mjs
-// 動いているサーバー（wrangler dev など）に WebSocket のクライアントを 2 つつなぎ、1 局を最後まで打つ。
+// 動いている Worker（wrangler dev など）に WebSocket のクライアントを 2 つつなぎ、1 局を最後まで打つ。
 // 途中で 存在しない部屋・満員の部屋への参加・対局途中の切断と再接続・終局後の手 も確かめる。
-// 使い方: node scripts/play.mjs [サーバー=http://localhost:8787] [プリセット=king]
+// 使い方: node scripts/play.mjs [サイトのオリジン=http://localhost:8787] [プリセット=king]（API はその /api の下）
 // 手は engine を使わず「空きマスと持ち駒を順に試し、illegal_move なら次」で選ぶ（どのプリセットでも打てる）。
 
 const BASE = process.argv[2] ?? "http://localhost:8787";
 const PRESET = process.argv[3] ?? "king";
-const WS_BASE = BASE.replace(/^http/, "ws");
+const API = `${BASE.replace(/\/+$/, "")}/api`;
+const WS_API = API.replace(/^http/, "ws");
 const KINDS = ["fu", "yoko", "gin", "kaku", "kin", "hi"];
 
 const leaks = [];
@@ -18,7 +19,7 @@ class Client {
     this.queue = [];
     this.waiters = [];
     this.closed = null;
-    this.ws = new WebSocket(`${WS_BASE}/rooms/${roomId}/ws`);
+    this.ws = new WebSocket(`${WS_API}/rooms/${roomId}/ws`);
     this.ws.addEventListener("message", (e) => {
       // 隠し王の真の状態（kings）が届いたら漏れている
       if (e.data.includes('"kings"')) leaks.push(`${name}: ${e.data.slice(0, 120)}`);
@@ -95,25 +96,27 @@ async function playOne(mover, other, view) {
 
 async function main() {
   log("http", `サーバー ${BASE} / プリセット ${PRESET}`);
-  const health = await fetch(`${BASE}/health`);
-  log("http", "GET /health →", health.status, await health.text());
+  const page = await fetch(`${BASE}/`);
+  log("http", "GET / →", page.status, page.headers.get("Content-Type"));
+  const health = await fetch(`${API}/health`);
+  log("http", "GET /api/health →", health.status, await health.text());
 
   // 存在しない部屋
-  const missing = await fetch(`${BASE}/rooms/AAAAAAAAAAAAAAAAAAAAAA`);
-  log("http", "GET /rooms/(存在しない) →", missing.status, await missing.text());
+  const missing = await fetch(`${API}/rooms/AAAAAAAAAAAAAAAAAAAAAA`);
+  log("http", "GET /api/rooms/(存在しない) →", missing.status, await missing.text());
   const ghost = new Client("ghost", "AAAAAAAAAAAAAAAAAAAAAA");
   await ghost.opened;
   const ghostErr = await ghost.next();
   log("ghost", "WebSocket で存在しない部屋 →", JSON.stringify(ghostErr), "close", (await ghost.closedWith()).code);
 
   // 部屋を作る
-  const res = await fetch(`${BASE}/rooms`, {
+  const res = await fetch(`${API}/rooms`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ preset: PRESET, hostSeat: "first" }),
   });
   const created = await res.json();
-  log("http", "POST /rooms →", res.status, JSON.stringify({ ...created, token: created.token.slice(0, 6) + "…" }));
+  log("http", "POST /api/rooms →", res.status, JSON.stringify({ ...created, token: created.token.slice(0, 6) + "…" }));
 
   const host = new Client("host", created.roomId);
   let { joined: hj, state: hs } = await host.join(created.token);
@@ -171,8 +174,8 @@ async function main() {
 
   hostClient.send({ type: "move", r: 0, c: 0, kind: "fu" });
   log("host", "終局後に手を送る →", JSON.stringify(await hostClient.next()));
-  const info = await (await fetch(`${BASE}/rooms/${created.roomId}`)).json();
-  log("http", `GET /rooms/:id → phase=${info.phase} open=${info.open}`);
+  const info = await (await fetch(`${API}/rooms/${created.roomId}`)).json();
+  log("http", `GET /api/rooms/:id → phase=${info.phase} open=${info.open}`);
 
   if (leaks.length > 0) throw new Error(`kings が届いた: ${leaks.join(" / ")}`);
   log("check", "どのメッセージにも kings（隠し王の真の状態）はなかった");

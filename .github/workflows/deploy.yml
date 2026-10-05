@@ -1,0 +1,63 @@
+# 画面（web/ のビルド成果物）とオンライン対戦サーバー（server/）を 1 つの Cloudflare Worker にデプロイする。
+# PR ではデプロイせず、テストと wrangler deploy --dry-run（設定・アセット・束ねの確認）だけを行う。
+# main への push（または手動実行）でデプロイする。ただし Secret CLOUDFLARE_API_TOKEN が未設定のうちは、
+# デプロイの手順を飛ばして成功で終わる（GitHub Pages の pages.yml とは独立）。
+name: Deploy to Cloudflare
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# 同時に走るデプロイは 1 つだけ。実行中の本番デプロイは中断しない
+concurrency:
+  group: cloudflare-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            web/package-lock.json
+            server/package-lock.json
+      - run: npm ci
+        working-directory: web
+      - run: npm ci
+        working-directory: server
+      # デプロイする前に、web と server のテストが通ることを確かめる
+      - run: npm test
+        working-directory: web
+      - run: npm test
+        working-directory: server
+      # web をビルドして wrangler deploy --dry-run（Cloudflare には何も送らない。トークン不要）
+      - run: npm run deploy:check
+        working-directory: server
+      - name: Secret の確認
+        id: secret
+        env:
+          HAS_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
+        run: |
+          if [ "$HAS_TOKEN" = "true" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Cloudflare へのデプロイを飛ばします::Secret CLOUDFLARE_API_TOKEN が未設定です（README の「公開」節を参照）"
+          fi
+      # 上の deploy:check でビルドした web/dist をそのまま上げる
+      - if: github.event_name != 'pull_request' && steps.secret.outputs.enabled == 'true'
+        run: npx wrangler deploy
+        working-directory: server
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          # アカウントが 1 つなら省略できる（トークンから決まる）
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

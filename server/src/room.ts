@@ -85,7 +85,7 @@ export class Room extends DurableObject<Env> {
     return { roomId: this.room.roomId, phase: this.phase(), rules: this.room.game.rules, open: this.room.tokens.includes(null) };
   }
 
-  /** WebSocket の受け口（Worker が /rooms/:id/ws をそのまま渡す。Upgrade の確認は Worker 側で済んでいる） */
+  /** WebSocket の受け口（Worker が /api/rooms/:id/ws をそのまま渡す。Upgrade の確認は Worker 側で済んでいる） */
   async fetch(_request: Request): Promise<Response> {
     if (!this.room) return rejectSocket("room_not_found", "部屋がありません", CLOSE.notFound);
     const pending = this.ctx

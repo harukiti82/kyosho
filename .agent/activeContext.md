@@ -4,12 +4,14 @@
 
 ## 現在の対象
 
-- 何を / どこを: オンライン対戦（ユーザーの依頼「公開してオンライン対戦できるようにしたい」。方式は Cloudflare Workers + Durable Objects・招待リンク・ログインなしで決定済み）。サーバー（`server/`）と通信仕様（`web/src/net/protocol.ts`・`.agent/online-protocol.md`）まで完了。画面側のオンラインモードは未着手
-- ステータス: サーバーは本番未デプロイ（Cloudflare へのログインはユーザーが別途行う）。試遊版の演出の手応えと、隠し王・方向駒・拠点のどの組み合わせを採るかもユーザー判断待ち
-- 最終更新: 2026-10-04
+- 何を / どこを: 公開とオンライン対戦（ユーザーの依頼「公開してオンライン対戦できるようにしたい」「ドメインを買ってそこで公開したい」。Cloudflare Workers + Durable Objects・招待リンク・ログインなし・Cloudflare Registrar のドメイン・画面とサーバーを 1 Worker の同一オリジンで配信、で決定済み）。サーバー・通信仕様・1 Worker 構成（静的アセット＋`/api`）・CI のデプロイ（`deploy.yml`）まで完了。画面側のオンラインモードは未着手
+- ステータス: Cloudflare には未デプロイ（ドメイン購入・`routes` の有効化・Secret 登録は master とユーザー）。GitHub Pages の公開版は残している。試遊版の演出の手応えと、隠し王・方向駒・拠点のどの組み合わせを採るかもユーザー判断待ち
+- 最終更新: 2026-10-05
 
 ## 直近の観点・指摘
 
+- 配信: 1 つの Worker（`server/wrangler.jsonc`）が `web/dist` を静的アセットで、`/api` を Worker で返す（`run_worker_first: ["/api", "/api/*"]`。静的アセットでは Worker も DO も起きない）。Origin は同一オリジン＋`ALLOWED_ORIGINS`（本番は空、`npm run dev` が `--var` で localhost を足す）。CORS なし。画面はサーバー URL を持たず `API_PATH`（`/api`）の絶対パスで呼ぶ。GitHub Pages 版ではオンラインがつながらないので、画面は `/api/health` に届かなければ入口を出さない
+- 独自ドメイン: `server/wrangler.jsonc` の `// "routes": [{ "pattern": "kyosho.example", "custom_domain": true }],` のコメントを外してドメイン名を入れ `npm run deploy`（手順は README「独自ドメインを有効にする」）
 - オンライン対戦: サーバーは engine を import する権威サーバー。各自には `viewFor` だけを送る（`server/test/king.test.ts` が、相手の王の指定だけ違う 2 部屋で自分に届くバイト列が一致することを検査）。3 人目は拒否（観戦なし）。先手・後手は作成者の `hostSeat`（既定 random）。再接続はトークン（`sessionStorage` 推奨）。放置した部屋は alarm で削除（24 時間・終局後 1 時間）
 - server/ は vitest 4（pool-workers の要件）。npm 11.4 は install で落ちるので `npx npm@11.21.0 install`。`worker-configuration.d.ts` は生成物（`npm run typecheck` / `test` の前に `wrangler types`）
 - 最重要要件は「ルールが一目で分かること」。ルールカードは設定から自動生成（`ui/ruletext.ts`、最大 8 行。7 行以上は `.denser`）。予測の赤枠＋ダメージ・回復、返されうる自駒の「!」、自分の王の赤い「!」、駒の方向アイコン、端の駒の青枠＋左下の「+数字」と内訳（返した駒 ＋ 端の金5 ＝ 7）を崩さない
@@ -25,15 +27,15 @@
 
 ## 未解決・次の一手
 
-- [ ] 画面側のオンラインモード（`web/src/ui`）: 設定画面に「オンラインで対戦（招待リンクを作る）」、`?room=<id>` で開いたら参加、WebSocket の `state` で盤を描き直す、相手の切断表示、再接続。サーバー URL は設定値（ビルド時の環境変数など）で持つ
-- [ ] Cloudflare へのデプロイ（ユーザーのログインが必要）: `cd server && npx wrangler login && npm run deploy`。出た Worker の URL を画面側の設定に入れる
+- [ ] 独自ドメインの設定と本番デプロイ（master とユーザー）: ドメイン購入 → `wrangler.jsonc` の `routes` を有効化 → `cd server && npm run deploy`（または Secret `CLOUDFLARE_API_TOKEN` を登録して main へマージ）→ `https://<ドメイン>/` と `/api/health` を確認。本番で確かめたら別タスクで GitHub Pages（`pages.yml`）を止める
+- [ ] 画面側のオンラインモード（`web/src/ui`）: 設定画面に「オンラインで対戦（招待リンクを作る）」、`?room=<id>` で開いたら参加、WebSocket の `state` で盤を描き直す、相手の切断表示、再接続。サーバー URL は持たず `API_PATH` で同一オリジンに。開発は `cd server && npm run dev` ＋ `cd web && npm run dev`（:5173 が `/api` をプロキシ）
 - [ ] ユーザーの試遊で演出の手応え（段階の差・決着の演出の長さと派手さ・音量・テンポ・被弾の赤の強さ）を聞く。実機の音は未確認
 - [ ] ユーザーの試遊で方向駒・隠し王・拠点の感想を聞く（青枠と内訳で「端の駒もダメージに効く」が分かるか、強い駒を置くリスクとリターンが感じられるか、人間が隅に金を置く戦術で拠点が強すぎにならないか）
 - [ ] 採用する組み合わせが決まったら RULES.md を新版に改稿し、既定プリセットを切り替える
 
 ## 現フェーズで Read すべき設計書
 
-- オンラインモードの画面: `.agent/online-protocol.md`（これだけで実装できる粒度）→ `web/src/net/protocol.ts` → `web/src/ui/app.ts`（対局画面。CPU 対戦・2 人対戦の手番処理に、オンラインの「自分の手番だけ打てる・届いた view で描く」を足す）, `web/src/ui/setup.ts`
+- オンラインモードの画面: `.agent/online-protocol.md`（これだけで実装できる粒度。エンドポイントは `/api` の下）→ `web/src/net/protocol.ts` → `web/src/ui/app.ts`（対局画面。CPU 対戦・2 人対戦の手番処理に、オンラインの「自分の手番だけ打てる・届いた view で描く」を足す）, `web/src/ui/setup.ts`
 - 設定項目・プリセットの変更: `RULES.md` の「Web 試遊版」節 → `web/src/engine/rules.ts` → AGENTS.md の「ルール・設定項目を変えるとき」
 - ダメージ・端の駒: `web/src/engine/board.ts`（`damageOf` / `anchorsOf`）, `web/test/anchor.test.ts`。方向駒: `board.ts`（`pieceLines`）, `test/direction.test.ts`。隠し王: `game.ts`（隠し王節）, `cpu.ts`, `test/king.test.ts`
 - 演出・効果音・成績: `web/src/ui/impact.ts`, `web/src/ui/fx.ts`, `web/src/ui/sound.ts`, `web/test/impact.test.ts`, `web/e2e/impact.spec.ts`。決着の演出: `web/src/ui/outcome.ts`, `web/test/outcome.test.ts`, `web/e2e/result.spec.ts`
@@ -42,4 +44,4 @@
 ## 関連ファイル / リンク
 
 - E2E のスクリーンショット: `web/screenshots/`（pc-* / sp-* 、隠し王は *-king-*、方向駒は *-dir*、拠点は *-anchor*、演出は *-impact-*、決着は *-result-*）
-- デプロイ: `.github/workflows/pages.yml`（PR はテスト+ビルドのみ、main への push でデプロイ）
+- デプロイ: `.github/workflows/pages.yml`（GitHub Pages。PR はテスト+ビルドのみ、main への push でデプロイ）、`.github/workflows/deploy.yml`（Cloudflare。Secret 未設定ならスキップ）、`server/wrangler.jsonc`

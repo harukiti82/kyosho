@@ -1,14 +1,15 @@
-// Worker の入口: ルーティング・CORS / Origin の確認・部屋の作成。対局の処理は部屋ごとの Durable Object（room.ts）に渡す。
+// Worker の入口: /api の下のルーティング・Origin の確認・部屋の作成。対局の処理は部屋ごとの Durable Object（room.ts）に渡す。
+// 画面（静的アセット）は wrangler.jsonc の assets が Worker を通さずに返す。ここに来るのは /api と、アセットにないパスだけ。
 // エンドポイントと通信仕様は .agent/online-protocol.md。
 
-import { CLOSE, MAX_CREATE_BYTES, ROOM_ID_PATTERN, type CreateRoomResponse } from "../../web/src/net/protocol";
+import { API_PATH, CLOSE, MAX_CREATE_BYTES, ROOM_ID_PATTERN, type CreateRoomResponse } from "../../web/src/net/protocol";
 import type { Room } from "./room";
 import { httpError, json, randomId, rejectSocket } from "./util";
 import { parseCreate } from "./validate";
 
 export { Room } from "./room";
 
-/** Origin が許可リストにあるか。"http://localhost:*" のように末尾 :* は任意のポート */
+/** Origin が許可リスト（ALLOWED_ORIGINS）にあるか。"http://localhost:*" のように末尾 :* は任意のポート */
 export function originAllowed(origin: string, list: string): boolean {
   return list
     .split(",")
@@ -71,13 +72,12 @@ async function createRoom(req: Request, env: Env): Promise<Response> {
   return httpError(500, "internal", "部屋を作れませんでした");
 }
 
-async function route(req: Request, env: Env): Promise<Response> {
-  const url = new URL(req.url);
-  const parts = url.pathname.split("/").filter((s) => s.length > 0);
+/** /api の下のルーティング。parts は /api を除いたパスの区切り（末尾スラッシュの有無は同じ扱い） */
+async function route(req: Request, env: Env, parts: string[]): Promise<Response> {
   if (parts.length === 1 && parts[0] === "health") return json({ ok: true });
   if (parts[0] !== "rooms" || parts.length > 3) return httpError(404, "not_found", "そのパスはありません");
 
-  // POST /rooms
+  // POST /api/rooms
   if (parts.length === 1) {
     if (req.method !== "POST") return httpError(405, "method_not_allowed", "POST だけを受け付けます");
     return createRoom(req, env);
@@ -85,7 +85,7 @@ async function route(req: Request, env: Env): Promise<Response> {
 
   const roomId = parts[1];
   const valid = ROOM_ID_PATTERN.test(roomId);
-  // GET /rooms/:id/ws（WebSocket）
+  // GET /api/rooms/:id/ws（WebSocket）
   if (parts.length === 3) {
     if (parts[2] !== "ws") return httpError(404, "not_found", "そのパスはありません");
     if (req.method !== "GET") return httpError(405, "method_not_allowed", "GET だけを受け付けます");
@@ -97,46 +97,37 @@ async function route(req: Request, env: Env): Promise<Response> {
     return roomStub(env, roomId).fetch(req);
   }
 
-  // GET /rooms/:id
+  // GET /api/rooms/:id
   if (req.method !== "GET") return httpError(405, "method_not_allowed", "GET だけを受け付けます");
   const info = valid ? await roomStub(env, roomId).info() : null;
   return info ? json(info) : httpError(404, "not_found", "部屋がありません");
 }
 
-/** 許可した Origin の応答に CORS のヘッダーを付ける（WebSocket の 101 は除く） */
-function withCors(res: Response, origin: string | null): Response {
-  if (origin === null || res.status === 101) return res;
-  const out = new Response(res.body, res);
-  out.headers.set("Access-Control-Allow-Origin", origin);
-  out.headers.append("Vary", "Origin");
-  return out;
+/** /api の下なら、/api を除いたパスの区切り。/api の外なら null */
+export function apiParts(pathname: string): string[] | null {
+  if (pathname !== API_PATH && !pathname.startsWith(`${API_PATH}/`)) return null;
+  return pathname.slice(API_PATH.length).split("/").filter((s) => s.length > 0);
 }
 
 export default {
   async fetch(req, env): Promise<Response> {
-    // ブラウザは Origin を必ず付ける。付いていない（スクリプト・curl など）なら通す
+    const url = new URL(req.url);
+    const parts = apiParts(url.pathname);
+    // アセットにないパス（画面の存在しないファイルなど）。Durable Object は起こさない
+    if (parts === null) {
+      return new Response("ページが見つかりません", { status: 404, headers: { "Content-Type": "text/plain; charset=utf-8" } });
+    }
+    // 画面と同じオリジンだけを受ける（CORS のヘッダーは返さない）。ブラウザは POST と WebSocket に Origin を必ず付ける。
+    // 付いていない（スクリプト・curl など）なら通す
     const origin = req.headers.get("Origin");
-    if (origin !== null && !originAllowed(origin, env.ALLOWED_ORIGINS)) {
+    if (origin !== null && origin !== url.origin && !originAllowed(origin, env.ALLOWED_ORIGINS)) {
       return httpError(403, "forbidden_origin", "このオリジンからは接続できません");
     }
-    if (req.method === "OPTIONS") {
-      return withCors(
-        new Response(null, {
-          status: 204,
-          headers: {
-            "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-            "Access-Control-Allow-Headers": "Content-Type",
-            "Access-Control-Max-Age": "86400",
-          },
-        }),
-        origin,
-      );
-    }
     try {
-      return withCors(await route(req, env), origin);
+      return await route(req, env, parts);
     } catch (e) {
       console.error(e);
-      return withCors(httpError(500, "internal", "サーバーの内部エラー"), origin);
+      return httpError(500, "internal", "サーバーの内部エラー");
     }
   },
 } satisfies ExportedHandler<Env>;

@@ -1,10 +1,10 @@
-// HTTP: 部屋の作成・情報・ルールの検証・CORS / Origin・不正な入力
+// HTTP: 部屋の作成・情報・ルールの検証・/api の振り分け・Origin・不正な入力
 
 import { describe, expect, it } from "vitest";
 import { cloneRules, presetById, type RuleSet } from "../../web/src/engine/rules";
 import { MAX_CREATE_BYTES, ROOM_ID_PATTERN, TOKEN_PATTERN, type RoomInfoResponse } from "../../web/src/net/protocol";
-import { originAllowed } from "../src/index";
-import { call, createRoom } from "./helpers";
+import { apiParts, originAllowed } from "../src/index";
+import { BASE, call, Client, createRoom, site } from "./helpers";
 
 const post = (body: string, headers: Record<string, string> = {}) =>
   call("/rooms", { method: "POST", body, headers: { "Content-Type": "application/json", ...headers } });
@@ -105,14 +105,46 @@ describe("パス・メソッド", () => {
   it("存在しない部屋・形式の違う ID は 404", async () => {
     expect((await call("/rooms/AAAAAAAAAAAAAAAAAAAAAA")).status).toBe(404);
     expect((await call("/rooms/short")).status).toBe(404);
+    // URL の正規化で /api の外（/etc）になる
     expect((await call("/rooms/../../etc")).status).toBe(404);
   });
 
   it("知らないパス・メソッド", async () => {
-    expect((await call("/nope")).status).toBe(404);
+    for (const path of ["/nope", "", "/", "/rooms/AAAAAAAAAAAAAAAAAAAAAA/ws/x"]) {
+      const res = await call(path);
+      expect(res.status, path).toBe(404);
+      expect(await res.json(), path).toMatchObject({ error: { code: "not_found" } });
+    }
     expect((await call("/rooms")).status).toBe(405);
     expect((await call("/rooms/AAAAAAAAAAAAAAAAAAAAAA", { method: "DELETE" })).status).toBe(405);
     expect((await call("/health")).status).toBe(200);
+  });
+
+  it("末尾のスラッシュはあってもなくても同じ", async () => {
+    expect(await (await call("/health/")).json()).toEqual({ ok: true });
+    expect((await call("/rooms/")).status).toBe(405);
+    const res = await call("/rooms/", { method: "POST", body: JSON.stringify({ preset: "v10" }), headers: { "Content-Type": "application/json" } });
+    expect(res.status).toBe(201);
+    const { roomId } = await res.json<{ roomId: string }>();
+    expect((await call(`/rooms/${roomId}/`)).status).toBe(200);
+  });
+
+  it("/api の外（旧パス・画面の存在しないファイル）は Worker が 404 のテキストを返す", async () => {
+    for (const path of ["/rooms", "/health", "/apix", "/api.js", "/assets/nope.js", "/nope.html"]) {
+      const res = await site(path, { method: path === "/rooms" ? "POST" : "GET" });
+      expect(res.status, path).toBe(404);
+      expect(res.headers.get("Content-Type"), path).toContain("text/plain");
+    }
+  });
+
+  it("/api の下の切り出し", () => {
+    expect(apiParts("/api")).toEqual([]);
+    expect(apiParts("/api/")).toEqual([]);
+    expect(apiParts("/api/rooms/x/ws")).toEqual(["rooms", "x", "ws"]);
+    expect(apiParts("/api//rooms/")).toEqual(["rooms"]);
+    expect(apiParts("/apix")).toBeNull();
+    expect(apiParts("/")).toBeNull();
+    expect(apiParts("/index.html")).toBeNull();
   });
 
   it("/ws に WebSocket 以外で来たら 426", async () => {
@@ -122,30 +154,39 @@ describe("パス・メソッド", () => {
   });
 });
 
-describe("CORS / Origin", () => {
-  it("公開中の画面と localhost は許可し、CORS のヘッダーを返す", async () => {
-    for (const origin of ["https://harukiti82.github.io", "http://localhost:5173", "http://127.0.0.1:4179"]) {
-      const pre = await call("/rooms", { method: "OPTIONS", headers: { Origin: origin, "Access-Control-Request-Method": "POST" } });
-      expect(pre.status).toBe(204);
-      expect(pre.headers.get("Access-Control-Allow-Origin")).toBe(origin);
-      expect(pre.headers.get("Access-Control-Allow-Methods")).toContain("POST");
+describe("Origin（同一オリジンだけ）", () => {
+  it("画面と同じオリジンからの作成と WebSocket は通り、CORS のヘッダーは返さない", async () => {
+    const res = await post(JSON.stringify({ rules: presetById("v10").rules }), { Origin: BASE });
+    expect(res.status).toBe(201);
+    expect(res.headers.get("Access-Control-Allow-Origin")).toBeNull();
+    const { roomId } = await res.json<{ roomId: string }>();
+    const client = await Client.connect(roomId, { Origin: BASE });
+    client.send({ type: "join" });
+    expect((await client.expect("joined")).roomId).toBe(roomId);
+    client.close();
+  });
+
+  it("別オリジン（旧 GitHub Pages・本番設定の localhost・ほか）は 403（WebSocket も）", async () => {
+    const { roomId } = await createRoom();
+    for (const origin of ["https://evil.example", "https://harukiti82.github.io", "http://localhost:5173", "https://kyosho.test.evil.example", "http://kyosho.test"]) {
       const res = await post(JSON.stringify({ rules: presetById("v10").rules }), { Origin: origin });
-      expect(res.status).toBe(201);
-      expect(res.headers.get("Access-Control-Allow-Origin")).toBe(origin);
+      expect(res.status, origin).toBe(403);
+      expect(await res.json(), origin).toMatchObject({ error: { code: "forbidden_origin" } });
+      expect(res.headers.get("Access-Control-Allow-Origin"), origin).toBeNull();
+      const ws = await call(`/rooms/${roomId}/ws`, { headers: { Upgrade: "websocket", Origin: origin } });
+      expect(ws.status, origin).toBe(403);
+      expect(ws.webSocket, origin).toBeNull();
     }
   });
 
-  it("ほかのオリジンは 403（WebSocket も）", async () => {
-    const res = await post(JSON.stringify({ rules: presetById("v10").rules }), { Origin: "https://evil.example" });
-    expect(res.status).toBe(403);
-    expect(res.headers.get("Access-Control-Allow-Origin")).toBeNull();
-    const { roomId } = await createRoom();
-    const ws = await call(`/rooms/${roomId}/ws`, { headers: { Upgrade: "websocket", Origin: "https://evil.example" } });
-    expect(ws.status).toBe(403);
-    expect(ws.webSocket).toBeNull();
+  it("プリフライト（OPTIONS）は受けない（同一オリジンでは来ない）", async () => {
+    const pre = await call("/rooms", { method: "OPTIONS", headers: { Origin: "https://evil.example", "Access-Control-Request-Method": "POST" } });
+    expect(pre.status).toBe(403);
+    expect(pre.headers.get("Access-Control-Allow-Origin")).toBeNull();
+    expect((await call("/rooms", { method: "OPTIONS" })).status).toBe(405);
   });
 
-  it("許可リストの照合", () => {
+  it("許可リストの照合（ALLOWED_ORIGINS。ローカル開発は npm run dev が localhost を足す）", () => {
     const list = "https://harukiti82.github.io,http://localhost:*";
     expect(originAllowed("https://harukiti82.github.io", list)).toBe(true);
     expect(originAllowed("http://localhost:5173", list)).toBe(true);
@@ -153,5 +194,8 @@ describe("CORS / Origin", () => {
     expect(originAllowed("http://localhost:5173.evil.example", list)).toBe(false);
     expect(originAllowed("https://harukiti82.github.io.evil.example", list)).toBe(false);
     expect(originAllowed("http://harukiti82.github.io", list)).toBe(false);
+    // 本番の既定（空）は何も許可しない
+    expect(originAllowed("", "")).toBe(false);
+    expect(originAllowed("http://localhost:5173", "")).toBe(false);
   });
 });

@@ -1,4 +1,4 @@
-// 外部入力（POST /rooms の本文・WebSocket のメッセージ）の検証。不正なものは例外を投げずに null / エラーを返す。
+// 外部入力（POST /api/rooms の本文・WebSocket のメッセージ）の検証。不正なものは例外を投げずに null / エラーを返す。
 
 import { SIZE } from "../../web/src/engine/board";
 import { cloneRules, PIECES, PRESETS, sameRules, type PieceKind, type RuleSet } from "../../web/src/engine/rules";

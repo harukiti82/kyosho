@@ -1,4 +1,4 @@
-# オンライン対戦サーバー（server/）の型チェックとテスト。デプロイはしない（Cloudflare へのデプロイは手動）。
+# オンライン対戦サーバー（server/）の型チェックとテスト。Cloudflare へのデプロイは deploy.yml。
 # サーバーは web/src/engine と web/src/net を import するので、web 側の変更でも走らせる。
 name: Server tests
 

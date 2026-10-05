@@ -30,3 +30,7 @@
 
 - オンライン対戦サーバーを追加: `server/`（Workers + Durable Objects、1 部屋 = 1 DO、engine を import して手を検証、各自に `viewFor` だけを配信、トークンで再接続、alarm で放置部屋を削除、Origin 許可リスト）。通信仕様 `web/src/net/protocol.ts`・`.agent/online-protocol.md`
 - サーバーのテスト 46 件（vitest-pool-workers、隠し王の秘匿・退避からの復帰を含む）、CI `.github/workflows/server.yml`、`wrangler dev` に 2 クライアントで 1 局を通す `server/scripts/play.mjs`
+
+## 2026-10-05
+
+- 画面とサーバーを 1 つの Cloudflare Worker・同一オリジンで配信する構成に: 静的アセット（`web/dist`、`run_worker_first` は `/api` だけ）、API・WebSocket を `/api` の下へ、Origin は同一オリジンのみ（CORS 撤去）、`npm run deploy` / `dev` / `deploy:check`、Vite の `/api` プロキシ、独自ドメインの `routes`（コメントアウト）、CI `deploy.yml`（Secret 未設定ならスキップ）
