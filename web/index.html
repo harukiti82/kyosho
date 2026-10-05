@@ -35,6 +35,8 @@
       <div class="status-row">
         <p class="status" id="status" role="status" aria-live="polite"></p>
         <span class="ply" id="ply"></span>
+        <!-- オンライン対戦の接続の状態（相手の接続・つなぎ直し中） -->
+        <span class="net" id="net" role="status" hidden></span>
       </div>
 
       <div class="board-wrap">
@@ -79,11 +81,19 @@
           <div class="seg">
             <label><input type="radio" name="mode" value="cpu" checked /><span>CPU 対戦</span></label>
             <label><input type="radio" name="mode" value="pvp" /><span>2 人対戦（同じ端末）</span></label>
+            <!-- オンライン対戦のサーバー（/api/health）に届く公開先でだけ出す（ui/app.ts） -->
+            <label id="mode-online" hidden><input type="radio" name="mode" value="online" /><span>オンライン（招待リンク）</span></label>
           </div>
           <div class="seg side-seg" id="side-field">
             <label><input type="radio" name="side" value="0" checked /><span>自分が先手（黒）</span></label>
             <label><input type="radio" name="side" value="1" /><span>自分が後手（白）</span></label>
           </div>
+          <div class="seg side-seg" id="host-field" role="radiogroup" aria-label="オンライン対戦での自分の手番" hidden>
+            <label><input type="radio" name="host" value="random" checked /><span>先手・後手はランダム</span></label>
+            <label><input type="radio" name="host" value="first" /><span>自分が先手（黒）</span></label>
+            <label><input type="radio" name="host" value="second" /><span>自分が後手（白）</span></label>
+          </div>
+          <p class="opt-help online-help" id="online-help" hidden>部屋を作ると招待リンクが出ます。相手がリンクを開いて参加すると対局が始まります（ログイン不要）。</p>
         </fieldset>
 
         <fieldset class="field rule-fields">
@@ -210,6 +220,16 @@
           <button type="button" class="btn ghost" id="result-setup">設定を変える</button>
           <button type="button" class="btn primary" id="result-rematch" autofocus>再戦</button>
         </div>
+      </div>
+    </dialog>
+
+    <!-- オンライン対戦の案内（部屋の作成・招待リンクと待機・参加の確認・エラー。ui/online.ts） -->
+    <dialog class="modal" id="online" aria-labelledby="online-title">
+      <div class="modal-body online-body">
+        <p class="label">オンライン対戦</p>
+        <h2 class="modal-title" id="online-title" tabindex="-1"></h2>
+        <div id="online-content"></div>
+        <div class="modal-actions" id="online-actions"></div>
       </div>
     </dialog>
 

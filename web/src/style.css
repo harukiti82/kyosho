@@ -2220,3 +2220,134 @@ button {
     transition: none !important;
   }
 }
+
+/* ---- オンライン対戦 ---- */
+/* 相手の王の候補（相手の駒の右上。自分の王の印と同じ金色を点線にして「まだ分からない」を表す） */
+.king-cand,
+.key-cand {
+  display: inline-grid;
+  place-items: center;
+  border-radius: 50%;
+  background: #fffdf6;
+  color: #7a5c14;
+  border: 1.5px dashed #c9a24a;
+  font-weight: 800;
+  line-height: 1;
+}
+.king-cand {
+  position: absolute;
+  z-index: 2;
+  top: 2%;
+  right: 2%;
+  width: 30%;
+  aspect-ratio: 1;
+  font-size: 3cqi;
+  pointer-events: none;
+}
+.key-cand {
+  width: 1.25em;
+  height: 1.25em;
+  font-size: 0.8em;
+  vertical-align: 0.05em;
+}
+.king-cand-note {
+  margin: 0 0 0.35rem;
+  font-size: 0.8rem;
+  color: var(--ink-muted);
+}
+/* 状態の行の接続表示 */
+.status-row:has(.net:not([hidden])) {
+  flex-wrap: wrap;
+  row-gap: 0.25rem;
+}
+.net {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.1rem 0.6rem;
+  border-radius: 999px;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--ink-muted);
+}
+.net::before {
+  content: "";
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  background: currentColor;
+}
+.net.ok {
+  color: var(--heal);
+}
+.net.warn {
+  color: #9a6b07;
+}
+.net.bad {
+  color: var(--danger);
+}
+/* 案内のダイアログ */
+.online-lead {
+  margin: -0.25rem 0 0.75rem;
+  font-size: 0.88rem;
+  color: var(--ink-muted);
+}
+.invite-url {
+  font-size: 0.85rem;
+  padding: 0.5rem 0.6rem;
+}
+.invite-actions {
+  margin: 0.5rem 0 0.75rem;
+}
+.online-seat {
+  margin: 0 0 0.5rem;
+  font-size: 0.9rem;
+}
+.online-wait {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 0 0.5rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--accent-to);
+}
+.spinner {
+  flex: none;
+  width: 1rem;
+  height: 1rem;
+  border-radius: 50%;
+  border: 2.5px solid rgba(199, 116, 86, 0.25);
+  border-top-color: var(--accent-to);
+  animation: spin 0.9s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.online-rules summary {
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--ink-muted);
+}
+.online-rules .rules4-list {
+  margin-top: 0.4rem;
+}
+.online-error {
+  margin: 0;
+  font-size: 0.92rem;
+  line-height: 1.6;
+}
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation: none;
+  }
+}
+.online-help {
+  margin-top: 0.4rem;
+}

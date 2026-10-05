@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "e2e": "playwright test",
+    "e2e:online": "playwright test -c playwright.online.config.ts",
     "balance": "node scripts/balance.mjs"
   },
   "devDependencies": {

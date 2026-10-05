@@ -11,6 +11,10 @@ export default defineConfig({
       "^/api(/|\\?|$)": { target: "http://localhost:8787", changeOrigin: true, ws: true },
     },
   },
+  // vite preview（npm run e2e が使う）は GitHub Pages と同じく /api なしにする（既定では server.proxy を引き継ぐ）
+  preview: {
+    proxy: {},
+  },
   test: {
     include: ["test/**/*.test.ts"],
   },
