@@ -4,11 +4,14 @@
 
 ## 現在の対象
 
-- 何を / どこを: 公開とオンライン対戦（ユーザーの依頼「公開してオンライン対戦できるようにしたい」「ドメインを買ってそこで公開したい」。Cloudflare Workers + Durable Objects・招待リンク・ログインなし・ドメインは Cloudflare Registrar で購入済みの rukiharukichi.com のサブドメイン kyosho.rukiharukichi.com（ルートは別用途で使わない）・画面とサーバーを 1 Worker の同一オリジンで配信、で決定済み）。サーバー・通信仕様・1 Worker 構成（静的アセット＋`/api`）・CI のデプロイ（`deploy.yml`）まで完了。画面側のオンラインモードは未着手
-- ステータス: Cloudflare には未デプロイ（`routes` に Custom Domain `kyosho.rukiharukichi.com` は設定済みで、次の本番デプロイで反映。デプロイと Secret 登録は master とユーザー）。GitHub Pages の公開版は残している。試遊版の演出の手応えと、隠し王・方向駒・拠点のどの組み合わせを採るかもユーザー判断待ち
-- 最終更新: 2026-10-05
+- 何を / どこを: 公開とオンライン対戦（ユーザーの依頼「公開してオンライン対戦できるようにしたい」「ドメインを買ってそこで公開したい」。Cloudflare Workers + Durable Objects・招待リンク・ログインなし・ドメインは Cloudflare Registrar で購入済みの rukiharukichi.com のサブドメイン kyosho.rukiharukichi.com（ルートは別用途で使わない）・画面とサーバーを 1 Worker の同一オリジンで配信、で決定済み）。サーバー・通信仕様・1 Worker 構成（静的アセット＋`/api`）・CI のデプロイ（`deploy.yml`）・画面側のオンラインモード（設定画面の「オンライン（招待リンク）」）まで完了
+- ステータス: サーバーは本番デプロイ済み（https://kyosho.rukiharukichi.com 、workers.dev でも）。画面のオンラインモードは PR で CI 待ち・未マージ（CI の Secret `CLOUDFLARE_API_TOKEN` は登録済みで、main へのマージでそのまま本番デプロイされるため、マージは master が確認してから行う）。本番の実機（スマホ 2 台）での対局は未確認。GitHub Pages の公開版は残している（オンラインの入口は出ない）。試遊版の演出の手応えと、隠し王・方向駒・拠点のどの組み合わせを採るかもユーザー判断待ち
+- 最終更新: 2026-10-05（画面のオンラインモード）
 
 ## 直近の観点・指摘
+
+- オンラインの画面: 通信層は `net/online.ts`（DOM なし・`test/online.test.ts`）、案内のダイアログは `ui/online.ts`、対局は `ui/app.ts`（`settings.mode === "online"`）。手は送るだけで、盤は届いた `view` で描く。王は `App.kingOf`（view の `myKing` / `oppKing`）。トークンは sessionStorage `kyosho:token:<roomId>`（別タブは別人）。入口は `/api/health` が `{"ok":true}` のときだけ。e2e は `npm run e2e:online`（wrangler dev :8790）。画面側の挙動の詳細は `.agent/online-protocol.md`「画面側の挙動」
+- サーバーの不足（直していない）: 終局後も返されなかった相手の王が届かない（終局画面は「？（明かされない）」）・同じ部屋での再戦の申し込みがない（「新しい部屋で再戦」は招待リンクを送り直す）
 
 - 配信: 1 つの Worker（`server/wrangler.jsonc`）が `web/dist` を静的アセットで、`/api` を Worker で返す（`run_worker_first: ["/api", "/api/*"]`。静的アセットでは Worker も DO も起きない）。Origin は同一オリジン＋`ALLOWED_ORIGINS`（本番は `https://kyosho.rukiharukichi.com`、`npm run dev` が `--var` で localhost に置き換える）。CORS なし。画面はサーバー URL を持たず `API_PATH`（`/api`）の絶対パスで呼ぶ。GitHub Pages 版ではオンラインがつながらないので、画面は `/api/health` に届かなければ入口を出さない
 - 独自ドメイン: `server/wrangler.jsonc` の `routes`（`kyosho.rukiharukichi.com`、`custom_domain: true`）。ドメインを変えるなら `routes` と `ALLOWED_ORIGINS` の 2 か所（手順は README「独自ドメイン（kyosho.rukiharukichi.com）」）
@@ -27,15 +30,15 @@
 
 ## 未解決・次の一手
 
-- [ ] 独自ドメインの設定と本番デプロイ（master とユーザー）: DNS に `kyosho` のレコードがないことを確認 → `cd server && npm run deploy`（または Secret `CLOUDFLARE_API_TOKEN` を登録して main へマージ）→ https://kyosho.rukiharukichi.com/ と `/api/health` を確認。本番で確かめたら別タスクで GitHub Pages（`pages.yml`）を止める
-- [ ] 画面側のオンラインモード（`web/src/ui`）: 設定画面に「オンラインで対戦（招待リンクを作る）」、`?room=<id>` で開いたら参加、WebSocket の `state` で盤を描き直す、相手の切断表示、再接続。サーバー URL は持たず `API_PATH` で同一オリジンに。開発は `cd server && npm run dev` ＋ `cd web && npm run dev`（:5173 が `/api` をプロキシ）
+- [ ] 画面のオンラインモードの PR を master が確認してマージ（マージで CI が本番デプロイ）→ https://kyosho.rukiharukichi.com/ で設定画面に「オンライン（招待リンク）」が出ること、スマホ 2 台で作成 → 参加 → 終局・再読み込みを確かめる。確かめたら別タスクで GitHub Pages（`pages.yml`）を止める
+- [ ] 必要ならサーバーに「終局後の相手の王の公開」「同じ部屋での再戦」を足す（ユーザーの判断）
 - [ ] ユーザーの試遊で演出の手応え（段階の差・決着の演出の長さと派手さ・音量・テンポ・被弾の赤の強さ）を聞く。実機の音は未確認
 - [ ] ユーザーの試遊で方向駒・隠し王・拠点の感想を聞く（青枠と内訳で「端の駒もダメージに効く」が分かるか、強い駒を置くリスクとリターンが感じられるか、人間が隅に金を置く戦術で拠点が強すぎにならないか）
 - [ ] 採用する組み合わせが決まったら RULES.md を新版に改稿し、既定プリセットを切り替える
 
 ## 現フェーズで Read すべき設計書
 
-- オンラインモードの画面: `.agent/online-protocol.md`（これだけで実装できる粒度。エンドポイントは `/api` の下）→ `web/src/net/protocol.ts` → `web/src/ui/app.ts`（対局画面。CPU 対戦・2 人対戦の手番処理に、オンラインの「自分の手番だけ打てる・届いた view で描く」を足す）, `web/src/ui/setup.ts`
+- オンライン対戦の画面の修正: `.agent/online-protocol.md`（「画面側の挙動」）→ `web/src/net/online.ts` → `web/src/ui/app.ts`（「オンライン対戦」節）, `web/src/ui/online.ts`, `web/e2e/online/`
 - 設定項目・プリセットの変更: `RULES.md` の「Web 試遊版」節 → `web/src/engine/rules.ts` → AGENTS.md の「ルール・設定項目を変えるとき」
 - ダメージ・端の駒: `web/src/engine/board.ts`（`damageOf` / `anchorsOf`）, `web/test/anchor.test.ts`。方向駒: `board.ts`（`pieceLines`）, `test/direction.test.ts`。隠し王: `game.ts`（隠し王節）, `cpu.ts`, `test/king.test.ts`
 - 演出・効果音・成績: `web/src/ui/impact.ts`, `web/src/ui/fx.ts`, `web/src/ui/sound.ts`, `web/test/impact.test.ts`, `web/e2e/impact.spec.ts`。決着の演出: `web/src/ui/outcome.ts`, `web/test/outcome.test.ts`, `web/e2e/result.spec.ts`
@@ -43,5 +46,5 @@
 
 ## 関連ファイル / リンク
 
-- E2E のスクリーンショット: `web/screenshots/`（pc-* / sp-* 、隠し王は *-king-*、方向駒は *-dir*、拠点は *-anchor*、演出は *-impact-*、決着は *-result-*）
-- デプロイ: `.github/workflows/pages.yml`（GitHub Pages。PR はテスト+ビルドのみ、main への push でデプロイ）、`.github/workflows/deploy.yml`（Cloudflare。Secret 未設定ならスキップ）、`server/wrangler.jsonc`
+- E2E のスクリーンショット: `web/screenshots/`（pc-* / sp-* 、隠し王は *-king-*、方向駒は *-dir*、拠点は *-anchor*、演出は *-impact-*、決着は *-result-*、オンラインは *-online-*）
+- デプロイ: `.github/workflows/pages.yml`（GitHub Pages。PR はテスト+ビルドのみ、main への push でデプロイ）、`.github/workflows/deploy.yml`（Cloudflare。Secret 登録済み = main へのマージで本番デプロイ）、`server/wrangler.jsonc`

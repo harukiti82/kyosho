@@ -12,18 +12,22 @@ import {
   type Player,
   type RuleSet,
 } from "../engine/rules";
+import type { HostSeat } from "../net/protocol";
 import { dirIcon } from "./diricon";
 import { byId, h } from "./dom";
 import { decodeRules, encodeRules } from "./query";
 import { ruleLines, verb, type Sentence } from "./ruletext";
 
-export type Mode = "cpu" | "pvp";
+/** cpu: CPU 対戦 / pvp: 同じ端末で 2 人 / online: 招待リンクで遠隔の相手と */
+export type Mode = "cpu" | "pvp" | "online";
 
 export interface PlaySettings {
   mode: Mode;
-  /** CPU 対戦で人間が持つ手番 */
+  /** CPU 対戦で人間が持つ手番。オンライン対戦ではサーバーが決めた自分の手番 */
   human: Player;
   rules: RuleSet;
+  /** オンライン対戦で部屋を作るときの自分の席の希望 */
+  hostSeat?: HostSeat;
 }
 
 /** 文の配列を <li> にして ol へ入れる（強調部分は <strong>） */
@@ -52,6 +56,8 @@ export class SetupDialog {
   private rules: RuleSet;
   /** 開いたときの設定（対局中に開いて閉じたら、アドレスバーをこの設定に戻す） */
   private openedWith: RuleSet | null = null;
+  /** 閉じたときに戻すアドレス（オンライン対戦中は部屋の URL。再読み込みで部屋に戻れるように） */
+  private restoreUrl: string | null = null;
   private readonly el = {
     dialog: byId<HTMLDialogElement>("setup"),
     form: byId<HTMLFormElement>("setup-form"),
@@ -65,6 +71,10 @@ export class SetupDialog {
     kingAmount: byId("king-amount-field"),
     preview: byId("setup-rules4"),
     sideField: byId("side-field"),
+    hostField: byId("host-field"),
+    onlineMode: byId("mode-online"),
+    onlineHelp: byId("online-help"),
+    start: byId("setup-start"),
     note: byId("setup-note"),
     shareStatus: byId("share-status"),
     shareUrl: byId<HTMLInputElement>("share-url"),
@@ -92,13 +102,21 @@ export class SetupDialog {
     this.writeForm(this.rules);
   }
 
-  open(rules?: RuleSet) {
+  /** restoreUrl: 閉じたときに戻すアドレス（省略時は開いたときの設定の URL） */
+  open(rules?: RuleSet, restoreUrl?: string) {
     this.openedWith = rules ? cloneRules(rules) : null;
+    this.restoreUrl = restoreUrl ?? null;
     if (rules) this.writeForm(rules);
     this.el.shareStatus.textContent = "";
     this.el.shareUrl.hidden = true;
     this.syncMode();
     if (!this.el.dialog.open) this.el.dialog.showModal();
+  }
+
+  /** オンライン対戦の入口を出す（サーバーに届く公開先だけ） */
+  enableOnline() {
+    this.el.onlineMode.hidden = false;
+    this.syncMode();
   }
 
   private showNote(text: string) {
@@ -153,6 +171,7 @@ export class SetupDialog {
     const { dialog, form } = this.el;
     dialog.addEventListener("cancel", (e) => {
       if (!this.hasGame()) e.preventDefault();
+      else if (this.restoreUrl) window.history.replaceState(null, "", this.restoreUrl);
       else if (this.openedWith) this.reflectUrl(this.openedWith);
     });
     // 数値は入力し終えたとき（change）に範囲内へ直す。入力中（input）は表示だけ更新する
@@ -165,10 +184,13 @@ export class SetupDialog {
       const f = new FormData(form);
       this.refresh(true);
       this.reflectUrl();
+      const mode = f.get("mode");
+      const host = f.get("host");
       this.onStart({
-        mode: f.get("mode") === "pvp" ? "pvp" : "cpu",
+        mode: mode === "pvp" ? "pvp" : mode === "online" && !this.el.onlineMode.hidden ? "online" : "cpu",
         human: f.get("side") === "1" ? 1 : 0,
         rules: cloneRules(this.rules),
+        hostSeat: host === "first" ? "first" : host === "second" ? "second" : "random",
       });
     });
     byId("setup-rules").addEventListener("click", () => {
@@ -266,7 +288,12 @@ export class SetupDialog {
   }
 
   private syncMode() {
-    this.el.sideField.hidden = new FormData(this.el.form).get("mode") === "pvp";
+    const mode = new FormData(this.el.form).get("mode");
+    const online = mode === "online" && !this.el.onlineMode.hidden;
+    this.el.sideField.hidden = mode === "pvp" || online;
+    this.el.hostField.hidden = !online;
+    this.el.onlineHelp.hidden = !online;
+    this.el.start.textContent = online ? "部屋を作る" : "対局開始";
   }
 
   shareUrl(r: RuleSet = this.rules): string {

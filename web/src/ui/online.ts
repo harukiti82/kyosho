@@ -1,0 +1,135 @@
+// オンライン対戦の案内ダイアログ（部屋の作成中・招待リンクと相手の待機・招待されたときの参加の確認・エラー）。
+// 表示だけを受け持ち、通信と対局の進行は app.ts（通信層は net/online.ts）が行う。
+
+import { PLAYER_NAME, type Player, type RuleSet } from "../engine/rules";
+import { byId, h } from "./dom";
+import { ruleLines } from "./ruletext";
+import { fillSentences } from "./setup";
+
+export interface DialogAction {
+  label: string;
+  primary?: boolean;
+  id?: string;
+  onClick: () => void;
+}
+
+/** 先手（黒）・後手（白） */
+export const seatText = (p: Player) => `${PLAYER_NAME[p]}（${p === 0 ? "黒" : "白"}）`;
+
+export class OnlineDialog {
+  private readonly el = {
+    dialog: byId<HTMLDialogElement>("online"),
+    title: byId("online-title"),
+    content: byId("online-content"),
+    actions: byId("online-actions"),
+  };
+  /** 今出している画面の種類（e2e と表示の切り替えの確認用に data-view にも入れる） */
+  view: "busy" | "invite" | "join" | "error" | null = null;
+
+  constructor() {
+    // Esc で閉じない（閉じると何も操作できない画面になるため、ボタンで抜ける）
+    this.el.dialog.addEventListener("cancel", (e) => e.preventDefault());
+  }
+
+  get isOpen() {
+    return this.el.dialog.open;
+  }
+
+  /** 待ち（部屋を作っている・接続している） */
+  busy(title: string, note?: string) {
+    this.show("busy", title, [h("p", { class: "online-wait" }, [h("span", { class: "spinner", attrs: { "aria-hidden": "true" } }), note ?? "少しお待ちください"])], []);
+  }
+
+  /** 招待リンクと相手の待機（作成者） */
+  invite(o: { url: string; rules: RuleSet; ruleName: string; you: Player; onLeave: () => void }) {
+    const input = h("input", { class: "share-url invite-url", attrs: { type: "text", readonly: "", id: "invite-url", "aria-label": "招待リンク" } });
+    input.value = o.url;
+    input.addEventListener("focus", () => input.select());
+    const status = h("span", { class: "share-status", attrs: { role: "status", id: "invite-status" } });
+    const copy = h("button", { class: "btn primary", text: "リンクをコピー", attrs: { type: "button", id: "invite-copy" } });
+    copy.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(o.url);
+        status.textContent = "コピーしました。相手に送ってください";
+      } catch {
+        status.textContent = "自動でコピーできませんでした。上のリンクを選んでコピーしてください";
+        input.focus();
+        input.select();
+      }
+    });
+    const buttons: HTMLElement[] = [copy];
+    if (typeof navigator.share === "function") {
+      const share = h("button", { class: "btn ghost", text: "共有…", attrs: { type: "button", id: "invite-share" } });
+      share.addEventListener("click", () => {
+        navigator.share({ title: "挟将で対戦しよう", text: `挟将（${o.ruleName}）で対戦しよう`, url: o.url }).catch(() => {});
+      });
+      buttons.push(share);
+    }
+    const rules = h("ol", { class: "rules4-list" });
+    fillSentences(rules, ruleLines(o.rules));
+    this.show(
+      "invite",
+      "招待リンクを相手に送ってください",
+      [
+        h("p", { class: "online-lead", text: "相手がこのリンクを開いて「参加する」を押すと、対局が始まります（ログイン不要）。" }),
+        input,
+        h("div", { class: "share invite-actions" }, [...buttons, status]),
+        h("p", { class: "online-seat" }, ["あなたは ", h("strong", { text: seatText(o.you) }), `・ルール ${o.ruleName}`]),
+        h("p", { class: "online-wait", attrs: { id: "invite-waiting" } }, [h("span", { class: "spinner", attrs: { "aria-hidden": "true" } }), "相手の参加を待っています…"]),
+        h("details", { class: "online-rules" }, [h("summary", { text: "この部屋のルール" }), rules]),
+      ],
+      [{ label: "やめて設定画面へ", id: "invite-leave", onClick: o.onLeave }],
+    );
+  }
+
+  /** 招待リンクから開いたときの参加の確認 */
+  join(o: { rules: RuleSet; ruleName: string; createdHere: boolean; onJoin: () => void; onCancel: () => void }) {
+    const rules = h("ol", { class: "rules4-list" });
+    fillSentences(rules, ruleLines(o.rules));
+    this.show(
+      "join",
+      "オンライン対戦に招待されました",
+      [
+        h("p", { class: "online-lead", text: `ルール「${o.ruleName}」の対局です。先手・後手は部屋を作った人の設定で決まります。` }),
+        o.createdHere
+          ? h("p", {
+              class: "setup-note",
+              attrs: { id: "join-own" },
+              text: "この部屋はこのブラウザで作られました。ここで参加すると、あなたが相手の席に座ります。相手と遊ぶなら、参加せずにリンクを相手に送ってください。",
+            })
+          : null,
+        h("section", { class: "setup-preview" }, [h("h3", { class: "label", text: "この部屋のルール" }), rules]),
+      ],
+      [
+        { label: "参加しないで設定画面へ", onClick: o.onCancel },
+        { label: "参加する", primary: true, id: "join-room", onClick: o.onJoin },
+      ],
+    );
+  }
+
+  error(title: string, message: string, actions: DialogAction[]) {
+    this.show("error", title, [h("p", { class: "online-error", attrs: { role: "alert" }, text: message })], actions);
+  }
+
+  close() {
+    this.view = null;
+    if (this.el.dialog.open) this.el.dialog.close();
+  }
+
+  private show(view: NonNullable<OnlineDialog["view"]>, title: string, content: (HTMLElement | null)[], actions: DialogAction[]) {
+    this.view = view;
+    this.el.dialog.dataset.view = view;
+    this.el.title.textContent = title;
+    this.el.content.replaceChildren(...content.filter((x): x is HTMLElement => x !== null));
+    this.el.actions.replaceChildren(
+      ...actions.map((a) => {
+        const b = h("button", { class: `btn ${a.primary ? "primary" : "ghost"}`, text: a.label, attrs: { type: "button", ...(a.id ? { id: a.id } : {}) } });
+        b.addEventListener("click", a.onClick);
+        return b;
+      }),
+    );
+    if (!this.el.dialog.open) this.el.dialog.showModal();
+    // 読み上げとキーボードの起点をタイトルに置く
+    this.el.title.focus();
+  }
+}

@@ -9,6 +9,7 @@ import {
   kingInfo,
   lastMoveOf,
   legalCells,
+  movesBy,
   playableKinds,
   playMove,
   previewMove,
@@ -18,7 +19,9 @@ import {
   type GameEvent,
   type GameResult,
   type GameState,
+  type KingInfo,
   type MoveEvent,
+  type PlayerView,
   type Preview,
   type Target,
 } from "../engine/game";
@@ -36,9 +39,28 @@ import {
   type Player,
   type RuleSet,
 } from "../engine/rules";
+import {
+  browserDeps,
+  checkHealth,
+  createdHere,
+  createRoom,
+  getRoomInfo,
+  inviteUrl,
+  loadToken,
+  OnlineHttpError,
+  OnlineSession,
+  rememberCreated,
+  roomIdFromSearch,
+  safeStore,
+  saveToken,
+  wsUrl,
+  type EndReason,
+} from "../net/online";
+import type { ErrorMessage, RoomPhase, StateMessage } from "../net/protocol";
 import { dirIcon } from "./diricon";
 import { byId, h } from "./dom";
 import { finaleMs, Fx, fxTiming, speakerIcon, type FxTiming } from "./fx";
+import { OnlineDialog, seatText } from "./online";
 import { hitOf, statsOf, tierOf, tierText, type HitBreakdown, type PlayerStats, type Tier } from "./impact";
 import { outcomeOf, type Outcome } from "./outcome";
 import { dirMark, endDetails, handText, hpText, kingPenaltyText, pieceLabel, ruleDetails, ruleLines, verb } from "./ruletext";
@@ -93,6 +115,21 @@ export class App {
   /** 隠し王（2 人対戦）: 「自分の王を確認」を押している間 true */
   private peek = false;
 
+  // ---- オンライン対戦 ----
+  /** 部屋への接続（オンライン対戦中だけ） */
+  private net: OnlineSession | null = null;
+  /** 最後に届いた部屋の状態（局面は this.game に view として入れる） */
+  private room: { id: string; phase: RoomPhase; opponent: StateMessage["opponent"] } | null = null;
+  /** 手を送って、サーバーから state が届くのを待っている */
+  private sending = false;
+  /** 演出の間に届いた state（演出が終わってから反映する） */
+  private queued: StateMessage | null = null;
+  private readonly lobby = new OnlineDialog();
+  /** トークン（部屋ごと）。再読み込みでは残り、別のタブとは共有しない */
+  private readonly tokens = safeStore(() => window.sessionStorage);
+  /** この端末で作った部屋の記録（自分の招待リンクを開いたときの注意書き） */
+  private readonly local = safeStore(() => window.localStorage);
+
   private readonly cells: HTMLButtonElement[][] = [];
   private readonly setup: SetupDialog;
   private readonly sound = new Sound();
@@ -105,6 +142,7 @@ export class App {
     rulesList: byId("rules4-list"),
     status: byId("status"),
     ply: byId("ply"),
+    net: byId("net"),
     players: [byId("player-0"), byId("player-1")] as const,
     preview: byId("preview"),
     handTitle: byId("hand-title"),
@@ -124,7 +162,12 @@ export class App {
       () => !!this.game,
     );
     this.bindControls();
-    this.setup.open();
+    // 招待リンク（?room=）から開いたら部屋へ、それ以外は設定画面から
+    const roomId = roomIdFromSearch(window.location.search);
+    if (roomId === undefined) this.setup.open();
+    else void this.openRoom(roomId);
+    // オンライン対戦の入口は、サーバーに届く公開先でだけ出す（GitHub Pages・vite preview では出さない）
+    void checkHealth().then((ok) => ok && this.setup.enableOnline());
   }
 
   // ---- 初期化 ----
@@ -172,7 +215,7 @@ export class App {
   private bindControls() {
     const { result, rules } = this.el;
     byId("btn-rules").addEventListener("click", () => this.showRules(this.settings?.rules ?? null));
-    byId("btn-new").addEventListener("click", () => this.setup.open(this.settings?.rules));
+    byId("btn-new").addEventListener("click", () => this.openSetup());
     byId("rules-close").addEventListener("click", () => rules.close());
     const mute = byId("btn-mute");
     const showMute = () => {
@@ -188,12 +231,15 @@ export class App {
     byId("result-view").addEventListener("click", () => result.close());
     byId("result-setup").addEventListener("click", () => {
       result.close();
-      this.setup.open(this.settings?.rules);
+      this.openSetup();
     });
     byId("result-rematch").addEventListener("click", () => {
       result.close();
-      if (this.settings) this.start(this.settings);
+      this.rematch();
     });
+    // オンライン対戦: 画面に戻った・ネットにつながったら、つなぎ直しの待ち時間を飛ばす
+    document.addEventListener("visibilitychange", () => document.visibilityState === "visible" && this.net?.wake());
+    window.addEventListener("online", () => this.net?.wake());
     // 決着の演出は Enter / Esc（押した時）・スペース（離した時。ボタンの起動と同じ）で飛ばす。
     // 下のボタンが一緒に反応しないよう、演出中のこれらのキーは既定の動作を止める
     document.addEventListener(
@@ -221,6 +267,23 @@ export class App {
   // ---- 対局の進行 ----
 
   private start(settings: PlaySettings) {
+    if (settings.mode === "online") {
+      void this.createOnline(settings);
+      return;
+    }
+    this.leaveOnline();
+    this.resetPlay();
+    this.settings = settings;
+    this.setup.reflectUrl(settings.rules);
+    this.game = createGame(settings.rules);
+    this.el.game.hidden = false;
+    this.renderRuleCard(settings.rules);
+    this.renderLegend(settings.rules);
+    this.afterChange();
+  }
+
+  /** 対局の途中の状態（タイマー・演出・選択）を捨てる */
+  private resetPlay() {
     window.clearTimeout(this.cpuTimer);
     window.clearTimeout(this.resultTimer);
     window.clearTimeout(this.fxTimer);
@@ -230,19 +293,22 @@ export class App {
     this.fx.clear();
     this.hideToast();
     document.querySelectorAll(".flyer").forEach((f) => f.remove());
-    this.settings = settings;
-    this.setup.reflectUrl(settings.rules);
-    this.game = createGame(settings.rules);
+    if (this.el.result.open) this.el.result.close();
     this.selected = ["fu", "fu"];
     this.focus = null;
     this.pinned = false;
     this.kingOn = false;
     this.peek = false;
     this.seenEvents = 0;
-    this.el.game.hidden = false;
-    this.renderRuleCard(settings.rules);
-    this.renderLegend(settings.rules);
-    this.afterChange();
+  }
+
+  private get online() {
+    return this.settings?.mode === "online";
+  }
+
+  /** 画面の持ち主の手番（CPU 対戦は人間・オンライン対戦は自分）。2 人対戦は null */
+  private me(): Player | null {
+    return this.settings && this.settings.mode !== "pvp" ? this.settings.human : null;
   }
 
   private isHuman(p: Player) {
@@ -250,11 +316,38 @@ export class App {
   }
 
   private canAct(): boolean {
-    return !!this.game && !this.game.result && !this.fxLock && this.isHuman(this.game.turn);
+    if (!this.game || this.game.result || this.fxLock || !this.isHuman(this.game.turn)) return false;
+    // オンライン対戦は、対局中・つながっている・前の手の返事を待っていないときだけ
+    return !this.online || (this.room?.phase === "playing" && !!this.net?.ready && !this.sending);
+  }
+
+  /**
+   * p の王の情報。オンライン対戦は届いた view の自分の王だけを使い、相手の王は公開情報（返されたか）だけ
+   * （view には相手の王の真の場所がない。kingInfo は GameState の隠し情報を読むので view には使わない）
+   */
+  private kingOf(g: GameState, p: Player): KingInfo {
+    if (!this.online) return kingInfo(g, p);
+    const v = g as unknown as PlayerView;
+    if (p === v.viewer) return v.myKing;
+    const on = g.rules.king.on;
+    const status = !on ? "off" : v.oppKing.revealed ? "revealed" : "hidden";
+    return { status, cell: null, auto: false, nextMove: movesBy(g, p) + 1, canDesignate: false, forcedNow: false };
   }
 
   private place(r: number, c: number, kind: PieceKind, king = false) {
     if (!this.game) return;
+    if (this.online) {
+      // 手を送るだけ。盤はサーバーから state が届いたときに描き直す（拒否されたら error が届く）
+      if (!this.net?.sendMove(r, c, kind, king)) {
+        this.showToast("接続が切れています。つながり直したら、もう一度打ってください");
+        return;
+      }
+      this.sending = true;
+      this.focus = null;
+      this.pinned = false;
+      this.render();
+      return;
+    }
     this.game = playMove(this.game, r, c, kind, { king });
     this.focus = null;
     this.pinned = false;
@@ -281,6 +374,10 @@ export class App {
       this.fxTimer = window.setTimeout(() => {
         this.fxLock = false;
         if (this.game === g) this.render();
+        // 演出の間に届いた相手の手を反映する
+        const q = this.queued;
+        this.queued = null;
+        if (q) this.onState(q);
       }, hold);
     }
     if (g.result) {
@@ -293,7 +390,7 @@ export class App {
 
   private scheduleCpu(delay: number) {
     const g = this.game;
-    if (!g || g.result || this.isHuman(g.turn)) return;
+    if (!g || g.result || this.online || this.isHuman(g.turn)) return;
     this.cpuTimer = window.setTimeout(() => {
       if (this.game !== g) return;
       // CPU には自分の視点（相手の王の正体を含まない）だけを渡す
@@ -306,7 +403,8 @@ export class App {
   private impactPlan(m: MoveEvent): ImpactPlan {
     const r = this.game!.rules;
     const tier = tierOf(r, m);
-    const hurt = this.settings?.mode === "cpu" && m.player !== this.settings.human;
+    const me = this.me();
+    const hurt = me !== null && m.player !== me;
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     return { tier, hit: hitOf(r, m), hurt, text: tierText(tier, m, hurt ? "hurt" : "attack"), reduce, ...fxTiming(tier, m.targets.length, reduce) };
   }
@@ -328,19 +426,316 @@ export class App {
         const what = k.lose ? "即負け" : `体力−${k.penalty}`;
         msgs.push(`王を${v.past}！ ${this.name(other(e.player))}の王は ${cellName(k.r, k.c)} の${pieceLabel(g.rules, k.kind)}（${what}）`);
       }
-      // CPU 対戦では、人間の王が決まったことを本人に知らせる（2 人対戦は相手に見えるので出さない）
-      if (this.settings?.mode === "cpu" && e.player === this.settings.human) {
-        const ki = kingInfo(g, e.player);
+      // CPU 対戦・オンライン対戦では、自分の王が決まったことを本人に知らせる（2 人対戦は相手に見えるので出さない）
+      if (e.player === this.me()) {
+        const ki = this.kingOf(g, e.player);
         if (ki.cell && ki.cell[0] === e.r && ki.cell[1] === e.c) {
           msgs.push(
             ki.auto
               ? `期限の ${g.rules.king.deadline} 手目なので、置いた${pieceLabel(g.rules, e.kind)}（${cellName(e.r, e.c)}）が自動であなたの王になりました`
-              : `${cellName(e.r, e.c)} の${pieceLabel(g.rules, e.kind)}をあなたの王にしました（CPU には見えません）`,
+              : `${cellName(e.r, e.c)} の${pieceLabel(g.rules, e.kind)}をあなたの王にしました（${this.foe()}には見えません）`,
           );
         }
       }
     }
     if (msgs.length > 0) this.showToast(msgs.join("　"));
+  }
+
+  /** 同じ設定でもう一局。オンライン対戦は同じルール・同じ席で新しい部屋を作る（招待リンクを送り直す） */
+  private rematch() {
+    const s = this.settings;
+    if (!s) return;
+    this.start(s.mode === "online" ? { ...s, hostSeat: s.human === 0 ? "first" : "second" } : s);
+  }
+
+  // ---- オンライン対戦 ----
+
+  /** 設定画面を開く。オンライン対戦中に開いて閉じたら、アドレスを部屋の URL に戻す */
+  private openSetup() {
+    const restore = this.room ? `${window.location.pathname}?room=${this.room.id}` : undefined;
+    this.setup.open(this.settings?.rules, restore);
+  }
+
+  /** 部屋を作って入る（設定画面の「部屋を作る」・終局後の「新しい部屋で再戦」） */
+  private async createOnline(settings: PlaySettings) {
+    this.lobby.busy("部屋を作っています…");
+    try {
+      const res = await createRoom({ rules: settings.rules, hostSeat: settings.hostSeat ?? "random" });
+      saveToken(this.tokens, res.roomId, res.token);
+      rememberCreated(this.local, res.roomId);
+      this.enterRoom(res.roomId, { ...settings, human: res.you });
+    } catch (e) {
+      const why = e instanceof OnlineHttpError && e.code === "bad_rules" ? "この設定ではオンライン対戦の部屋を作れませんでした。" : "サーバーにつながりませんでした。";
+      this.lobby.error("部屋を作れませんでした", `${why}時間をおいてもう一度試してください。`, [
+        { label: "設定画面へ", onClick: () => this.leaveToSetup(settings.rules) },
+        { label: "もう一度試す", primary: true, onClick: () => void this.createOnline(settings) },
+      ]);
+    }
+  }
+
+  /** 招待リンク（?room=）から開いた。保存したトークンがあれば（再読み込み）そのまま席に戻る */
+  private async openRoom(id: string | null) {
+    this.el.game.hidden = true;
+    if (id === null) {
+      this.lobby.error("部屋が見つかりません", "招待リンクの部屋 ID の形式が違います。リンクを最後までコピーできているか確かめてください。", [
+        { label: "設定画面へ", primary: true, onClick: () => this.leaveToSetup() },
+      ]);
+      return;
+    }
+    if (loadToken(this.tokens, id)) {
+      this.enterRoom(id);
+      return;
+    }
+    this.lobby.busy("部屋を確かめています…");
+    try {
+      const info = await getRoomInfo(id);
+      if (!info.open) {
+        this.showEnded("room_full", info.phase === "finished" ? "この部屋の対局はもう終わっています。" : "この部屋には 2 人がもう参加しています。");
+        return;
+      }
+      const name = ruleName(info.rules);
+      this.lobby.join({
+        rules: info.rules,
+        ruleName: name,
+        createdHere: createdHere(this.local, id),
+        onJoin: () => this.enterRoom(id, { mode: "online", human: 0, rules: info.rules }),
+        onCancel: () => this.leaveToSetup(info.rules),
+      });
+    } catch (e) {
+      if (e instanceof OnlineHttpError && e.code === "not_found") this.showEnded("room_not_found", "招待リンクの部屋が見つかりません。");
+      else this.showUnavailable();
+    }
+  }
+
+  /** 部屋につなぐ（作成者・参加者・再読み込みの復帰で共通）。席はトークンがあればそれ、なければ空いている席 */
+  private enterRoom(id: string, settings?: PlaySettings) {
+    this.leaveOnline();
+    this.resetPlay();
+    this.game = null;
+    this.el.game.hidden = true;
+    this.settings = settings ?? { mode: "online", human: 0, rules: defaultRules() };
+    this.room = { id, phase: "waiting", opponent: { joined: false, online: false } };
+    this.sending = false;
+    this.queued = null;
+    // 再読み込みで同じ部屋に戻れるように、アドレスを部屋の URL にする
+    window.history.replaceState(null, "", `${window.location.pathname}?room=${id}`);
+    this.lobby.busy("部屋に接続しています…");
+    const net = new OnlineSession(
+      id,
+      wsUrl(id, window.location),
+      {
+        joined: (m) => {
+          if (this.net === net) this.settings!.human = m.you;
+        },
+        state: (m) => this.net === net && this.onState(m),
+        error: (m) => this.net === net && this.onNetError(m),
+        conn: (st, attempt) => {
+          if (this.net !== net) return;
+          // 最初の接続ができないまま（局面が届く前）は、案内の画面でつなぎ直しを知らせる
+          if (st === "reconnecting" && !this.game) {
+            this.lobby.busy("部屋に接続しています…", `サーバーにつながりません。つなぎ直しています（${attempt} 回目）`);
+          }
+          if (this.game) this.render();
+        },
+        ended: (reason, message) => this.net === net && this.onEnded(reason, message),
+      },
+      browserDeps(),
+    );
+    this.net = net;
+    net.start();
+  }
+
+  /** オンライン対戦から抜ける（接続を閉じる。部屋と席はサーバーに残る） */
+  private leaveOnline() {
+    this.net?.close();
+    this.net = null;
+    this.room = null;
+    this.sending = false;
+    this.queued = null;
+    this.lobby.close();
+    this.renderNet();
+  }
+
+  /** オンライン対戦をやめて設定画面へ（アドレスから部屋を外す） */
+  private leaveToSetup(rules?: RuleSet) {
+    const keep = rules ?? this.settings?.rules;
+    this.leaveOnline();
+    this.resetPlay();
+    this.game = null;
+    this.settings = null;
+    this.el.game.hidden = true;
+    window.history.replaceState(null, "", window.location.pathname);
+    this.setup.open(keep);
+  }
+
+  /** state が届いた。局面が進んだ（棋譜が伸びた）ときだけ演出し、それ以外（接続の変化・復帰）は描き直すだけ */
+  private onState(m: StateMessage) {
+    const s = this.settings!;
+    const prevRoom = this.room;
+    const prev = this.game;
+    const first = !prev;
+    const grew = !!prev && m.view.history.length > prev.history.length;
+    // 大・特大の演出中に届いた手は、演出が終わってから反映する（接続の変化は先に反映してよい）
+    if (grew && this.fxLock) {
+      this.queued = m;
+      this.room = { id: m.roomId, phase: this.room!.phase, opponent: m.opponent };
+      this.renderNet();
+      return;
+    }
+    this.room = { id: m.roomId, phase: m.phase, opponent: m.opponent };
+    s.human = m.you;
+    s.rules = m.view.rules;
+
+    if (!first && !grew) {
+      this.notifyRoom(prevRoom, first);
+      // 局面は同じ（相手の接続・切断・復帰・自分の復帰）
+      if (!this.finale) this.render();
+      this.syncLobby();
+      return;
+    }
+    // view は GameState から隠し王の真の状態（kings）を除いたもの。合法手・予測の関数は kings を読まないので、そのまま渡せる
+    this.game = m.view as unknown as GameState;
+    this.sending = false;
+    this.kingOn = false;
+    this.notifyRoom(prevRoom, first);
+    if (first) {
+      // 接続・再読み込み直後: 過去の手は演出しない。終局済みなら結果をそのまま出す
+      this.seenEvents = m.view.history.length;
+      this.el.game.hidden = false;
+      this.renderRuleCard(s.rules);
+      this.renderLegend(s.rules);
+      this.render();
+      this.syncLobby();
+      if (m.view.result) this.showResult(m.view.result);
+      return;
+    }
+    this.syncLobby();
+    this.afterChange();
+  }
+
+  /** 待機中は招待リンクの案内、それ以外は案内を閉じる */
+  private syncLobby() {
+    const room = this.room;
+    if (!room || !this.settings) return;
+    if (room.phase === "waiting") {
+      if (this.lobby.view !== "invite") {
+        this.lobby.invite({
+          url: inviteUrl(room.id, window.location),
+          rules: this.settings.rules,
+          ruleName: ruleName(this.settings.rules),
+          you: this.settings.human,
+          onLeave: () => this.leaveToSetup(),
+        });
+      }
+    } else if (this.lobby.view === "invite" || this.lobby.view === "busy") {
+      this.lobby.close();
+    }
+  }
+
+  /** 相手の参加・切断・復帰を知らせる */
+  private notifyRoom(prev: App["room"], first: boolean) {
+    const now = this.room!;
+    const me = seatText(this.settings!.human);
+    if (first || !prev) {
+      // 招待リンクから参加した人
+      if (now.phase === "playing" && this.game?.ply === 0) this.showToast(`対局開始！ あなたは${me}です`);
+      return;
+    }
+    if (prev.phase === "waiting" && now.phase === "playing") this.showToast(`相手が参加しました。対局開始！ あなたは${me}です`);
+    else if (now.phase === "playing" && prev.opponent.online && !now.opponent.online) this.showToast("相手の接続が切れました。戻るのを待っています");
+    else if (now.phase === "playing" && !prev.opponent.online && now.opponent.online) this.showToast("相手が戻りました");
+  }
+
+  /** 送った手が拒否された（盤は変わらない） */
+  private onNetError(m: ErrorMessage) {
+    this.sending = false;
+    const text: Partial<Record<ErrorMessage["code"], string>> = {
+      not_your_turn: "相手の手番です",
+      waiting_opponent: "相手の参加を待っています",
+      game_over: "対局はもう終わっています",
+      illegal_move: `その手は打てません（${m.message}）`,
+    };
+    this.showToast(text[m.code] ?? m.message);
+    if (this.game) this.render();
+  }
+
+  /** つなぎ直さない終わり方（別のタブ・部屋がない・満員・期限切れ） */
+  private onEnded(reason: EndReason, message: string) {
+    // 終局後に部屋が片付けられたのは正常。盤と結果はそのまま見せる
+    if (this.room?.phase === "finished" && (reason === "expired" || reason === "room_not_found")) {
+      this.net = null;
+      this.renderNet();
+      return;
+    }
+    // 説明は画面側の文に揃える。サーバーの文は理由が決まらないとき（rejected）だけ使う
+    this.showEnded(reason, reason === "rejected" ? message : undefined);
+  }
+
+  /** つなげない・つながらなくなった理由を案内に出す。lead は理由の前に添える一文 */
+  private showEnded(reason: EndReason, lead?: string) {
+    const back = { label: "設定画面へ", onClick: () => this.leaveToSetup() };
+    const titles: Record<EndReason, [string, string]> = {
+      replaced: ["別のタブで開かれました", "この対局が別のタブ（または別の端末）で開かれたため、こちらの接続を閉じました。"],
+      room_not_found: ["部屋が見つかりません", "招待リンクが古いか、部屋が片付けられました（放置した部屋は 24 時間、終局後は 1 時間で消えます）。"],
+      expired: ["部屋の期限が切れました", "しばらく操作がなかったため、部屋が片付けられました。"],
+      room_full: ["この部屋は満員です", "対局できるのは 2 人までです（観戦はできません）。"],
+      invalid_token: ["席に戻れませんでした", "保存していた参加の情報がこの部屋と合いません。"],
+      rejected: ["部屋に入れませんでした", ""],
+    };
+    const [title, detail] = titles[reason];
+    const text = [lead, detail].filter(Boolean).join(" ");
+    const actions =
+      reason === "replaced" && this.net
+        ? [back, { label: "このタブで続ける", primary: true, id: "resume-here", onClick: () => this.resumeHere() }]
+        : [{ ...back, primary: true }];
+    if (this.game) this.render();
+    this.lobby.error(title, text, actions);
+  }
+
+  /** 別のタブに取られた席を、このタブに戻す（もう一方のタブが閉じられる） */
+  private resumeHere() {
+    this.lobby.busy("部屋に接続しています…");
+    this.net?.resume();
+  }
+
+  /** /api に届かない公開先（GitHub Pages など）で招待リンクを開いた */
+  private showUnavailable() {
+    this.lobby.error(
+      "オンライン対戦に接続できません",
+      "サーバーにつながりませんでした。この公開先ではオンライン対戦を使えないか、通信が切れています。",
+      [
+        { label: "設定画面へ", onClick: () => this.leaveToSetup() },
+        { label: "もう一度試す", primary: true, onClick: () => void this.openRoom(roomIdFromSearch(window.location.search) ?? null) },
+      ],
+    );
+  }
+
+  /** 状態の行の接続表示（相手の接続・自分のつなぎ直し） */
+  private renderNet() {
+    const el = this.el.net;
+    const room = this.room;
+    el.hidden = !this.online || !room || !this.game;
+    if (el.hidden || !room) return;
+    let state: "ok" | "warn" | "bad";
+    let text: string;
+    if (this.net?.connState === "closed" && !this.game?.result) {
+      state = "bad";
+      text = "未接続";
+    } else if (this.net && !this.net.ready && !this.game?.result) {
+      state = "warn";
+      text = "再接続中…";
+    } else if (room.phase === "waiting") {
+      state = "warn";
+      text = "相手を待っています";
+    } else if (room.opponent.online) {
+      state = "ok";
+      text = "相手: 接続中";
+    } else {
+      state = "bad";
+      text = "相手: 切断中";
+    }
+    el.className = `net ${state}`;
+    el.textContent = text;
   }
 
   // ---- 入力 ----
@@ -365,7 +760,7 @@ export class App {
     // マウス・キーボードは 1 回で確定。タッチは 1 回目で予測、同じマスの 2 回目で確定
     if (!touch || samePinned) {
       // 自分で選んだときだけ king を渡す（期限の手の自動指定はエンジンが行う）
-      this.place(r, c, kind, this.kingOn && kingInfo(g, g.turn).canDesignate);
+      this.place(r, c, kind, this.kingOn && this.kingOf(g, g.turn).canDesignate);
       return;
     }
     this.setFocus(r, c, true);
@@ -416,7 +811,7 @@ export class App {
   /** 手番の人がこの手で置く駒が王になるか（「この駒を王にする」を選んだ・期限の手） */
   private designating(g: GameState): boolean {
     if (!this.canAct()) return false;
-    const ki = kingInfo(g, g.turn);
+    const ki = this.kingOf(g, g.turn);
     return ki.canDesignate && (this.kingOn || ki.forcedNow);
   }
 
@@ -427,7 +822,7 @@ export class App {
   private kingsShown(g: GameState): Player[] {
     if (!g.rules.king.on || !this.settings) return [];
     if (g.result) return [0, 1];
-    if (this.settings.mode === "cpu") return [this.settings.human];
+    if (this.settings.mode !== "pvp") return [this.settings.human];
     return this.peek ? [g.turn] : [];
   }
 
@@ -435,10 +830,16 @@ export class App {
   private shownKingCells(g: GameState): Map<number, Player> {
     const out = new Map<number, Player>();
     for (const p of this.kingsShown(g)) {
-      const cell = kingInfo(g, p).cell;
+      const cell = this.kingOf(g, p).cell;
       if (cell) out.set(idx(cell), p);
     }
     return out;
+  }
+
+  /** オンライン対戦: 相手の王の候補（view の公開情報。終局後・公開後は空） */
+  private oppCandidates(g: GameState): Set<number> {
+    if (!this.online || !g.rules.king.on || g.result) return new Set();
+    return new Set((g as unknown as PlayerView).oppKing.candidates.map(idx));
   }
 
   private setPeek(on: boolean) {
@@ -457,7 +858,12 @@ export class App {
 
   private name(p: Player) {
     if (this.settings?.mode === "pvp") return PLAYER_NAME[p];
-    return `${PLAYER_NAME[p]}（${p === this.settings?.human ? "あなた" : "CPU"}）`;
+    return `${PLAYER_NAME[p]}（${p === this.settings?.human ? "あなた" : this.foe()}）`;
+  }
+
+  /** 相手の呼び方（CPU 対戦は「CPU」、オンライン対戦は「相手」） */
+  private foe() {
+    return this.online ? "相手" : "CPU";
   }
 
   /** 持ち駒・警告マークを見せる側（人間の手番ならその人、CPU の手番なら人間） */
@@ -501,6 +907,9 @@ export class App {
       ...(r.king.on
         ? [h("span", {}, [h("span", { class: "key-king", attrs: { "aria-hidden": "true" }, text: "王" }), " 自分の王（自分にだけ見える）"])]
         : []),
+      ...(r.king.on && this.online
+        ? [h("span", {}, [h("span", { class: "key-cand", attrs: { "aria-hidden": "true" }, text: "?" }), " 相手の王の候補"])]
+        : []),
     );
   }
 
@@ -515,6 +924,7 @@ export class App {
     this.renderHand(g);
     this.renderKingBox(g);
     this.renderLog(g);
+    this.renderNet();
   }
 
   private renderBoard(g: GameState, pv: Preview | null) {
@@ -530,6 +940,7 @@ export class App {
     // 端の駒の力: 上乗せに使う端の自分の駒 → 足す数字
     const anchors = new Map((pv?.anchors ?? []).map((a) => [idx([a.r, a.c]), g.rules.values[a.kind]]));
     const kings = this.shownKingCells(g);
+    const cands = this.oppCandidates(g);
     const designating = this.designating(g);
     const last = lastMoveOf(g);
     this.el.board.classList.toggle("over", !!g.result);
@@ -565,6 +976,10 @@ export class App {
           cell.append(ghost);
           if (pv && pv.damage > 0) cell.append(h("span", { class: "dmg-badge", text: `${pv.damage}` }));
           if (pv && pv.heal > 0) cell.append(h("span", { class: "heal-badge", text: `+${pv.heal}` }));
+        }
+        if (s && s.owner !== viewer && cands.has(i)) {
+          cell.append(h("span", { class: "king-cand", text: "?", attrs: { "aria-hidden": "true" } }));
+          label += " 相手の王の候補";
         }
         if (threat.has(i)) {
           // 自分の王が返されうるときは強調する
@@ -667,7 +1082,7 @@ export class App {
   /** 体力カードの王の状態（公開情報と、見せてよい本人の情報だけ） */
   private kingTag(g: GameState, p: Player): HTMLElement | null {
     if (!g.rules.king.on) return null;
-    const ki = kingInfo(g, p);
+    const ki = this.kingOf(g, p);
     if (ki.status === "revealed") return h("span", { class: "king-tag lost", text: "王 返された" });
     if (this.kingsShown(g).includes(p)) {
       if (ki.cell) return h("span", { class: "king-tag", text: `王 ${cellName(ki.cell[0], ki.cell[1])}` });
@@ -678,14 +1093,21 @@ export class App {
 
   private renderStatus(g: GameState) {
     let text: string;
+    const away = this.online && this.room?.opponent.online === false;
     if (g.result) {
       text = `終局 — ${this.resultHeadline(g.result)}（${this.reasonShort(g)}）`;
+    } else if (this.online && this.room?.phase === "waiting") {
+      text = "相手の参加を待っています…";
+    } else if (this.online && !this.net?.ready) {
+      text = this.net?.connState === "closed" ? "接続を閉じました" : "接続が切れました。つなぎ直しています…";
+    } else if (this.online && this.sending) {
+      text = "手を送っています…";
     } else if (!this.isHuman(g.turn)) {
-      text = `${this.name(g.turn)}が考えています…`;
+      text = this.online ? `${this.name(g.turn)}の番です${away ? "（相手の接続が切れています。戻るのを待っています）" : ""}` : `${this.name(g.turn)}が考えています…`;
     } else {
       text = `${this.name(g.turn)}の番 — ${pieceLabel(g.rules, this.kindFor(g))}を${this.designating(g) ? "王にして" : ""}置くマスを選んでください`;
       // 王を決められる手番は、操作の場所を添える（スマホでは持ち駒欄が盤の下で見えないことがある）
-      if (!this.designating(g) && kingInfo(g, g.turn).canDesignate) text += "（王は持ち駒欄で指定）";
+      if (!this.designating(g) && this.kingOf(g, g.turn).canDesignate) text += "（王は持ち駒欄で指定）";
     }
     this.el.status.textContent = text;
     this.el.status.classList.toggle("over", !!g.result);
@@ -701,7 +1123,7 @@ export class App {
       box.classList.remove("on");
       box.append(h("h2", { class: "label", text: "予測" }));
       if (g.result) box.append(h("p", { class: "muted", text: "対局は終了しました。" }));
-      else if (!this.isHuman(g.turn)) box.append(h("p", { class: "muted", text: "CPU の手番です。" }));
+      else if (!this.isHuman(g.turn)) box.append(h("p", { class: "muted", text: `${this.foe()}の手番です。` }));
       else {
         box.append(
           h("p", { class: "muted" }, [
@@ -777,8 +1199,8 @@ export class App {
     box.replaceChildren();
     if (g.result) {
       this.el.handTitle.textContent = "対局終了";
-      const again = h("button", { class: "btn primary", text: "再戦", attrs: { type: "button", id: "btn-rematch" } });
-      again.addEventListener("click", () => this.settings && this.start(this.settings));
+      const again = h("button", { class: "btn primary", text: this.online ? "新しい部屋で再戦" : "再戦", attrs: { type: "button", id: "btn-rematch" } });
+      again.addEventListener("click", () => this.rematch());
       const show = h("button", { class: "btn ghost", text: "結果を見る", attrs: { type: "button" } });
       show.addEventListener("click", () => this.showResult(g.result!));
       box.append(show, again);
@@ -830,9 +1252,23 @@ export class App {
     const act = this.canAct();
     // 自分の王の状態を出すのは、操作している人（CPU 対戦では CPU の手番中も人間）
     const p = this.viewer(g);
-    const ki = kingInfo(g, p);
+    const ki = this.kingOf(g, p);
     const { deadline } = g.rules.king;
     const pen = kingPenaltyText(g.rules);
+    // オンライン対戦: 相手の王の候補（公開情報）の数。盤では「?」の印
+    const cands = this.oppCandidates(g);
+    if (this.online) {
+      const revealed = (g as unknown as PlayerView).oppKing.revealed;
+      box.append(
+        h(
+          "p",
+          { class: "king-cand-note", attrs: { id: "king-cands" } },
+          revealed
+            ? [`相手の王は${v.hit}`]
+            : [h("span", { class: "key-cand", text: "?", attrs: { "aria-hidden": "true" } }), ` 相手の王の候補 ${cands.size} 個（相手が期限内に置き、まだ${v.past.replace(/た$/, "")}ていない駒）`],
+        ),
+      );
+    }
 
     if (ki.status === "revealed") {
       box.append(h("p", { class: "king-note", text: `${pvp ? `${PLAYER_NAME[p]}の` : "あなたの"}王は${v.hit}（以後ふつうの駒）` }));
@@ -872,7 +1308,7 @@ export class App {
       box.append(
         h("p", { class: "king-note" }, [
           h("span", { class: "key-king", text: "王", attrs: { "aria-hidden": "true" } }),
-          ` あなたの王: ${cellName(y, x)} の${pieceLabel(g.rules, g.board[y][x]!.kind)}（CPU には見えない。${v.hitIf}${pen}）`,
+          ` あなたの王: ${cellName(y, x)} の${pieceLabel(g.rules, g.board[y][x]!.kind)}（${this.foe()}には見えない。${v.hitIf}${pen}）`,
         ]),
       );
       return;
@@ -1020,7 +1456,8 @@ export class App {
   /** 決着の目線（CPU 対戦は人間、2 人対戦は勝った側） */
   private outcome(g: GameState): Outcome {
     const s = this.settings!;
-    return outcomeOf(g, { mode: s.mode, human: s.human })!;
+    // オンライン対戦は CPU 対戦と同じく自分の目線（負ければ敗北の演出）
+    return outcomeOf(g, { mode: s.mode === "pvp" ? "pvp" : "cpu", human: s.human })!;
   }
 
   /** 決着の演出。finaleMs の後か、タップ／クリック／Enter で終局画面へ進む */
@@ -1047,6 +1484,7 @@ export class App {
   private resultHeadline(r: GameResult): string {
     if (r.winner === null) return "引き分け";
     if (this.settings?.mode === "cpu") return r.winner === this.settings.human ? "あなたの勝ち" : "CPU の勝ち";
+    if (this.online) return r.winner === this.settings!.human ? "あなたの勝ち" : "相手の勝ち";
     return `${PLAYER_NAME[r.winner]}の勝ち`;
   }
 
@@ -1082,7 +1520,9 @@ export class App {
     const cheer = byId("result-cheer");
     cheer.textContent = o.cheer ?? "";
     cheer.hidden = !o.cheer;
-    byId("result-rematch").classList.toggle("urge", o.urgeRematch);
+    const rematch = byId("result-rematch");
+    rematch.classList.toggle("urge", o.urgeRematch);
+    rematch.textContent = this.online ? "新しい部屋で再戦" : "再戦";
     this.hideToast();
     if (!this.el.result.open) this.el.result.showModal();
   }
@@ -1090,7 +1530,7 @@ export class App {
   /** 終局画面の成績（CPU 対戦は自分だけ、2 人対戦は両者） */
   private renderStats(g: GameState) {
     const stats = statsOf(g);
-    const cpu = this.settings?.mode === "cpu";
+    const cpu = this.settings?.mode !== "pvp";
     const who: Player[] = cpu ? [this.settings!.human] : [0, 1];
     byId("result-stats").replaceChildren(
       ...who.map((p) =>
@@ -1126,10 +1566,12 @@ export class App {
   private kingSummary(g: GameState): string {
     if (!g.rules.king.on) return "";
     const one = (p: Player) => {
-      const ki = kingInfo(g, p);
+      const ki = this.kingOf(g, p);
       const moved = lastKingHit(g, p);
       if (moved) return `${PLAYER_NAME[p]} ${cellName(moved.r, moved.c)}（${verb(g.rules).hit}）`;
       if (ki.cell) return `${PLAYER_NAME[p]} ${cellName(ki.cell[0], ki.cell[1])}（隠れたまま）`;
+      // オンライン対戦では、返されなかった相手の王はサーバーが終局後も送らない
+      if (this.online && p !== this.me()) return `${PLAYER_NAME[p]} ？（明かされない）`;
       return `${PLAYER_NAME[p]} なし（決める前に終局）`;
     };
     return ` ／ 王: ${one(0)}・${one(1)}`;

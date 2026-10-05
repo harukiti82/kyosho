@@ -1,8 +1,10 @@
 import { defineConfig, devices } from "@playwright/test";
 
-// ヘッドレスの chromium で本番ビルド（vite preview）を操作する
+// ヘッドレスの chromium で本番ビルド（vite preview）を操作する。/api はない（GitHub Pages と同じ）
 export default defineConfig({
   testDir: "e2e",
+  // オンライン対戦はサーバーが要るので playwright.online.config.ts（npm run e2e:online）で動かす
+  testIgnore: "online/**",
   timeout: 180_000,
   fullyParallel: false,
   workers: 1,

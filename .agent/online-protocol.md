@@ -1,6 +1,6 @@
 # オンライン対戦: 通信仕様と設計
 
-画面（`web/src/ui`）からオンライン対戦を実装する人向け。型と定数は `web/src/net/protocol.ts`（画面からそのまま import する）、サーバーは `server/`。
+オンライン対戦の通信仕様・サーバーの設計・画面側の挙動。型と定数は `web/src/net/protocol.ts`（画面・サーバーが共通で import する）、サーバーは `server/`、画面の通信層は `web/src/net/online.ts`、画面は `web/src/ui/app.ts`（対局）と `web/src/ui/online.ts`（案内のダイアログ）。
 
 ## 全体像
 
@@ -139,6 +139,23 @@ state{phase:finished, view.result} ◀──────────────
 
 同じトークンで別の接続が join すると、古い接続は 4001 で閉じる（席には常に 1 接続）。
 
+## 画面側の挙動（`web/src`）
+
+- **通信層** `net/online.ts`（DOM なし。`test/online.test.ts` が偽の WebSocket と時計で検査）: `checkHealth` / `createRoom` / `getRoomInfo`（HTTP）と `OnlineSession`（1 部屋への WebSocket。参加・トークンの保存・つなぎ直し・ping）。画面はイベント（`joined` / `state` / `error` / `conn` / `ended`）で描き直し、手は `sendMove` で送るだけ
+- **入口**: 起動時に `GET /api/health` を 3 秒まで待ち、`{"ok":true}` が返ったときだけ設定画面の「オンライン（招待リンク）」を出す（GitHub Pages・`vite preview` は 404 や画面の HTML が返るので出ない）。選ぶと CPU 対戦の先手・後手の代わりに自分の席（ランダム（既定）／先手／後手 = `hostSeat`）が出て、ボタンが「部屋を作る」になる
+- **部屋の作成**: 設定画面の組み合わせを常に `rules` で送る（プリセットと同じでも `preset` は使わない）。応答の `token` を保存してから WebSocket で join する。待機中は案内のダイアログに招待リンク（`?room=<id>`、コピー・`navigator.share` があれば共有）・自分の席・ルールを出し、`phase: "playing"` の state で閉じる
+- **アドレス**: 部屋に入ったら `?room=<id>` にする（再読み込みで同じ部屋に戻る）。対局中に設定画面を開いて閉じたら部屋の URL に戻す。部屋を抜けたらクエリを外す
+- **招待リンクから開いた**: 保存したトークンがあれば（再読み込み）確認なしで席に戻る。なければ `GET /api/rooms/:id` でルールを出して「参加する」を待つ。`open: false` は満員（終局済みならその旨）、404 は部屋が見つからない、届かなければ「この公開先ではオンライン対戦を使えない」。この端末で作った部屋（localStorage `kyosho:created` に部屋 ID を最新 20 件。秘密ではない）なら「ここで参加すると相手の席に座る」と注意を出す
+- **トークンの保存先**: `sessionStorage` の `kyosho:token:<roomId>`。再読み込みでは残り、別のタブ・別のウィンドウとは共有しないので、同じブラウザの別タブで招待リンクを開くと別人として参加する（1 台で 2 人分を試せる）。タブを閉じると席に戻れない（同じ部屋に入り直すには、もう一方が新しい部屋を作る）。タブの複製では sessionStorage が写るので同じ席を 2 つのタブで開けるが、後から join した方が残り、古い方は 4001 で閉じて「別のタブで開かれました」と「このタブで続ける」（押すと取り戻す）を出す
+- **つなぎ直し**: 4001 / 4003 / 4004 / 4010 以外で切れたら 1・2・4・8・16・30 秒（以後 30 秒）待ってトークン付きで join し直す。画面に戻った（`visibilitychange`）・ネットにつながった（`online`）ときは待たずにつなぐ。25 秒ごとに ping（`PING_TEXT`、サーバーが自動応答するので部屋の寿命・課金は増えない）を送り、10 秒以内に何も届かなければ切れたとみなす。切れている間は状態の行に「再接続中…」、盤は操作できない
+- **描画**: 届いた `view` を `GameState` として描く（`legalCells` / `previewMove` / `threatenedPieces` は `kings` を読まない）。棋譜が伸びた state だけ着手の演出・効果音・決着の演出を出し、接続の変化や復帰の state は描き直すだけ。接続・再読み込み直後の最初の state は過去の手を演出せず、終局済みなら決着の演出なしで終局画面を出す。大・特大の演出中に届いた手は演出の後に反映する
+- **手**: 自分の手番・対局中・つながっている・前の手の返事待ちでないときだけ盤を操作でき、打ったら `move` を送って「手を送っています…」。盤は state が届いたときに変わる（画面では手を適用しない）。拒否（`error`）は内容をトースト
+- **隠し王**: 王の情報は `kingInfo` を使わず、自分の王は `view.myKing`、相手の王は `view.oppKing`（返されたか・候補）だけ。相手の王の候補には盤で「?」の印と、持ち駒欄に候補の数を出す
+- **接続の表示**: 状態の行に「相手: 接続中」（緑）／「相手: 切断中」（赤。相手の番なら「戻るのを待っています」）／「相手を待っています」／「再接続中…」。相手の参加・切断・復帰はトーストでも知らせる
+- **終わり方**: 4001 → 別のタブで開かれた、4004 → 部屋が見つからない、4010 → 期限切れ、4003 は直前の `error.code` で満員／席に戻れない（`invalid_token` は保存したトークンを消す）。どれも案内のダイアログに出し、設定画面へ戻れる。終局後に部屋が片付けられた（4004 / 4010）ときは何も出さず、盤と結果をそのまま見せる
+- **終局後**: 終局画面は CPU 対戦と同じく自分の目線（勝利／敗北の演出・自分の成績）。「新しい部屋で再戦」は同じルール・今の自分の席（先手なら `first`）で部屋を作り直し、招待リンクを出す（相手に送り直す）
+- **今のサーバーではできないこと**: 終局後の相手の王の答え合わせ（返されなかった相手の王は終局後も送られないので、終局画面では「？（明かされない）」）・同じ部屋での再戦の申し込み（相手に新しいリンクを送る必要がある）
+
 ## サーバーの設計
 
 - **部屋 ID**: 16 バイトの乱数の base64url（22 文字、`ROOM_ID_PATTERN`）。Durable Object は `idFromName(roomId)` で引く。形式の違う ID では Durable Object を作らない
@@ -155,6 +172,9 @@ state{phase:finished, view.result} ◀──────────────
 | ファイル | 中身 |
 |---|---|
 | `web/src/net/protocol.ts` | 通信仕様の型と定数（画面・サーバー共通） |
+| `web/src/net/online.ts` | 画面の通信層（HTTP・WebSocket の接続・参加・トークン・つなぎ直し・ping）。テストは `web/test/online.test.ts` |
+| `web/src/ui/online.ts` | 案内のダイアログ（作成中・招待リンクと待機・参加の確認・エラー） |
+| `web/e2e/online/` | 2 つのブラウザで作成 → 参加 → 終局・再読み込み・隠し王の秘匿・エラー・切断の e2e（`cd web && npm run e2e:online`、設定 `web/playwright.online.config.ts` が wrangler dev を :8790 で起こす） |
 | `server/wrangler.jsonc` | Worker の設定: 静的アセット（`../web/dist`、`run_worker_first`）・Durable Object・`ALLOWED_ORIGINS`・独自ドメイン（`routes` の Custom Domain `kyosho.rukiharukichi.com`） |
 | `server/src/index.ts` | Worker: `/api` の下のルーティング・Origin・部屋の作成 |
 | `server/src/room.ts` | Durable Object `Room`: 参加・手の検証・配信・再接続・alarm |
