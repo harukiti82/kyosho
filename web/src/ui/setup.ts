@@ -29,6 +29,23 @@ export interface PlaySettings {
   rules: RuleSet;
   /** オンライン対戦で部屋を作るときの自分の席の希望 */
   hostSeat?: HostSeat;
+  /** CPU 対戦で人間の手番を対局ごとに抽選する（human は対局を始めるときに引き直す。「新しい対局」・再戦でも） */
+  randomSeat?: boolean;
+}
+
+/** 0 以上 1 未満の乱数。Math.random は CPU の乱数と共有なので使わない（e2e は Math.random を種付きにして CPU の手を再現する） */
+export function cryptoRandom(): number {
+  return crypto.getRandomValues(new Uint32Array(1))[0] / 2 ** 32;
+}
+
+/** 手番の抽選（半々で先手・後手） */
+export function drawSeat(rand: () => number = cryptoRandom): Player {
+  return rand() < 0.5 ? 0 : 1;
+}
+
+/** 設定画面の「side」の値 → CPU 対戦の手番。"1" は後手、"random" は抽選（human は始めるときに引き直す）、それ以外は先手 */
+export function seatChoice(side: FormDataEntryValue | null): { human: Player; randomSeat: boolean } {
+  return { human: side === "1" ? 1 : 0, randomSeat: side === "random" };
 }
 
 /** 文の配列を <li> にして ol へ入れる（強調部分は <strong>） */
@@ -189,7 +206,7 @@ export class SetupDialog {
       const host = f.get("host");
       this.onStart({
         mode: mode === "pvp" ? "pvp" : mode === "online" && !this.el.onlineMode.hidden ? "online" : "cpu",
-        human: f.get("side") === "1" ? 1 : 0,
+        ...seatChoice(f.get("side")),
         rules: cloneRules(this.rules),
         hostSeat: host === "first" ? "first" : host === "second" ? "second" : "random",
       });

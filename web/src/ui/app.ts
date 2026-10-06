@@ -64,7 +64,7 @@ import { OnlineDialog, seatText } from "./online";
 import { hitOf, statsOf, tierOf, tierText, type HitBreakdown, type PlayerStats, type Tier } from "./impact";
 import { outcomeOf, type Outcome } from "./outcome";
 import { dirMark, endDetails, handText, hpText, kingPenaltyText, pieceLabel, ruleDetails, ruleLines, verb } from "./ruletext";
-import { fillSentences, SetupDialog, type PlaySettings } from "./setup";
+import { drawSeat, fillSentences, SetupDialog, type PlaySettings } from "./setup";
 import { Sound } from "./sound";
 
 /** CPU が打つまでの待ち時間（盤面の変化を目で追えるように） */
@@ -273,6 +273,9 @@ export class App {
     }
     this.leaveOnline();
     this.resetPlay();
+    // CPU 対戦の「ランダム」は対局を始めるたびに引く（希望の randomSeat は残すので、再戦でも引き直す）
+    const drawn = settings.mode === "cpu" && settings.randomSeat;
+    if (drawn) settings = { ...settings, human: drawSeat() };
     this.settings = settings;
     this.setup.reflectUrl(settings.rules);
     this.game = createGame(settings.rules);
@@ -280,6 +283,10 @@ export class App {
     this.renderRuleCard(settings.rules);
     this.renderLegend(settings.rules);
     this.afterChange();
+    if (drawn) {
+      const first = settings.human === 0 ? "あなたから" : "CPU から";
+      this.showToast(`対局開始！ 抽選の結果、あなたは${seatText(settings.human)}です（${first}打ちます）`);
+    }
   }
 
   /** 対局の途中の状態（タイマー・演出・選択）を捨てる */

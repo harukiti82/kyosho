@@ -6,11 +6,13 @@
 
 - 何を / どこを: 既定ルールの変更（ユーザーの依頼「アップデートで https://kyosho.rukiharukichi.com/?take=flip&...&anc=atk このルールをデフォルトにして」）。プリセット「標準」（id `std`）を追加して `DEFAULT_PRESET` にした。URL の差分の基準は `ui/query.ts` の `QUERY_BASE`（v1.0）に固定し、共有済みの URL の意味は変えない
 - ステータス: 既定ルールの PR（ブランチ `improve/default-rules`）を CI 待ち・未マージ（main へのマージで本番デプロイされるので、マージは master が確認してから）。並行して別のワーカーが「普通のオセロで置ける場所を盤に表示する」機能を作る予定。オンラインモードの PR #13 はマージ済み。本番の実機（スマホ 2 台）での対局は未確認
-- 最終更新: 2026-10-06（既定ルールを「標準」に）
+- 並行のブランチ `feature/cpu-random-seat`（worktree `~/repos/kyosho-cpu-random`）: CPU 対戦の手番に「ランダム」を追加（PR を CI 待ち・未マージ）
+- 最終更新: 2026-10-06（CPU 対戦の手番のランダム）
 
 ## 直近の観点・指摘
 
 - 既定ルール: 既定は `rules.ts` の `DEFAULT_PRESET`（= `std`、標準: 方向駒＋端の駒の力＋隠し王−30＋回復は平均、体力 125・130、歩10 横10 角4 飛3 金2）。URL のクエリは `QUERY_BASE`（v1.0）からの差分で、欠けた項目・不正な項目も v1.0 の値（変えない）。ルールのキーがないときだけ既定。互換は `web/test/fixtures/query-compat.json`（変更前の main の出力）で検査。2 手読み同士の先手勝率は 63.0%（400 局、未調整）
+- CPU 対戦の手番: 設定の `side` は `random` / `0` / `1`（既定は `0` = 先手。手番は URL・保存設定に載らない）。`random` は `PlaySettings.randomSeat` で、`App.start` が対局ごとに `drawSeat`（`crypto.getRandomValues`。`Math.random` は CPU と共有なので使わない）で引き直し、トーストで知らせる。e2e は `seat.spec.ts`（crypto を差し替え）
 - オンラインの画面: 通信層は `net/online.ts`（DOM なし・`test/online.test.ts`）、案内のダイアログは `ui/online.ts`、対局は `ui/app.ts`（`settings.mode === "online"`）。手は送るだけで、盤は届いた `view` で描く。王は `App.kingOf`（view の `myKing` / `oppKing`）。トークンは sessionStorage `kyosho:token:<roomId>`（別タブは別人）。入口は `/api/health` が `{"ok":true}` のときだけ。e2e は `npm run e2e:online`（wrangler dev :8790）。画面側の挙動の詳細は `.agent/online-protocol.md`「画面側の挙動」
 - サーバーの不足（直していない）: 終局後も返されなかった相手の王が届かない（終局画面は「？（明かされない）」）・同じ部屋での再戦の申し込みがない（「新しい部屋で再戦」は招待リンクを送り直す）
 
