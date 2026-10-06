@@ -1,6 +1,6 @@
 // 画面の制御。ゲームの計算はすべて engine/ に任せ、ここは表示と入力だけを扱う。
 
-import { cellName, discCount, SIZE, type Cell } from "../engine/board";
+import { cellName, discCount, othelloCells, SIZE, type Cell } from "../engine/board";
 import { chooseLookahead } from "../engine/cpu";
 import {
   availableKinds,
@@ -904,6 +904,7 @@ export class App {
     this.el.legend.replaceChildren(
       h("span", {}, [h("span", { class: "key-dot", attrs: { "aria-hidden": "true" } }), ` 置くと${v.can}マス`]),
       h("span", {}, [h("span", { class: "key-take", attrs: { "aria-hidden": "true" } }), ` この手で${v.can}駒`]),
+      h("span", {}, [h("span", { class: "key-othello", attrs: { "aria-hidden": "true" } }), " 普通のオセロなら置けるマス"]),
       ...(r.anchor === "attack"
         ? [h("span", {}, [h("span", { class: "key-anchor", attrs: { "aria-hidden": "true" } }), " ダメージに上乗せする端の自分の駒"])]
         : []),
@@ -940,6 +941,8 @@ export class App {
     const kind = act ? this.kindFor(g) : null;
     const v = verb(g.rules);
     const open = new Set(kind ? legalCells(g, kind).map(idx) : []);
+    // 参考: 普通のオセロのルールで置けるマス（石の色だけで見る。操作できる人の手番だけ）
+    const othello = new Set(act ? othelloCells(g.board, g.turn).map(idx) : []);
     const viewer = this.viewer(g);
     // 予測中は「置いた後に返されうる駒」、それ以外は「今、相手が次の手で返せる駒」に警告を出す
     const threat = new Set((pv ? pv.exposed : threatenedPieces(g, viewer)).map(idx));
@@ -965,6 +968,7 @@ export class App {
         cell.className = "cell";
         cell.classList.toggle("open", isOpen);
         cell.classList.toggle("can-take", canTake);
+        cell.classList.toggle("othello", othello.has(i));
         cell.classList.toggle("focus", isFocus);
         cell.classList.toggle("will-take", willTake.has(i));
         cell.classList.toggle("anchor", anchors.has(i));
@@ -1000,6 +1004,7 @@ export class App {
         }
         if (willTake.has(i)) label += ` ${v.can}`;
         if (canTake) label += ` 置くと${v.can}`;
+        if (othello.has(i)) label += " オセロなら置ける";
         cell.setAttribute("aria-label", label);
         cell.disabled = !!g.result;
       }
@@ -1615,6 +1620,10 @@ export class App {
             `マスにカーソルを乗せる（スマホは 1 回タップ）と、${v.can}駒が `,
             h("span", { class: "key-take", attrs: { "aria-hidden": "true" } }),
             " 赤枠で光り、ダメージと回復を表示。スマホは同じマスをもう一度タップで置く",
+          ]),
+          h("span", {}, [
+            h("span", { class: "key-othello", attrs: { "aria-hidden": "true" } }),
+            " の点線の枠は、駒の種類・方向・強さを考えない普通のオセロなら置けるマス（参考。置けるかは駒ごとの印で決まる）",
           ]),
           h("span", {}, [h("span", { class: "key-threat", attrs: { "aria-hidden": "true" }, text: "!" }), ` の付いた自分の駒は、相手が次の 1 手で${v.can}駒`]),
           ...(r.anchor === "attack"

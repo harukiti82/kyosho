@@ -14,6 +14,7 @@
   --heal: #3f7a3a;
   /* 端の駒の力: ダメージに上乗せする端の自分の駒（赤＝返す駒・黄＝警告・金＝王と区別する青） */
   --anchor: #2f5ea8;
+  --othello: rgba(31, 27, 20, 0.62);
   --glass-bg: rgba(255, 255, 255, 0.55);
   --glass-bg-hi: rgba(255, 255, 255, 0.72);
   --glass-border: rgba(255, 255, 255, 0.7);
@@ -489,6 +490,11 @@ button {
 }
 .board.over .cell {
   cursor: default;
+}
+/* 参考: 普通のオセロなら置けるマス（点線の枠。中央の丸・選択の枠とは形を変えて重ねても見分ける） */
+.cell.othello {
+  outline: 2px dashed var(--othello);
+  outline-offset: -5px;
 }
 
 /* 石 */
@@ -2159,6 +2165,16 @@ button {
   background: #fffdf6;
   box-shadow: 0 0 0 2.5px var(--anchor);
   vertical-align: -0.1em;
+}
+.key-othello {
+  display: inline-block;
+  box-sizing: border-box;
+  width: 1.05em;
+  height: 1.05em;
+  border: 1.5px dashed var(--othello);
+  border-radius: 2px;
+  background: var(--board-cell);
+  vertical-align: -0.15em;
 }
 .legend {
   display: flex;

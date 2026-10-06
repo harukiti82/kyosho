@@ -3,6 +3,7 @@
 // サーバーは playwright.online.config.ts が起こす wrangler dev（本番と同じ 1 Worker・同一オリジン）
 
 import { expect, test, type Page, type WebSocketRoute } from "@playwright/test";
+import { cellName, othelloCells } from "../../src/engine/board";
 import { defaultRules, presetById } from "../../src/engine/rules";
 import { cellAt, noHorizontalScroll } from "../helpers";
 import {
@@ -193,6 +194,37 @@ test("既定（標準）のまま部屋を作る: 部屋のルールが標準に
   await waitResult(guest);
   expect(host.last!.view.result).toEqual(guest.last!.view.result);
   await host.page.screenshot({ path: `${SHOT}/${pre}-online-std-result.png` });
+});
+
+test("普通のオセロなら置けるマス: 自分の手番だけ、自分の色で枠を出す。相手の手番では出さない", async ({ browser }, info) => {
+  const pre = prefix(info);
+  const host = await newPlayer(browser, info, "host");
+  const guest = await newPlayer(browser, info, "guest");
+  const url = await createRoomFromSetup(host, null, "first");
+  await joinFromInvite(guest, url);
+  await waitPlaying(host, guest);
+  const marked = (p: Player) =>
+    p.page.locator(".cell.othello").evaluateAll((cs) => cs.map((c) => (c.getAttribute("aria-label") ?? "").split(" ")[0]).sort());
+  for (let ply = 0; ply < 4; ply++) {
+    const mover = moverOf(host, guest);
+    const other = mover === host ? guest : host;
+    await expect(mover.page.locator(".board.acting")).toBeVisible();
+    const v = mover.last!.view;
+    const want = othelloCells(v.board, v.turn).map(([r, c]) => cellName(r, c)).sort();
+    expect(want.length).toBeGreaterThan(0);
+    expect(await marked(mover)).toEqual(want);
+    // 相手の画面は操作できず、枠もない
+    await expect(other.page.locator(".board.acting")).toHaveCount(0);
+    await expect(other.page.locator(".cell.othello")).toHaveCount(0);
+    if (ply === 0) {
+      // 初期配置の標準: 歩（縦だけ）の丸は d3・e6、オセロの枠は c4・d3・e6・f5
+      expect(want).toEqual(["c4", "d3", "e6", "f5"]);
+      await mover.page.screenshot({ path: `${SHOT}/${pre}-online-othello-mine.png` });
+      await other.page.screenshot({ path: `${SHOT}/${pre}-online-othello-theirs.png` });
+    }
+    await playTurn(mover);
+    await expect.poll(() => other.last!.view.history.length, { timeout: 15_000 }).toBe(mover.last!.view.history.length);
+  }
 });
 
 test("エラー: 存在しない部屋・満員の部屋の招待リンク", async ({ browser, request, baseURL }, info) => {
