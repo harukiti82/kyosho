@@ -931,15 +931,7 @@ button {
   pointer-events: none;
   animation: pop 1.6s ease-out forwards;
 }
-/* 盤の左右の端の列では、着手の演出を盤の内側に寄せる（画面の横にはみ出さない） */
-.cell > .edge-l {
-  --pop-x: 0%;
-  left: 0;
-}
-.cell > .edge-r {
-  --pop-x: -100%;
-  left: 100%;
-}
+/* 着手の演出の文字の横の位置（--pop-x）は App.fitPop が盤の中に収まるように決める */
 /* 取った直後のダメージ数 */
 .dmg-pop {
   position: absolute;
@@ -952,7 +944,11 @@ button {
   color: #fff;
   font-size: max(0.8rem, 3.6cqi);
   font-weight: 800;
-  white-space: nowrap;
+  /* 長い文（ダメージ＋回復）は盤の幅に収まるよう空白で折り返す（特大で 1.45 倍になっても盤の中） */
+  width: max-content;
+  max-width: 66cqi;
+  word-break: keep-all;
+  text-align: center;
   pointer-events: none;
   animation: pop 1.6s ease-out forwards;
 }

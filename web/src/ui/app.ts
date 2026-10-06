@@ -1494,6 +1494,22 @@ export class App {
    * 段階（impact.ts）が上がるほど数字を大きくし、大・特大は fx.ts の文言・揺れ・粒・発光を重ねる。
    * 特大は返す駒を置いたマスに近い順にめくる溜めのあとで弾ける
    */
+  /**
+   * 着手の演出の文字（ダメージ・端の駒・王）を、アニメーションでいちばん大きくなったとき（peak 倍）でも
+   * 盤の中に収まるよう横にずらす（マスの中央が基準。端に近い列でも画面の横にはみ出さない）
+   */
+  private fitPop(el: HTMLElement, r: number, c: number, peak: number) {
+    const board = this.el.board.getBoundingClientRect();
+    const cell = this.cells[r][c].getBoundingClientRect();
+    // offsetWidth は transform（拡大・縮小）を含まない、文字の本来の幅
+    const half = (el.offsetWidth * peak) / 2;
+    const cx = cell.left + cell.width / 2;
+    const lo = board.left + half;
+    const hi = board.right - half;
+    const x = lo > hi ? (board.left + board.right) / 2 : Math.min(hi, Math.max(lo, cx));
+    el.style.setProperty("--pop-x", `calc(-50% + ${Math.round(x - cx)}px)`);
+  }
+
   private playMoveEffects(m: MoveEvent, plan: ImpactPlan) {
     const g = this.game!;
     this.sound.place();
@@ -1509,15 +1525,21 @@ export class App {
     };
     // 置いたマスにダメージ数を出す（次の描画で消える）
     const pop = m.heal > 0 ? `${m.damage} ダメージ ＋${m.heal} 回復` : `${m.damage} ダメージ`;
-    this.cells[m.r][m.c].append(delayed(h("span", { class: `dmg-pop t-${tier}${plan.hurt ? " hurt" : ""}${edgeClass(m.c)}`, text: pop })));
+    const dmgPop = delayed(h("span", { class: `dmg-pop t-${tier}${plan.hurt ? " hurt" : ""}`, text: pop }));
+    this.cells[m.r][m.c].append(dmgPop);
+    this.fitPop(dmgPop, m.r, m.c, tier === "huge" ? 1.45 : 1.15);
     // 上乗せに使った端の駒に足した数字を出す
     for (const a of m.anchors ?? []) {
-      this.cells[a.r][a.c].append(h("span", { class: `anchor-pop${edgeClass(a.c)}`, text: `+${g.rules.values[a.kind]}` }));
+      const anchorPop = h("span", { class: "anchor-pop", text: `+${g.rules.values[a.kind]}` });
+      this.cells[a.r][a.c].append(anchorPop);
+      this.fitPop(anchorPop, a.r, a.c, 1.15);
     }
     // 王を返した: 王だった駒に「王！」と罰を出す（公開の演出）
     if (m.king) {
       const text = m.king.lose ? "王！" : `王！ −${m.king.penalty}`;
-      this.cells[m.king.r][m.king.c].append(delayed(h("span", { class: `king-pop${edgeClass(m.king.c)}`, text })));
+      const kingPop = delayed(h("span", { class: "king-pop", text }));
+      this.cells[m.king.r][m.king.c].append(kingPop);
+      this.fitPop(kingPop, m.king.r, m.king.c, 1.25);
     }
     // 置いたマスに近い順（特大は 1 つずつめくる）
     const order = [...m.targets].sort((x, y) => Math.max(Math.abs(x.r - m.r), Math.abs(x.c - m.c)) - Math.max(Math.abs(y.r - m.r), Math.abs(y.c - m.c)));
@@ -1813,8 +1835,6 @@ function lastKingHit(g: GameState, owner: Player) {
   return undefined;
 }
 
-/** 盤の左右の端の列なら、着手の演出を盤の内側に寄せるクラス */
-const edgeClass = (c: number) => (c === 0 ? " edge-l" : c === SIZE - 1 ? " edge-r" : "");
 
 /** 棋譜のダメージの内訳（上乗せがあるときだけ。例: 「（返した駒2＋端の金5）」） */
 function anchorText(r: RuleSet, e: MoveEvent): string {
