@@ -203,9 +203,10 @@ export const PRESETS: readonly Preset[] = [
     note: "方向駒＋端の駒の力＋隠し王（返されたら−30）・回復は両端の平均",
     rules: {
       // ユーザーが遊び比べて既定に選んだ組み合わせ（URL: take=flip&gate=0&dmg=sum&heal=avg&hp1=125&hp2=130&fu=10&gin=0&kin=2&hi=3
-      // &limit=0&king=1&kpen=hp&kdmg=30&kdue=5&dir=piece&yoko=10&kaku=4&vkin=5&vhi=3&anc=atk）
+      // &limit=0&king=1&kpen=hp&kdmg=30&kdue=5&dir=piece&yoko=10&kaku=4&vkin=5&vhi=3&anc=atk）。
+      // 先手の体力だけ 125 → 110 に下げた（2 手読み同士の先手勝率 125: 約 64% → 110: 49.5 ± 1.1%、8000 局）
       action: "flip", gate: false, dirs: "piece", damage: "sum", anchor: "attack", heal: "avg",
-      hp: [125, 130],
+      hp: [110, 130],
       hand: { fu: 10, yoko: 10, gin: 0, kaku: 4, kin: 2, hi: 3 },
       values: { ...DEFAULT_VALUES, hi: 3, kin: 5 },
       maxPlies: 0,
