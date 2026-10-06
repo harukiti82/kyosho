@@ -5,6 +5,7 @@ import { defaultRules, matchPreset, NO_KING, PRESETS, presetById, sameRules, typ
 import { decodeRules, encodeRules, QUERY_BASE } from "../src/ui/query";
 import compat from "./fixtures/query-compat.json";
 import { endDetails, ruleDetails, ruleLines, sentenceText } from "../src/ui/ruletext";
+import { cryptoRandom, drawSeat, seatChoice } from "../src/ui/setup";
 import { rulesOf } from "./helpers";
 
 describe("URL クエリ", () => {
@@ -177,5 +178,37 @@ describe("ルールカードの文言", () => {
   it("決着の説明に手数上限の有無が入る", () => {
     expect(endDetails(rulesOf("v10"))[1]).toContain("80 手");
     expect(endDetails(rulesOf("v2"))[1]).toBe("手数の上限なし");
+  });
+});
+
+describe("CPU 対戦の手番", () => {
+  it("設定画面の既存の値（先手 0・後手 1）の意味は変わらず、抽選しない", () => {
+    expect(seatChoice("0")).toEqual({ human: 0, randomSeat: false });
+    expect(seatChoice("1")).toEqual({ human: 1, randomSeat: false });
+    // 値がない・知らない値は従来どおり先手
+    expect(seatChoice(null)).toEqual({ human: 0, randomSeat: false });
+    expect(seatChoice("2")).toEqual({ human: 0, randomSeat: false });
+  });
+  it("「ランダム」は抽選する印を立てる", () => {
+    expect(seatChoice("random")).toEqual({ human: 0, randomSeat: true });
+  });
+  it("抽選は乱数が 0.5 未満なら先手、0.5 以上なら後手", () => {
+    expect(drawSeat(() => 0)).toBe(0);
+    expect(drawSeat(() => 0.4999)).toBe(0);
+    expect(drawSeat(() => 0.5)).toBe(1);
+    expect(drawSeat(() => 0.9999)).toBe(1);
+  });
+  it("既定の乱数（crypto）は 0 以上 1 未満で、先手も後手も出る", () => {
+    const seen = new Set<number>();
+    for (let i = 0; i < 200; i++) {
+      const x = cryptoRandom();
+      expect(x).toBeGreaterThanOrEqual(0);
+      expect(x).toBeLessThan(1);
+      seen.add(drawSeat());
+    }
+    expect([...seen].sort()).toEqual([0, 1]);
+  });
+  it("手番は共有 URL に載らない（URL はルールだけ）", () => {
+    expect(encodeRules(defaultRules())).not.toMatch(/side|seat/);
   });
 });

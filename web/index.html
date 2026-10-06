@@ -84,7 +84,8 @@
             <!-- オンライン対戦のサーバー（/api/health）に届く公開先でだけ出す（ui/app.ts） -->
             <label id="mode-online" hidden><input type="radio" name="mode" value="online" /><span>オンライン（招待リンク）</span></label>
           </div>
-          <div class="seg side-seg" id="side-field">
+          <div class="seg side-seg" id="side-field" role="radiogroup" aria-label="CPU 対戦での自分の手番">
+            <label><input type="radio" name="side" value="random" /><span>先手・後手はランダム</span></label>
             <label><input type="radio" name="side" value="0" checked /><span>自分が先手（黒）</span></label>
             <label><input type="radio" name="side" value="1" /><span>自分が後手（白）</span></label>
           </div>
