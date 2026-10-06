@@ -236,6 +236,8 @@ test.describe("スマホ幅 375px", () => {
   test("方向駒: 設定画面と対局画面に横スクロールなし・盤が最初の画面に入る・タップ 2 回で確定・終局まで", async ({ page }) => {
     const errors: string[] = [];
     page.on("pageerror", (e) => errors.push(String(e)));
+    // CPU の手を毎回同じにする
+    await seedPage(page, 1);
     await page.goto("/");
     await page.locator(".preset[data-preset=dir]").tap();
     await page.locator("#piece-table").scrollIntoViewIfNeeded();

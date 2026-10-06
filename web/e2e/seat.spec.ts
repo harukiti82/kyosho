@@ -3,7 +3,7 @@
 // スクリーンショットは web/screenshots/*-seat-*.png に保存する。
 
 import { expect, test, type Page } from "@playwright/test";
-import { noHorizontalScroll, waitHumanTurnOrEnd } from "./helpers";
+import { noHorizontalScroll, seedPage, waitHumanTurnOrEnd } from "./helpers";
 
 const SHOT = "screenshots";
 const moves = (page: Page) => page.locator("#log .log-item.move");
@@ -102,6 +102,8 @@ test("ランダム: 「新しい対局」で設定画面から始め直すと引
 test("ランダム: 終局後の再戦で引き直す（ルールを変えた設定でも）", async ({ page }, info) => {
   const touch = info.project.name === "mobile";
   await stubDraws(page, [0.9, 0.1]);
+  // CPU の手を毎回同じにする（抽選は crypto なので影響しない）
+  await seedPage(page, 1);
   // 体力 5 の v1.0 基準（すぐ終局する）。ルールの変更と組み合わせても抽選が効く
   await page.goto("/?hp1=5&hp2=5");
   await startCpu(page, "random");

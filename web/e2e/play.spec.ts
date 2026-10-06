@@ -7,7 +7,7 @@ import { createGame, legalCells, playableKinds, playMove, previewMove, targetsAt
 import { defaultRules, kindsByValue, KIND_ORDER, PIECES, PRESETS, presetById, type PieceKind, type RuleSet } from "../src/engine/rules";
 import { encodeRules } from "../src/ui/query";
 import { ruleLines, sentenceText } from "../src/ui/ruletext";
-import { noHorizontalScroll, readSetup, rng, startGame, waitHumanTurnOrEnd } from "./helpers";
+import { noHorizontalScroll, readSetup, rng, seedPage, startGame, waitHumanTurnOrEnd } from "./helpers";
 
 const SHOT = "screenshots";
 /** ユーザーが既定に指定した URL のクエリ（プリセット「標準」。先手の体力は 125 から 110 に下げた） */
@@ -64,6 +64,9 @@ async function humanMove(page: Page, touch: boolean) {
     expect(await page.locator("#log .log-item.move").count()).toBe(before);
     await cell.tap();
   } else {
+    // 取るルールでは直前に置いたマスが取られて空き、同じマスを選ぶことがある。
+    // マウスが同じ位置のままだと hover で mouseenter が起きないので、いったん盤の外へ動かす
+    await page.mouse.move(0, 0);
     await cell.hover();
     await expect(page.locator("#preview .preview-main")).toHaveText(PREVIEW_MAIN);
     await cell.click();
@@ -226,6 +229,8 @@ test.describe("PC 幅", () => {
   for (const preset of PRESETS) {
     test(`${preset.name}: CPU 対戦を終局まで打ち、ルールカード・予測・警告が設定どおり`, async ({ page }) => {
       const r = preset.rules;
+      // CPU の手を毎回同じにする（種がないと終局の形が実行ごとに変わり、予測の撮影・警告が出ないまま終わることがある）
+      await seedPage(page, 1);
       await page.goto("/");
       await startGame(page, { preset: preset.id });
       await ruleCardIs(page, r);
@@ -359,6 +364,8 @@ test.describe("PC 幅", () => {
     await expect(page.locator(".hand-mini").first()).toHaveText("持ち駒なし");
 
     const hp5 = { ...presetById("v10").rules, hp: [5, 5] as [number, number] };
+    // CPU の手を毎回同じにする。種 1 は体力 0 で決着する（種がないと打てる手が尽きて終わることがある）
+    await seedPage(page, 1);
     await page.goto(`/?${encodeRules(hp5)}`);
     await startGame(page);
     await expect(page.locator("#rules4")).toContainText("体力 5 が 0 で負け");
@@ -403,6 +410,8 @@ test.describe("スマホ幅 375px", () => {
   });
 
   test("v2 案の CPU 対戦をタップ操作で終局まで進める", async ({ page }) => {
+    // CPU の手を毎回同じにする
+    await seedPage(page, 1);
     await page.goto("/");
     await page.locator(".preset[data-preset=v2]").tap();
     await page.locator("#setup-start").tap();
