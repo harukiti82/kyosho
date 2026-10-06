@@ -1,8 +1,9 @@
 // URL クエリ（設定の共有）とルールカードの文言のテスト
 
 import { describe, expect, it } from "vitest";
-import { defaultRules, matchPreset, NO_KING, PRESETS, sameRules } from "../src/engine/rules";
-import { decodeRules, encodeRules } from "../src/ui/query";
+import { defaultRules, matchPreset, NO_KING, PRESETS, presetById, sameRules, type PresetId } from "../src/engine/rules";
+import { decodeRules, encodeRules, QUERY_BASE } from "../src/ui/query";
+import compat from "./fixtures/query-compat.json";
 import { endDetails, ruleDetails, ruleLines, sentenceText } from "../src/ui/ruletext";
 import { rulesOf } from "./helpers";
 
@@ -16,15 +17,18 @@ describe("URL クエリ", () => {
     expect(decodeRules(encodeRules(r)).rules).toEqual(r);
     expect(matchPreset(r)).toBeNull();
   });
-  it("クエリがなければ既定値（v1.0）", () => {
+  it("クエリがなければ既定値（標準）。ルール以外のキー（部屋・計測用）だけでも既定値", () => {
     expect(decodeRules("")).toEqual({ rules: defaultRules(), present: false, invalid: [] });
-    expect(matchPreset(defaultRules())?.id).toBe("v10");
+    expect(matchPreset(defaultRules())?.id).toBe("std");
+    for (const q of ["?utm_source=x", `?room=${"A".repeat(22)}`]) {
+      expect(decodeRules(q)).toEqual({ rules: defaultRules(), present: false, invalid: [] });
+    }
   });
-  it("不正な値は項目ごとに既定値に戻し、どの項目かを返す", () => {
+  it("不正な値は項目ごとに基準（v1.0）の値に戻し、どの項目かを返す", () => {
     const d = decodeRules(
       "?take=oops&gate=2&dmg=__proto__&heal=toString&hp1=4&hp2=201&fu=-1&gin=1e2&kin=05&hi=41&limit=301",
     );
-    expect(d.rules).toEqual(defaultRules());
+    expect(d.rules).toEqual(rulesOf(QUERY_BASE));
     expect(d.invalid.sort()).toEqual(["dmg", "fu", "gate", "gin", "heal", "hi", "hp1", "hp2", "kin", "limit", "take"]);
   });
   it("型違い・空・小数・巨大な数・重複キーでもエラーにならない", () => {
@@ -32,12 +36,12 @@ describe("URL クエリ", () => {
       expect(() => decodeRules(q)).not.toThrow();
     }
     expect(decodeRules("?hp1=").invalid).toEqual(["hp1"]);
-    expect(decodeRules("?fu=abc&fu=3").rules.hand.fu).toBe(8); // 先頭の値（abc）で判定して既定値
+    expect(decodeRules("?fu=abc&fu=3").rules.hand.fu).toBe(8); // 先頭の値（abc）で判定して基準（v1.0）の値
   });
-  it("一部だけ指定すれば、残りは既定値で、指定した項目は使う", () => {
+  it("一部だけ指定すれば、残りは基準（v1.0）の値で、指定した項目は使う", () => {
     const d = decodeRules("?take=flip&gate=1&hp1=5&utm_source=x");
     expect(d.invalid).toEqual([]);
-    expect(d.rules).toEqual({ ...defaultRules(), action: "flip", gate: true, hp: [5, 20] });
+    expect(d.rules).toEqual(rulesOf("v10", { action: "flip", gate: true, hp: [5, 20] }));
   });
   it("隠し王の設定（罰・期限）も往復できる。なしのときは king=0 だけを載せる", () => {
     const king = rulesOf("king");
@@ -74,12 +78,36 @@ describe("URL クエリ", () => {
   });
 });
 
+describe("既定（標準）と共有済みの URL の互換", () => {
+  // ユーザーが既定に指定した URL のクエリ
+  const STD_QUERY =
+    "take=flip&gate=0&dmg=sum&heal=avg&hp1=125&hp2=130&fu=10&gin=0&kin=2&hi=3&limit=0&king=1&kpen=hp&kdmg=30&kdue=5&dir=piece&yoko=10&kaku=4&vkin=5&vhi=3&anc=atk";
+  it("指定の URL を読むと、丸めも不正もなく既定の設定と同じ。既定を書き出すと指定の URL と同じ", () => {
+    expect(decodeRules(`?${STD_QUERY}`)).toEqual({ rules: defaultRules(), present: true, invalid: [] });
+    expect(encodeRules(defaultRules())).toBe(STD_QUERY);
+  });
+  it("既存プリセットの URL は既定を変える前と同じ文字列で、同じ設定に読める", () => {
+    for (const [id, q] of Object.entries(compat.urls)) {
+      const rules = presetById(id as PresetId).rules;
+      expect(encodeRules(rules)).toBe(q);
+      expect(decodeRules(`?${q}`)).toEqual({ rules, present: true, invalid: [] });
+    }
+  });
+  it("一部だけ・不正な値を含む古い URL も、既定を変える前と同じ設定に読める", () => {
+    for (const [q, before] of Object.entries(compat.decoded)) expect(decodeRules(q)).toEqual(before);
+  });
+  it("差分の基準は v1.0 のまま", () => {
+    expect(QUERY_BASE).toBe("v10");
+  });
+});
+
 describe("ルールカードの文言", () => {
   const card = (id: string) => ruleLines(PRESETS.find((p) => p.id === id)!.rules).map(sentenceText);
-  it("プリセットは 3〜5 行（方向駒は方向の 1 行が増えて 6 行、拠点は端の駒の 1 行が増えて 7 行）", () => {
+  it("プリセットは 3〜5 行（方向駒は方向の 1 行が増えて 6 行、拠点・標準は端の駒の 1 行が増えて 7 行）", () => {
     expect(ruleLines(rulesOf("dir"))).toHaveLength(6);
     expect(ruleLines(rulesOf("anchor"))).toHaveLength(7);
-    for (const p of PRESETS.filter((p) => p.id !== "dir" && p.id !== "anchor")) {
+    expect(ruleLines(rulesOf("std"))).toHaveLength(7);
+    for (const p of PRESETS.filter((p) => p.id !== "dir" && p.id !== "anchor" && p.id !== "std")) {
       const n = ruleLines(p.rules).length;
       expect(n).toBeGreaterThanOrEqual(3);
       expect(n).toBeLessThanOrEqual(5);
@@ -113,6 +141,17 @@ describe("ルールカードの文言", () => {
   });
   it("原案", () => {
     expect(card("orig")).toContain("挟んだ両端の駒の平均だけ回復");
+  });
+  it("標準（既定）: 方向・端の駒・回復・隠し王（−30）の行がすべて入る", () => {
+    expect(card("std")).toEqual([
+      "挟んだ相手の駒を裏返す（挟めるマスにしか置けない）",
+      "挟めるのは駒の矢印の方向だけ（歩↕ 横↔ 角✕ 飛✚ 金✱）",
+      "返した駒の数字の合計がダメージ",
+      "挟んだ端の自分の駒の数字もダメージに足す",
+      "挟んだ両端の駒の平均だけ回復",
+      "最初の5手のうち1つを王に（相手に見えない）。王を返されたら体力−30",
+      "体力 先手 125・後手 130 が 0 で負け",
+    ]);
   });
   it("取る＋強さ制限は「取れない」", () => {
     expect(ruleLines(rulesOf("v10", { gate: true })).map(sentenceText)).toContain("置いた駒より数字が大きい駒を含む列は取れない");

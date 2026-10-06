@@ -10,6 +10,9 @@ import { ruleLines, sentenceText } from "../src/ui/ruletext";
 import { noHorizontalScroll, readSetup, rng, startGame, waitHumanTurnOrEnd } from "./helpers";
 
 const SHOT = "screenshots";
+/** ユーザーが既定に指定した URL のクエリ（プリセット「標準」） */
+const STD_QUERY =
+  "take=flip&gate=0&dmg=sum&heal=avg&hp1=125&hp2=130&fu=10&gin=0&kin=2&hi=3&limit=0&king=1&kpen=hp&kdmg=30&kdue=5&dir=piece&yoko=10&kaku=4&vkin=5&vhi=3&anc=atk";
 
 /** 盤の 64 マスがすべて同じ大きさ（中身の印やバッジで行の高さが変わらない） */
 async function cellsUniform(page: Page) {
@@ -100,8 +103,8 @@ test.describe("PC 幅", () => {
     page.on("pageerror", (e) => errors.push(String(e)));
     await page.goto("/");
     await expect(page.locator("#setup")).toBeVisible();
-    // 既定は v1.0
-    await expect(page.locator(".preset[aria-pressed=true]")).toHaveAttribute("data-preset", "v10");
+    // 既定は標準
+    await expect(page.locator(".preset[aria-pressed=true]")).toHaveAttribute("data-preset", "std");
     expect(await readSetup(page)).toEqual(defaultRules());
     await expect(page.locator("#setup-rules4 li")).toHaveText(ruleLines(defaultRules()).map(sentenceText));
     await page.screenshot({ path: `${SHOT}/pc-setup.png` });
@@ -120,7 +123,9 @@ test.describe("PC 幅", () => {
     await expect(page.locator(".preset[aria-pressed=true]")).toHaveCount(0);
     await expect(page.locator("#gate-on-label")).toHaveText("置いた駒より強い駒は取れない");
     await expect(page.locator("#setup-rules4")).toContainText("置いた駒より数字が大きい駒を含む列は取れない");
-    await page.locator("input[name=heal][value=avg]").check({ force: true });
+    // ラベルを押す（見えない 1px のラジオへの force のクリックは、レイアウトによって別の要素に当たる）
+    await page.locator("label:has(> input[name=heal][value=avg])").click();
+    await expect(page.locator("input[name=heal][value=avg]")).toBeChecked();
     await expect(page.locator("#setup-rules4")).toContainText("挟んだ両端の駒の平均だけ回復");
 
     // 範囲外・空の数値は直す
@@ -168,14 +173,53 @@ test.describe("PC 幅", () => {
     await ruleCardIs(other, want);
     await expect(other.locator("#ply")).toHaveText("手数 0 / 50");
 
-    // 不正なクエリ: エラーにならず、不正な項目は既定値（v1.0）
+    // 不正なクエリ: エラーにならず、不正な項目は URL の基準（v1.0）の値（既定を変える前と同じ解釈）
     await other.goto("/?take=zzz&gate=7&dmg=<script>&hp1=-3&hp2=1e9&fu=abc&hi=99&limit=99999&heal=__proto__");
-    await expect(other.locator("#setup-note")).toContainText("既定値にしました");
-    expect(await readSetup(other)).toEqual(defaultRules());
+    await expect(other.locator("#setup-note")).toContainText("v1.0（取る）の値にしました");
+    expect(await readSetup(other)).toEqual(presetById("v10").rules);
     await expect(other.locator(".preset[aria-pressed=true]")).toHaveAttribute("data-preset", "v10");
     await startGame(other);
-    await ruleCardIs(other, defaultRules());
+    await ruleCardIs(other, presetById("v10").rules);
     await expect(other.locator(".cell.open")).toHaveCount(60);
+    expect(errors).toEqual([]);
+  });
+
+  test("既定（標準）: クエリなしで開いた画面と、指定の URL で開いた画面が同じ設定・ルール表示", async ({ page }) => {
+    const errors: string[] = [];
+    page.on("pageerror", (e) => errors.push(String(e)));
+    const std = defaultRules();
+    expect(std).toEqual(presetById("std").rules);
+    // 指定の URL: 読めない値はなく、プリセット「標準」と一致する
+    await page.goto(`/?${STD_QUERY}`);
+    await expect(page.locator("#setup-note")).toHaveText("URL の設定を読み込みました。");
+    expect(await readSetup(page)).toEqual(std);
+    await expect(page.locator(".preset[aria-pressed=true]")).toHaveAttribute("data-preset", "std");
+
+    // クエリなし: 同じ設定で始まる
+    await page.goto("/");
+    await expect(page.locator("#setup-note")).toBeHidden();
+    expect(await readSetup(page)).toEqual(std);
+    await expect(page.locator("#custom-tag")).toHaveText("— 標準");
+    await startGame(page);
+    await ruleCardIs(page, std);
+    await expect(page.locator("#rules4-name")).toHaveText("ルール — 標準");
+    await expect(page.locator("#player-0 .hp-num")).toHaveText("125");
+    await expect(page.locator("#player-0 .hp-max")).toHaveText("/ 125");
+    await expect(page.locator("#player-1 .hp-num")).toHaveText("130");
+    await expect(page.locator("#player-1 .hp-max")).toHaveText("/ 130");
+    await expect(page.locator("#ply")).toHaveText("手数 0");
+    await handsMatch(page, createGame(std));
+    // 始めた設定がアドレスバーに載り、指定の URL と同じ
+    expect(new URL(page.url()).search.slice(1)).toBe(STD_QUERY);
+    await page.screenshot({ path: `${SHOT}/pc-default.png` });
+
+    // ルール詳細も新しい既定の文
+    await page.locator("#btn-rules").click();
+    await expect(page.locator("#rules-title")).toHaveText("ルール — 標準");
+    await expect(page.locator("#rules")).toContainText("王を返されたら通常のダメージに加えて体力 −30");
+    await expect(page.locator("#rules")).toContainText("回復 = 挟んだ両端（置いた駒と反対端の自分の駒）の数字の平均（切り捨て）");
+    await expect(page.locator("#rules")).toContainText("端の駒の力:");
+    await page.screenshot({ path: `${SHOT}/pc-default-rules.png` });
     expect(errors).toEqual([]);
   });
 
@@ -340,6 +384,13 @@ test.describe("スマホ幅 375px", () => {
     await noHorizontalScroll(page, 375);
     await page.screenshot({ path: `${SHOT}/sp-setup-bottom.png` });
     await expect(page.locator("#setup-start")).toBeInViewport();
+    // クエリなしの既定（標準）で始めた対局画面
+    await startGame(page);
+    await ruleCardIs(page, defaultRules());
+    await expect(page.locator("#player-1 .hp-max")).toHaveText("/ 130");
+    await expect(page.locator("#board")).toBeInViewport({ ratio: 1 });
+    await noHorizontalScroll(page, 375);
+    await page.screenshot({ path: `${SHOT}/sp-default.png` });
 
     for (const p of PRESETS) {
       await page.goto(`/?${encodeRules(p.rules)}`);

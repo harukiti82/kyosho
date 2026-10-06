@@ -8,6 +8,7 @@ import {
   matchPreset,
   PIECES,
   PRESETS,
+  presetById,
   REACH_MARK,
   type Player,
   type RuleSet,
@@ -15,7 +16,7 @@ import {
 import type { HostSeat } from "../net/protocol";
 import { dirIcon } from "./diricon";
 import { byId, h } from "./dom";
-import { decodeRules, encodeRules } from "./query";
+import { decodeRules, encodeRules, QUERY_BASE } from "./query";
 import { ruleLines, verb, type Sentence } from "./ruletext";
 
 /** cpu: CPU 対戦 / pvp: 同じ端末で 2 人 / online: 招待リンクで遠隔の相手と */
@@ -86,12 +87,12 @@ export class SetupDialog {
     /** 対局が始まっているか（始まる前は設定画面を閉じさせない） */
     private readonly hasGame: () => boolean,
   ) {
-    // URL のクエリがあればその設定で始める。不正な項目は既定値に戻して知らせる
+    // URL のクエリがあればその設定で始める。不正な項目は基準（v1.0）の値に戻して知らせる
     const decoded = decodeRules(window.location.search);
     this.rules = decoded.rules;
     if (decoded.invalid.length > 0) {
       this.showNote(
-        `URL の設定に読めない値があったため、${decoded.invalid.map((k) => KEY_LABEL[k] ?? k).join("・")}は既定値にしました。`,
+        `URL の設定に読めない値があったため、${decoded.invalid.map((k) => KEY_LABEL[k] ?? k).join("・")}は${presetById(QUERY_BASE).name}の値にしました。`,
       );
     } else if (decoded.present) {
       this.showNote("URL の設定を読み込みました。");

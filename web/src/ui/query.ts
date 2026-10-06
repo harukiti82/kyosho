@@ -1,14 +1,18 @@
-// ルール設定 ⇔ URL クエリ。外部入力なので、型と範囲を検証してから使う（不正な項目は既定値に戻す）。
+// ルール設定 ⇔ URL クエリ。外部入力なので、型と範囲を検証してから使う（不正な項目は基準の値に戻す）。
 // 例: ?take=flip&gate=1&dmg=sum&heal=none&hp1=40&hp2=40&fu=20&gin=0&kin=8&hi=4&limit=0&king=0
 // 隠し王ありなら &king=1&kpen=hp&kdmg=20&kdue=5（なしのときは king=0 だけを載せる）
-// 方向駒の項目（dir=piece・横と角の数 yoko / kaku・駒の数字 vfu〜vhi）は既定値と違うときだけ末尾に載せる。
+// 方向駒の項目（dir=piece・横と角の数 yoko / kaku・駒の数字 vfu〜vhi）は基準（QUERY_BASE = v1.0）と違うときだけ末尾に載せる。
 // そのため既存プリセットの URL は方向駒の追加前と同じで、方向駒の項目がない古い URL は「全方向・既定の数字・横と角は 0 個」になる
-// 端の駒の力（anc=atk）も既定値（なし）と違うときだけ載せる。項目がない URL は「なし」
+// 端の駒の力（anc=atk）も基準（なし）と違うときだけ載せる。項目がない URL は「なし」
+// 基準は画面の既定（DEFAULT_PRESET）とは別に固定する。既定を変えても共有済みの URL の意味が変わらない。
+// ルールのキーが 1 つもないとき（クエリなし・?room= など）だけ画面の既定を使う
 
 import {
+  cloneRules,
   defaultRules,
   KIND_ORDER,
   LIMITS,
+  presetById,
   type Action,
   type AnchorRule,
   type DamageRule,
@@ -16,8 +20,13 @@ import {
   type HealRule,
   type KingPenalty,
   type PieceKind,
+  type PresetId,
   type RuleSet,
 } from "../engine/rules";
+
+/** クエリの差分・欠けた項目・不正な項目の基準。共有済みの URL の意味を変えないため固定（変えない） */
+export const QUERY_BASE: PresetId = "v10";
+const baseRules = () => cloneRules(presetById(QUERY_BASE).rules);
 
 const ACTION: Record<string, Action> = { flip: "flip", capture: "capture" };
 const DAMAGE: Record<string, DamageRule> = { sum: "sum", max: "maxCount" };
@@ -55,8 +64,8 @@ export function encodeRules(r: RuleSet): string {
     q.set("kdmg", String(r.king.amount));
     q.set("kdue", String(r.king.deadline));
   }
-  // 方向駒の項目は、読むときの既定値と違うものだけ
-  const def = defaultRules();
+  // 方向駒の項目は、読むときの基準と違うものだけ
+  const def = baseRules();
   if (r.dirs !== def.dirs) q.set("dir", keyOf(DIRS, r.dirs));
   for (const k of NEW_KINDS) if (r.hand[k] !== def.hand[k]) q.set(k, String(r.hand[k]));
   for (const k of KIND_ORDER) if (r.values[k] !== def.values[k]) q.set(valueKey(k), String(r.values[k]));
@@ -75,16 +84,17 @@ export interface Decoded {
   rules: RuleSet;
   /** クエリにルールのキーが 1 つでもあったか */
   present: boolean;
-  /** 不正で既定値に戻したキー */
+  /** 不正で基準（QUERY_BASE）の値に戻したキー */
   invalid: string[];
 }
 
-/** location.search などから設定を読む。ない項目・不正な項目は既定値 */
+/** location.search などから設定を読む。ルールのキーがなければ画面の既定、あればない項目・不正な項目は基準（QUERY_BASE）の値 */
 export function decodeRules(search: string): Decoded {
   const q = new URLSearchParams(search);
-  const def = defaultRules();
-  const invalid: string[] = [];
   const present = QUERY_KEYS.some((k) => q.has(k));
+  if (!present) return { rules: defaultRules(), present, invalid: [] };
+  const def = baseRules();
+  const invalid: string[] = [];
   const pick = <T>(key: string, parse: (s: string | null) => T | null | undefined, fallback: T): T => {
     if (!q.has(key)) return fallback;
     const v = parse(q.get(key));
@@ -108,7 +118,7 @@ export function decodeRules(search: string): Decoded {
     hand: { ...def.hand },
     values: { ...def.values },
     maxPlies: pick("limit", (s) => intIn(s, LIMITS.maxPlies), def.maxPlies),
-    // 追加設定はなしのときも読む（「あり」に切り替えたときの値）。ない項目は既定値
+    // 追加設定はなしのときも読む（「あり」に切り替えたときの値）。ない項目は基準の値
     king: {
       on: pick("king", own(GATE), def.king.on),
       penalty: pick("kpen", own(KING_PENALTY), def.king.penalty),

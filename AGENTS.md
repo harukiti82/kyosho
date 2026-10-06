@@ -3,7 +3,7 @@
 オセロの盤で、挟んだ相手の駒の数字がダメージになる二人対戦ゲーム。ルール設計（`RULES.md`）、Python のバランス検証（`sim/`）、ルールを組み合わせて遊び比べるブラウザの試遊版（`web/`）、オンライン対戦のサーバー（`server/`）からなる。
 
 > ルールの正は `RULES.md`（v1.0「取った駒が持ち駒になる」）。解釈が曖昧なときは `sim/capture.py` の実装を正とする。
-> Web 試遊版の設定項目とプリセット（隠し王・方向駒・拠点を含む）は `RULES.md` の「Web 試遊版」節。プリセット v0.4 / v1.0 / v2 案は `sim/kyosho.py` / `sim/capture.py` / `sim/gate.py` と全手一致させる。
+> Web 試遊版の設定項目とプリセット（隠し王・方向駒・拠点・既定の「標準」を含む）は `RULES.md` の「Web 試遊版」節。プリセット v0.4 / v1.0 / v2 案は `sim/kyosho.py` / `sim/capture.py` / `sim/gate.py` と全手一致させる。
 > 旧ルール v0.4 は `docs/RULES-v0.4.md` と `sim/kyosho.py` に履歴として残す（変更しない）。
 > ユーザー向けの説明は README.md にある。
 
@@ -11,7 +11,7 @@
 
 - 目的: ルールを詰め、人間の試遊で面白さを確かめる
 - 対象: 作者と試遊する人（ブラウザ版は同じ端末での 2 人対戦・CPU 対戦・招待リンクでのオンライン対戦。ルールは設定画面で組み合わせる）
-- 状況: v0.4 は「難しい」「普通のオセロと変わらない」、v1.0 は「オセロじゃなくてもよくなって悪化」。読み合いを足すため「隠し王」（相手に見えない王）、戦略性を足すため「方向駒」（駒ごとに挟める方向が違う）、駒を置くリスクとリターンを足すため「端の駒の力」（挟んだ端の自分の駒の数字もダメージに足す。プリセット「拠点」）を設定項目とプリセットに追加した。どの組み合わせが面白いかをユーザー自身が遊び比べる段階（ルールの決定はユーザーがする）
+- 状況: v0.4 は「難しい」「普通のオセロと変わらない」、v1.0 は「オセロじゃなくてもよくなって悪化」。読み合いを足すため「隠し王」（相手に見えない王）、戦略性を足すため「方向駒」（駒ごとに挟める方向が違う）、駒を置くリスクとリターンを足すため「端の駒の力」（挟んだ端の自分の駒の数字もダメージに足す。プリセット「拠点」）を設定項目とプリセットに追加した。ユーザーが遊び比べて選んだ組み合わせ（方向駒＋端の駒の力＋隠し王−30＋回復は平均、体力 125・130）をプリセット「標準」として既定にした（RULES.md 本文の改稿はまだ。ルールの決定はユーザーがする）
 - 手応え: 大ダメージほど段階的に派手な演出・効果音、終局画面の前に勝ち・負け・引き分けの決着の演出、終局画面に成績（ルール上のボーナスではない。`ui/impact.ts` / `ui/outcome.ts` / `ui/fx.ts` / `ui/sound.ts`）
 - 最重要要件: **ルールが一目で分かること**（設定から生成するルールカードの常時表示・返せる駒とダメージ・回復の予測・返されうる駒の警告・方向駒のアイコン・端の駒の青枠とダメージの内訳）
 
@@ -53,7 +53,7 @@ server/               ← 画面（web/dist の静的アセット）と /api（�
 - `src/engine/` に DOM・タイマー・乱数の直接参照を入れない（CPU の乱数は引数で受ける）
 - `src/ui/` に取り・ダメージなどのルール計算を書かない（予測・警告もエンジンの `previewMove` / `threatenedPieces` を使う）
 - 隠し王の真の場所（`GameState.kings`）は隠し情報。`src/ui/` と `engine/cpu.ts` からは直接読まず、CPU は `viewFor(state, 自分)`、UI は `kingInfo(state, 見せてよい人)` を使う（`test/king.test.ts` がソースを検査する）
-- URL クエリは外部入力。`ui/query.ts` の `decodeRules` で型・範囲を検証し、不正な項目は既定値に戻す。方向駒・端の駒の力の項目は既定値と違うときだけ載せる（既存プリセットの URL を変えない・古い URL は全方向・上乗せなしとして読む）
+- URL クエリは外部入力。`ui/query.ts` の `decodeRules` で型・範囲を検証し、不正な項目は基準の値に戻す。クエリは v1.0 を基準にした差分（`QUERY_BASE`。固定で変えない）で、方向駒・端の駒の力の項目は基準と違うときだけ載せる（既存プリセット・共有済みの URL の意味を変えない・古い URL は全方向・上乗せなしとして読む）。ルールのキーがないときだけ画面の既定（`DEFAULT_PRESET` = 標準）
 - 盤上の駒は種類だけを持ち、数字は `RuleSet.values[kind]`、方向は `PIECES[kind].reach`（種類で固定）。数字を `PIECES[kind].value`（既定値）から直接読まない
 - ダメージは `board.ts` の `damageOf`（返した駒の `baseDamageOf` ＋ 端の駒の `anchorBonusOf`）に集約する。予測・警告・CPU はこれを通すので、ダメージの計算を別に書かない
 - 動的な文字列は `textContent` / `ui/dom.ts` の `h()` で入れる。`innerHTML` は使わない
@@ -74,14 +74,15 @@ server/               ← 画面（web/dist の静的アセット）と /api（�
 | test | `cd web && npm test` |
 | e2e | `cd web && npm run e2e`（ビルド → `vite preview :4179` を自動起動。`/api` なし） |
 | オンライン対戦の e2e | `cd web && npm run e2e:online`（ビルド → `wrangler dev :8790`（server/ の依存が要る）を自動起動し、2 つのブラウザコンテキストで対局。desktop / mobile） |
-| バランス確認 | `cd web && npm run balance -- 400 king`（2 手読み同士。方向駒は `400 dir`、拠点は `400 anchor`。第 3 引数で体力 "先手,後手"） |
+| バランス確認 | `cd web && npm run balance -- 400 king`（2 手読み同士。方向駒は `400 dir`、拠点は `400 anchor`、標準は `400 std`。第 3 引数で体力 "先手,後手"） |
 | 棋譜の再生成 | `python3 sim/export_replays.py`（v0.4 / v1.0 / v2 案、約 30 秒） |
 | 公開 | main への merge で自動デプロイ → https://harukiti82.github.io/kyosho/ （GitHub Pages、移行が済むまで残す）と Cloudflare https://kyosho.rukiharukichi.com/ （`deploy.yml`、Secret 登録後。手順は README「独自ドメイン（kyosho.rukiharukichi.com）」。ルートの rukiharukichi.com は使わない）。workflow は main 直 push せず PR 経由で変更 |
 | シミュレーター | `RULES.md` のシミュレーター節を参照 |
-| サーバー | `cd server && npm run dev`（web をビルドして :8787 で画面と `/api`。画面を直しながらなら併せて `cd web && npm run dev` の :5173 が `/api` をプロキシ）/ `npm run typecheck` / `npm test` / `node scripts/play.mjs http://localhost:8787 king`（2 クライアントで 1 局）。`npm run deploy:check`（dry-run）/ `npm run deploy`（web のビルド → wrangler deploy。Cloudflare へのログインが必要） |
+| サーバー | `cd server && npm run dev`（web をビルドして :8787 で画面と `/api`。画面を直しながらなら併せて `cd web && npm run dev` の :5173 が `/api` をプロキシ）/ `npm run typecheck` / `npm test` / `node scripts/play.mjs http://localhost:8787`（2 クライアントで 1 局。第 2 引数でプリセット、既定は std）。`npm run deploy:check`（dry-run）/ `npm run deploy`（web のビルド → wrangler deploy。Cloudflare へのログインが必要） |
 
 ## ルール・設定項目を変えるとき
 
+- 既定を変える: `web/src/engine/rules.ts` の `DEFAULT_PRESET` だけ（`ui/query.ts` の `QUERY_BASE` は変えない。変えると共有済みの URL の意味が変わる）
 - プリセットの値を変える: `web/src/engine/rules.ts` の `PRESETS` と `RULES.md` の「Web 試遊版」節。v0.4 / v1.0 / v2 案は対応するシミュレーターの `Rules`（`sim/export_replays.py` が渡す値）も揃える
 - 設定項目を足す: `RuleSet`（`engine/rules.ts`）→ エンジン（`board.ts` / `game.ts` / `cpu.ts`）→ `ui/query.ts`（URL の検証）→ `ui/ruletext.ts`（ルールカード・詳細の文）→ `index.html` の設定フォームと `ui/setup.ts`
 - シミュレーターのルールを変えたら `python3 sim/export_replays.py` で棋譜を作り直し、`npm test` で Python と TS の一致を確認

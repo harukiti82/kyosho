@@ -105,7 +105,7 @@ export const LIMITS = {
 /** 隠し王なし（追加設定は「あり」に切り替えたときの既定値） */
 export const NO_KING: Readonly<HiddenKing> = { on: false, penalty: "hp", amount: 20, deadline: 5 };
 
-export type PresetId = "v04" | "v10" | "v2" | "orig" | "king" | "dir" | "anchor";
+export type PresetId = "v04" | "v10" | "v2" | "orig" | "king" | "dir" | "anchor" | "std";
 
 export interface Preset {
   id: PresetId;
@@ -197,12 +197,30 @@ export const PRESETS: readonly Preset[] = [
       king: { on: true, penalty: "hp", amount: 20, deadline: 5 },
     },
   },
+  {
+    id: "std",
+    name: "標準",
+    note: "方向駒＋端の駒の力＋隠し王（返されたら−30）・回復は両端の平均",
+    rules: {
+      // ユーザーが遊び比べて既定に選んだ組み合わせ（URL: take=flip&gate=0&dmg=sum&heal=avg&hp1=125&hp2=130&fu=10&gin=0&kin=2&hi=3
+      // &limit=0&king=1&kpen=hp&kdmg=30&kdue=5&dir=piece&yoko=10&kaku=4&vkin=5&vhi=3&anc=atk）
+      action: "flip", gate: false, dirs: "piece", damage: "sum", anchor: "attack", heal: "avg",
+      hp: [125, 130],
+      hand: { fu: 10, yoko: 10, gin: 0, kaku: 4, kin: 2, hi: 3 },
+      values: { ...DEFAULT_VALUES, hi: 3, kin: 5 },
+      maxPlies: 0,
+      king: { on: true, penalty: "hp", amount: 30, deadline: 5 },
+    },
+  },
 ];
 
 export const presetById = (id: PresetId): Preset => PRESETS.find((p) => p.id === id)!;
 
-/** 既定のルール（RULES.md の現行版 v1.0） */
-export const DEFAULT_PRESET: PresetId = "v10";
+/**
+ * 既定のルール（クエリなしで開いたときの設定）。URL クエリの差分の基準は ui/query.ts の QUERY_BASE（v1.0 で固定）で、
+ * これを変えても共有済みの URL の意味は変わらない
+ */
+export const DEFAULT_PRESET: PresetId = "std";
 
 export const cloneRules = (r: RuleSet): RuleSet => ({
   ...r,

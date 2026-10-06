@@ -74,7 +74,8 @@ test.describe("PC 幅", () => {
     const errors: string[] = [];
     page.on("pageerror", (e) => errors.push(String(e)));
     await page.goto("/");
-    // 既定（v1.0）は隠し王なし。追加設定は隠れている
+    // 隠し王なし（v1.0）なら追加設定は隠れている
+    await page.locator(".preset[data-preset=v10]").click();
     await expect(page.locator("#king-sub")).toBeHidden();
     await page.locator(".preset[data-preset=king]").click();
     expect(await readSetup(page)).toEqual(KING);
@@ -111,9 +112,9 @@ test.describe("PC 幅", () => {
     await expect(page.locator("#king-sub")).toBeHidden();
     await expect(page.locator("#setup-rules4")).not.toContainText("王");
 
-    // 不正な値は既定値（なし・体力−20・5 手）にして知らせる
+    // 不正な値は URL の基準（v1.0）の値（なし・体力−20・5 手）にして知らせる
     await page.goto("/?king=1&kpen=boom&kdmg=0&kdue=99");
-    await expect(page.locator("#setup-note")).toContainText("王の罰・王の罰の体力・王の指定期限は既定値にしました");
+    await expect(page.locator("#setup-note")).toContainText("王の罰・王の罰の体力・王の指定期限はv1.0（取る）の値にしました");
     expect((await readSetup(page)).king).toEqual({ on: true, penalty: "hp", amount: 20, deadline: 5 });
     expect(errors).toEqual([]);
   });
