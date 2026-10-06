@@ -58,13 +58,23 @@ test("作成 → 招待リンクで参加 → 終局。途中の再読み込み�
   expect(host.last!.you).toBe(0);
   expect(guest.last!.you).toBe(1);
   await expect(host.page.locator("#net")).toHaveText("相手: 接続中");
-  await expect(guest.page.locator("#player-1 .player-name")).toHaveText("後手（あなた）");
-  await expect(guest.page.locator("#player-0 .player-name")).toHaveText("先手（相手）");
+  // 名札は短い名前で、正式な名前（先手・後手）は読み上げ（aria-label）と title。自分が下、相手が上
+  await expect(guest.page.locator("#player-1 .player-name")).toHaveText("あなた");
+  await expect(guest.page.locator("#player-1")).toHaveAttribute("aria-label", "後手（あなた）");
+  await expect(guest.page.locator("#player-0 .player-name")).toHaveText("相手");
+  await expect(guest.page.locator("#player-0")).toHaveAttribute("aria-label", "先手（相手）");
+  await expect(guest.page.locator("#seat-bottom #player-1")).toHaveCount(1);
+  await expect(host.page.locator("#seat-bottom #player-0")).toHaveCount(1);
 
   // 先手（作成者）の手番: 先手は盤を操作でき、後手は待つ
   await expect(host.page.locator(".board.acting")).toBeVisible();
   await expect(guest.page.locator(".board.acting")).toHaveCount(0);
-  await expect(guest.page.locator("#status")).toContainText("先手（相手）の番です");
+  await expect(guest.page.locator("#status")).toHaveText("相手の番");
+  await expect(host.page.locator("#status")).toHaveText("あなたの番");
+  // 手番の側の木枠の縁が光る（操作できる側は緑、待つ側は琥珀。相手は上）
+  await expect(host.page.locator("#board-frame")).toHaveClass(/\bturn-bottom\b.*\bturn-act\b|\bturn-act\b.*\bturn-bottom\b/);
+  await expect(guest.page.locator("#board-frame")).toHaveClass(/\bturn-top\b/);
+  await expect(guest.page.locator("#board-frame")).not.toHaveClass(/\bturn-act\b/);
   await host.page.screenshot({ path: `${SHOT}/${pre}-online-myturn.png` });
   await guest.page.screenshot({ path: `${SHOT}/${pre}-online-theirturn.png` });
   await noHorizontalScroll(guest.page, width);
@@ -142,8 +152,9 @@ test("隠し王: 自分の王の指定と相手の王の候補。相手に届く
   await expect.poll(() => guest.last!.view.history.length).toBe(host.last!.view.history.length);
   await expect(guest.page.locator(".king-mark")).toHaveCount(0);
   await expect(guest.page.locator(`.cell[data-r="${hostMove.r}"][data-c="${hostMove.c}"] .king-cand`)).toBeVisible();
-  await expect(guest.page.locator("#king-cands")).toContainText("相手の王の候補 1 個");
-  await expect(guest.page.locator("#player-0 .king-tag")).toHaveText("王 ？");
+  // 相手の王は名札で「候補N」（どれかは分からない）。説明は title
+  await expect(guest.page.locator("#player-0 .king-tag")).toHaveText("王 候補1");
+  await expect(guest.page.locator("#king-cands")).toHaveAttribute("title", /^相手の王の候補 1 個/);
 
   // 後手も王を指定し、続けて打つ
   await playTurn(guest, true);

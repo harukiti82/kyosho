@@ -80,6 +80,7 @@ export class SetupDialog {
     dialog: byId<HTMLDialogElement>("setup"),
     form: byId<HTMLFormElement>("setup-form"),
     presets: byId("presets"),
+    details: byId<HTMLDetailsElement>("rule-details"),
     customTag: byId("custom-tag"),
     pieceTable: byId("piece-table"),
     gateOn: byId("gate-on-label"),
@@ -118,6 +119,12 @@ export class SetupDialog {
     this.buildPieceTable();
     this.bind();
     this.writeForm(this.rules);
+    this.openDetailsIfCustom();
+  }
+
+  /** プリセットと違う設定なら、細かい項目を開いて見せる */
+  private openDetailsIfCustom() {
+    if (!matchPreset(this.rules)) this.el.details.open = true;
   }
 
   /** restoreUrl: 閉じたときに戻すアドレス（省略時は開いたときの設定の URL） */
@@ -125,6 +132,7 @@ export class SetupDialog {
     this.openedWith = rules ? cloneRules(rules) : null;
     this.restoreUrl = restoreUrl ?? null;
     if (rules) this.writeForm(rules);
+    this.openDetailsIfCustom();
     this.el.shareStatus.textContent = "";
     this.el.shareUrl.hidden = true;
     this.syncMode();
@@ -146,8 +154,9 @@ export class SetupDialog {
     for (const p of PRESETS) {
       const b = h(
         "button",
-        { class: "preset", attrs: { type: "button", "data-preset": p.id, "aria-pressed": "false" } },
-        [h("span", { class: "preset-name", text: p.name }), h("span", { class: "preset-note", text: p.note })],
+        // 説明は選んだあとのルールの文（#setup-rules4）で読めるので、札には名前だけ（説明は title）
+        { class: "preset", attrs: { type: "button", "data-preset": p.id, "aria-pressed": "false", title: p.note } },
+        [h("span", { class: "preset-name", text: p.name })],
       );
       b.addEventListener("click", () => {
         this.writeForm(p.rules);

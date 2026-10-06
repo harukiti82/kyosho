@@ -141,9 +141,6 @@ for (const project of ["desktop", "mobile"] as const) {
         // 前の手の文言はフェードアウトの終わりまで残る（入力の待ちより長い）。消えてから打ち、この手の文言だけを確かめる
         await expect(page.locator(".fx-banner")).toHaveCount(0);
         await play(page, ch.r, ch.c, ch.kind, touch);
-        // 終局の手の横スクロールは打った直後（演出が大きくなる前）に測る。スマホ幅では右寄りの列の特大の数字（.dmg-pop）が
-        // 演出の間だけ画面の右にはみ出す（画面側の未修正の不具合）。文言を待った後に測ると毎回落ちる
-        if (s.result && touch) await noHorizontalScroll(page, 375);
         if (m.targets.length >= 2) {
           // めくる駒ごとに遅れをずらす（置いたマスに近い順）
           const delays = await page
@@ -154,6 +151,13 @@ for (const project of ["desktop", "mobile"] as const) {
           built++;
         }
         await expect(page.locator(".fx-banner")).toHaveText("痛恨！");
+        // 演出の最中も横にはみ出さない（特大の数字 .dmg-pop は 1.45 倍に膨らむので、右寄りの列でも盤の中に収める。App.fitPop）。
+        // 文言が出た直後と、数字がいちばん大きくなる頃（溜めの後 0.25 秒前後）の 2 回測る
+        if (touch) {
+          await noHorizontalScroll(page, 375);
+          await page.waitForTimeout(250);
+          await noHorizontalScroll(page, 375);
+        }
         if (s.result) {
           // 演出の途中では終局画面を出さない
           expect(await page.locator("#result").evaluate((d) => (d as HTMLDialogElement).open)).toBe(false);

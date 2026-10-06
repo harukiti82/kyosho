@@ -7,55 +7,70 @@
     <title>挟将（きょうしょう）試遊版</title>
   </head>
   <body>
-    <div class="stage" aria-hidden="true">
-      <span class="blob blob-a"></span><span class="blob blob-b"></span><span class="blob blob-c"></span>
-    </div>
-
     <header class="topbar">
-      <h1 class="title">挟将<span class="title-sub">きょうしょう 試遊版</span></h1>
+      <h1 class="title"><span class="title-mark" aria-hidden="true"></span>挟将<span class="title-sub">きょうしょう 試遊版</span></h1>
       <div class="topbar-actions">
-        <button type="button" class="mute-btn" id="btn-mute" aria-label="消音" aria-pressed="false"></button>
-        <button type="button" class="btn ghost" id="btn-rules">ルール詳細</button>
-        <button type="button" class="btn ghost" id="btn-new">新しい対局</button>
+        <button type="button" class="icon-btn mute-btn" id="btn-mute" aria-label="消音" aria-pressed="false"></button>
+        <button type="button" class="icon-btn" id="btn-rules" aria-label="ルール詳細" title="ルール詳細">?</button>
+        <button type="button" class="btn" id="btn-new">新しい対局</button>
       </div>
     </header>
 
     <main class="layout" id="game" hidden>
-      <!-- 常に見えるルールカード（現在の設定から自動生成） -->
-      <section class="glass rules4" id="rules4" aria-labelledby="rules4-name">
-        <h2 class="label rules4-head" id="rules4-name">ルール</h2>
-        <ol class="rules4-list" id="rules4-list"></ol>
-      </section>
+      <div class="table">
+        <!-- 相手（上）と自分（下）の名札。ui/app.ts の placeSeats が手番の向きで入れる -->
+        <div class="seat seat-top" id="seat-top">
+          <div class="player-card" id="player-1"></div>
+        </div>
 
-      <section class="players" aria-label="体力と持ち駒">
-        <div class="player-card" id="player-0"></div>
-        <div class="player-card" id="player-1"></div>
-      </section>
+        <div class="board-wrap">
+          <!-- 手番の側の縁が光る（turn-top / turn-bottom） -->
+          <div class="board-frame" id="board-frame">
+            <div class="coords coords-x" aria-hidden="true"><span>a</span><span>b</span><span>c</span><span>d</span><span>e</span><span>f</span><span>g</span><span>h</span></div>
+            <div class="coords coords-y" aria-hidden="true"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span></div>
+            <div class="board" id="board" role="grid" aria-label="盤面"></div>
+            <!-- 木枠の下の縁: 手番・手数・オンラインの接続 -->
+            <div class="frame-foot">
+              <span class="net" id="net" role="status" hidden></span>
+              <p class="status" id="status" role="status" aria-live="polite"></p>
+              <span class="ply" id="ply"></span>
+            </div>
+          </div>
+        </div>
 
-      <div class="status-row">
-        <p class="status" id="status" role="status" aria-live="polite"></p>
-        <span class="ply" id="ply"></span>
-        <!-- オンライン対戦の接続の状態（相手の接続・つなぎ直し中） -->
-        <span class="net" id="net" role="status" hidden></span>
-      </div>
+        <div class="seat seat-bottom" id="seat-bottom">
+          <div class="player-card" id="player-0"></div>
+        </div>
 
-      <div class="board-wrap">
-        <div class="board" id="board" role="grid" aria-label="盤面"></div>
-        <p class="legend" id="legend"></p>
-      </div>
-
-      <section class="side">
-        <div class="glass hand" id="hand">
-          <h2 class="label" id="hand-title">持ち駒</h2>
+        <!-- 駒台（見出しは読み上げ用だけ） -->
+        <div class="tray hand" id="hand">
+          <h2 class="sr-only" id="hand-title">持ち駒</h2>
           <div class="hand-buttons" id="hand-buttons"></div>
           <div class="king-box" id="king-box" hidden></div>
         </div>
-        <div class="glass preview" id="preview" aria-live="polite"></div>
-        <div class="glass log">
-          <h2 class="label">棋譜</h2>
-          <ol class="log-list" id="log"></ol>
+      </div>
+
+      <!-- ルール・予測の詳細・棋譜・印の見かたをまとめた引き出し。選んだタブを押し直すと閉じる -->
+      <div class="side drawer" id="drawer">
+        <div class="tabs" role="tablist" aria-label="ルール・予測・棋譜・印の見かた">
+          <button type="button" class="tab" role="tab" id="tab-rules4" aria-controls="rules4" aria-selected="false"><span id="rules4-name">ルール</span></button>
+          <button type="button" class="tab" role="tab" id="tab-preview" aria-controls="preview" aria-selected="false" tabindex="-1">予測</button>
+          <button type="button" class="tab" role="tab" id="tab-log-panel" aria-controls="log-panel" aria-selected="false" tabindex="-1">棋譜</button>
+          <button type="button" class="tab" role="tab" id="tab-legend-box" aria-controls="legend-box" aria-selected="false" tabindex="-1">印</button>
         </div>
-      </section>
+        <!-- ルールカード（現在の設定から自動生成） -->
+        <section class="tab-panel rules4" id="rules4" role="tabpanel" aria-labelledby="tab-rules4" hidden>
+          <ol class="rules4-list" id="rules4-list"></ol>
+        </section>
+        <!-- 予測の詳細。読み上げのため閉じていても DOM に残す（tab-off で見た目だけ隠す） -->
+        <section class="tab-panel preview tab-off" id="preview" role="tabpanel" aria-labelledby="tab-preview" aria-live="polite"></section>
+        <section class="tab-panel log" id="log-panel" role="tabpanel" aria-labelledby="tab-log-panel" hidden>
+          <ol class="log-list" id="log"></ol>
+        </section>
+        <section class="tab-panel legend-box" id="legend-box" role="tabpanel" aria-labelledby="tab-legend-box" hidden>
+          <p class="legend" id="legend"></p>
+        </section>
+      </div>
     </main>
 
     <div class="toast" id="toast" role="alert" hidden></div>
@@ -66,15 +81,7 @@
     <dialog class="modal modal-wide" id="setup" aria-labelledby="setup-title">
       <form method="dialog" class="modal-body setup" id="setup-form" novalidate>
         <h2 class="modal-title" id="setup-title" tabindex="-1" autofocus>対局の設定</h2>
-        <p class="setup-lead">
-          ルールの組み合わせを選んで遊び比べる試遊版です。まずプリセットを選び、必要なら下の項目を変えてください。
-        </p>
         <p class="setup-note" id="setup-note" role="status" hidden></p>
-
-        <fieldset class="field">
-          <legend class="label">プリセット</legend>
-          <div class="presets" id="presets"></div>
-        </fieldset>
 
         <fieldset class="field">
           <legend class="label">対戦</legend>
@@ -94,114 +101,118 @@
             <label><input type="radio" name="host" value="first" /><span>自分が先手（黒）</span></label>
             <label><input type="radio" name="host" value="second" /><span>自分が後手（白）</span></label>
           </div>
-          <p class="opt-help online-help" id="online-help" hidden>部屋を作ると招待リンクが出ます。相手がリンクを開いて参加すると対局が始まります（ログイン不要）。</p>
+          <p class="opt-help online-help" id="online-help" hidden>部屋を作ると招待リンクが出ます（ログイン不要）</p>
         </fieldset>
 
-        <fieldset class="field rule-fields">
+        <fieldset class="field">
           <legend class="label">ルール <span class="custom-tag" id="custom-tag"></span></legend>
-
-          <div class="opt">
-            <span class="opt-name" id="opt-action">挟んだ駒を</span>
-            <div class="seg" role="radiogroup" aria-labelledby="opt-action">
-              <label><input type="radio" name="action" value="flip" /><span>裏返す（オセロ）</span></label>
-              <label><input type="radio" name="action" value="capture" /><span>取って持ち駒にする</span></label>
-            </div>
-          </div>
-
-          <div class="opt">
-            <span class="opt-name" id="opt-gate">強さ制限</span>
-            <div class="seg" role="radiogroup" aria-labelledby="opt-gate">
-              <label><input type="radio" name="gate" value="0" /><span>なし</span></label>
-              <label><input type="radio" name="gate" value="1" /><span id="gate-on-label">置いた駒より強い駒は返せない</span></label>
-            </div>
-          </div>
-
-          <div class="opt">
-            <span class="opt-name" id="opt-damage">ダメージ</span>
-            <div class="seg" role="radiogroup" aria-labelledby="opt-damage">
-              <label><input type="radio" name="damage" value="sum" /><span>数字の合計</span></label>
-              <label><input type="radio" name="damage" value="maxCount" /><span>最大値＋枚数÷4</span></label>
-            </div>
-          </div>
-
-          <div class="opt">
-            <span class="opt-name" id="opt-anchor">端の駒の力</span>
-            <div class="seg" role="radiogroup" aria-labelledby="opt-anchor">
-              <label><input type="radio" name="anchor" value="none" /><span>なし</span></label>
-              <label><input type="radio" name="anchor" value="attack" /><span>攻撃に上乗せ（挟んだ端の自分の駒の数字もダメージに足す）</span></label>
-            </div>
-          </div>
-
-          <div class="opt">
-            <span class="opt-name" id="opt-heal">回復</span>
-            <div class="seg" role="radiogroup" aria-labelledby="opt-heal">
-              <label><input type="radio" name="heal" value="none" /><span>なし</span></label>
-              <label><input type="radio" name="heal" value="avg" /><span>両端の平均</span></label>
-              <label><input type="radio" name="heal" value="lowMinus1" /><span>両端の低い方−1</span></label>
-            </div>
-          </div>
-
-          <div class="opt">
-            <span class="opt-name">体力</span>
-            <div class="nums">
-              <label class="num"><span>先手</span><input type="number" name="hp0" inputmode="numeric" min="5" max="200" step="1" required /></label>
-              <label class="num"><span>後手</span><input type="number" name="hp1" inputmode="numeric" min="5" max="200" step="1" required /></label>
-            </div>
-          </div>
-
-          <div class="opt">
-            <span class="opt-name" id="opt-dirs">挟める方向</span>
-            <div class="seg" role="radiogroup" aria-labelledby="opt-dirs">
-              <label><input type="radio" name="dirs" value="all" /><span>全方向（8 方向）</span></label>
-              <label><input type="radio" name="dirs" value="piece" /><span>駒ごと（駒の矢印の方向だけ）</span></label>
-            </div>
-          </div>
-
-          <div class="opt">
-            <span class="opt-name" id="opt-pieces">駒（両者同じ。方向は駒の種類で決まる）</span>
-            <!-- 駒種ごとの 数・数字 の欄は ui/setup.ts が KIND_ORDER から作る -->
-            <div class="piece-table" id="piece-table" role="group" aria-labelledby="opt-pieces"></div>
-          </div>
-
-          <div class="opt">
-            <span class="opt-name">手数上限</span>
-            <div class="nums">
-              <label class="num num-wide"><input type="number" name="maxPlies" inputmode="numeric" min="0" max="300" step="1" required aria-label="手数上限" /><span>手（0 = なし）</span></label>
-            </div>
-          </div>
-          <div class="opt">
-            <span class="opt-name" id="opt-king">隠し王（読み合い）</span>
-            <div class="seg" role="radiogroup" aria-labelledby="opt-king">
-              <label><input type="radio" name="king" value="0" /><span>なし</span></label>
-              <label><input type="radio" name="king" value="1" /><span>あり（最初の数手で 1 つを王にして隠す）</span></label>
-            </div>
-            <div class="king-sub" id="king-sub">
-              <div class="seg" role="radiogroup" aria-label="王を返されたときの罰">
-                <label><input type="radio" name="kingPenalty" value="hp" /><span id="king-hp-label">返されたら体力が減る</span></label>
-                <label><input type="radio" name="kingPenalty" value="lose" /><span id="king-lose-label">返されたら即負け</span></label>
-              </div>
-              <div class="nums">
-                <label class="num" id="king-amount-field"><span>減る体力</span><input type="number" name="kingAmount" inputmode="numeric" min="1" max="200" step="1" required /></label>
-                <label class="num"><span>期限 最初の</span><input type="number" name="kingDeadline" inputmode="numeric" min="1" max="20" step="1" required /><span>手</span></label>
-              </div>
-            </div>
-          </div>
-          <p class="opt-help">体力 5〜200、駒の数 0〜40、駒の数字 1〜20、手数 0〜300、王の罰 1〜200、期限 1〜20。範囲外の値は自動で直します。</p>
+          <div class="presets" id="presets"></div>
+          <!-- 選んでいる設定のルール（対局中は引き出しの「ルール」に出る） -->
+          <ol class="rules4-list setup-rules" id="setup-rules4" aria-label="この設定のルール"></ol>
         </fieldset>
 
-        <section class="setup-preview" aria-labelledby="setup-preview-title">
-          <h3 class="label" id="setup-preview-title">この設定のルール（対局中も表示されます）</h3>
-          <ol class="rules4-list" id="setup-rules4"></ol>
-        </section>
+        <!-- 細かい項目は折りたたむ（プリセットと違う設定で開いたときは開いて始める。ui/setup.ts） -->
+        <details class="rule-details" id="rule-details">
+          <summary class="rule-details-head">ルールを細かく変える</summary>
+          <div class="rule-fields">
+            <div class="opt">
+              <span class="opt-name" id="opt-action">挟んだ駒を</span>
+              <div class="seg" role="radiogroup" aria-labelledby="opt-action">
+                <label><input type="radio" name="action" value="flip" /><span>裏返す（オセロ）</span></label>
+                <label><input type="radio" name="action" value="capture" /><span>取って持ち駒にする</span></label>
+              </div>
+            </div>
+
+            <div class="opt">
+              <span class="opt-name" id="opt-gate">強さ制限</span>
+              <div class="seg" role="radiogroup" aria-labelledby="opt-gate">
+                <label><input type="radio" name="gate" value="0" /><span>なし</span></label>
+                <label><input type="radio" name="gate" value="1" /><span id="gate-on-label">置いた駒より強い駒は返せない</span></label>
+              </div>
+            </div>
+
+            <div class="opt">
+              <span class="opt-name" id="opt-damage">ダメージ</span>
+              <div class="seg" role="radiogroup" aria-labelledby="opt-damage">
+                <label><input type="radio" name="damage" value="sum" /><span>数字の合計</span></label>
+                <label><input type="radio" name="damage" value="maxCount" /><span>最大値＋枚数÷4</span></label>
+              </div>
+            </div>
+
+            <div class="opt">
+              <span class="opt-name" id="opt-anchor">端の駒の力</span>
+              <div class="seg" role="radiogroup" aria-labelledby="opt-anchor">
+                <label><input type="radio" name="anchor" value="none" /><span>なし</span></label>
+                <label><input type="radio" name="anchor" value="attack" /><span>攻撃に上乗せ（挟んだ端の自分の駒の数字もダメージに足す）</span></label>
+              </div>
+            </div>
+
+            <div class="opt">
+              <span class="opt-name" id="opt-heal">回復</span>
+              <div class="seg" role="radiogroup" aria-labelledby="opt-heal">
+                <label><input type="radio" name="heal" value="none" /><span>なし</span></label>
+                <label><input type="radio" name="heal" value="avg" /><span>両端の平均</span></label>
+                <label><input type="radio" name="heal" value="lowMinus1" /><span>両端の低い方−1</span></label>
+              </div>
+            </div>
+
+            <div class="opt">
+              <span class="opt-name">体力</span>
+              <div class="nums">
+                <label class="num"><span>先手</span><input type="number" name="hp0" inputmode="numeric" min="5" max="200" step="1" required /></label>
+                <label class="num"><span>後手</span><input type="number" name="hp1" inputmode="numeric" min="5" max="200" step="1" required /></label>
+              </div>
+            </div>
+
+            <div class="opt">
+              <span class="opt-name" id="opt-dirs">挟める方向</span>
+              <div class="seg" role="radiogroup" aria-labelledby="opt-dirs">
+                <label><input type="radio" name="dirs" value="all" /><span>全方向（8 方向）</span></label>
+                <label><input type="radio" name="dirs" value="piece" /><span>駒ごと（駒の矢印の方向だけ）</span></label>
+              </div>
+            </div>
+
+            <div class="opt">
+              <span class="opt-name" id="opt-pieces">駒（両者同じ。方向は駒の種類で決まる）</span>
+              <!-- 駒種ごとの 数・数字 の欄は ui/setup.ts が KIND_ORDER から作る -->
+              <div class="piece-table" id="piece-table" role="group" aria-labelledby="opt-pieces"></div>
+            </div>
+
+            <div class="opt">
+              <span class="opt-name">手数上限</span>
+              <div class="nums">
+                <label class="num num-wide"><input type="number" name="maxPlies" inputmode="numeric" min="0" max="300" step="1" required aria-label="手数上限" /><span>手（0 = なし）</span></label>
+              </div>
+            </div>
+            <div class="opt">
+              <span class="opt-name" id="opt-king">隠し王（読み合い）</span>
+              <div class="seg" role="radiogroup" aria-labelledby="opt-king">
+                <label><input type="radio" name="king" value="0" /><span>なし</span></label>
+                <label><input type="radio" name="king" value="1" /><span>あり（最初の数手で 1 つを王にして隠す）</span></label>
+              </div>
+              <div class="king-sub" id="king-sub">
+                <div class="seg" role="radiogroup" aria-label="王を返されたときの罰">
+                  <label><input type="radio" name="kingPenalty" value="hp" /><span id="king-hp-label">返されたら体力が減る</span></label>
+                  <label><input type="radio" name="kingPenalty" value="lose" /><span id="king-lose-label">返されたら即負け</span></label>
+                </div>
+                <div class="nums">
+                  <label class="num" id="king-amount-field"><span>減る体力</span><input type="number" name="kingAmount" inputmode="numeric" min="1" max="200" step="1" required /></label>
+                  <label class="num"><span>期限 最初の</span><input type="number" name="kingDeadline" inputmode="numeric" min="1" max="20" step="1" required /><span>手</span></label>
+                </div>
+              </div>
+            </div>
+            <p class="opt-help">体力 5〜200、駒の数 0〜40、駒の数字 1〜20、手数 0〜300、王の罰 1〜200、期限 1〜20。範囲外の値は自動で直します。</p>
+          </div>
+        </details>
 
         <div class="share">
-          <button type="button" class="btn ghost" id="setup-copy">この設定の URL をコピー</button>
           <span class="share-status" id="share-status" role="status"></span>
           <input type="text" class="share-url" id="share-url" readonly aria-label="この設定の URL" hidden />
         </div>
 
         <div class="modal-actions">
-          <button type="button" class="btn ghost" id="setup-rules">ルール詳細</button>
+          <button type="button" class="icon-btn" id="setup-rules" aria-label="ルール詳細" title="ルール詳細">?</button>
+          <button type="button" class="btn ghost" id="setup-copy">URL をコピー</button>
           <button type="submit" class="btn primary" id="setup-start">対局開始</button>
         </div>
       </form>
@@ -209,12 +220,12 @@
 
     <!-- 終局 -->
     <dialog class="modal" id="result">
-      <div class="modal-body">
-        <p class="label">終局</p>
+      <div class="modal-body result-body">
         <h2 class="result-winner" id="result-winner"></h2>
         <p class="result-reason" id="result-reason"></p>
         <p class="result-cheer" id="result-cheer" hidden></p>
-        <p class="result-detail" id="result-detail"></p>
+        <!-- 対局者を列にした成績表（体力・石数・王）と、手数・ルール -->
+        <div class="result-detail" id="result-detail"></div>
         <div class="result-stats" id="result-stats"></div>
         <div class="modal-actions">
           <button type="button" class="btn ghost" id="result-view">盤面を見る</button>
@@ -227,7 +238,6 @@
     <!-- オンライン対戦の案内（部屋の作成・招待リンクと待機・参加の確認・エラー。ui/online.ts） -->
     <dialog class="modal" id="online" aria-labelledby="online-title">
       <div class="modal-body online-body">
-        <p class="label">オンライン対戦</p>
         <h2 class="modal-title" id="online-title" tabindex="-1"></h2>
         <div id="online-content"></div>
         <div class="modal-actions" id="online-actions"></div>

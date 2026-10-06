@@ -41,6 +41,20 @@ export async function startGame(page: Page, opts: { mode?: "cpu" | "pvp"; side?:
   await expect(page.locator("#setup")).toBeHidden();
 }
 
+/** 設定画面の「ルールを細かく変える」を開く（開いていれば何もしない） */
+export async function openRuleFields(page: Page) {
+  const details = page.locator("#rule-details");
+  if (!(await details.evaluate((d) => (d as HTMLDetailsElement).open))) await details.locator("summary").click();
+  await expect(details).toHaveAttribute("open", "");
+}
+
+/** 引き出しのタブを開く（開いていれば何もしない）。id はタブが開くパネル（rules4 / preview / log-panel / legend-box） */
+export async function openTab(page: Page, id: string) {
+  const tab = page.locator(`#tab-${id}`);
+  if ((await tab.getAttribute("aria-selected")) !== "true") await tab.click();
+  await expect(tab).toHaveAttribute("aria-selected", "true");
+}
+
 /** 人間の手番（盤を操作できる）か終局画面のどちらかになるまで待つ。終局なら true */
 export async function waitHumanTurnOrEnd(page: Page): Promise<boolean> {
   await page.waitForFunction(

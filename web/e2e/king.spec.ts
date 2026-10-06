@@ -19,7 +19,7 @@ import {
 import { presetById, type HiddenKing, type PieceKind, type RuleSet } from "../src/engine/rules";
 import { encodeRules } from "../src/ui/query";
 import { ruleLines, sentenceText } from "../src/ui/ruletext";
-import { noHorizontalScroll, readSetup, rng, startGame, waitHumanTurnOrEnd } from "./helpers";
+import { noHorizontalScroll, openRuleFields, readSetup, rng, startGame, waitHumanTurnOrEnd } from "./helpers";
 
 const SHOT = "screenshots";
 const KING = presetById("king").rules;
@@ -74,6 +74,7 @@ test.describe("PC 幅", () => {
     const errors: string[] = [];
     page.on("pageerror", (e) => errors.push(String(e)));
     await page.goto("/");
+    await openRuleFields(page);
     // 隠し王なし（v1.0）なら追加設定は隠れている
     await page.locator(".preset[data-preset=v10]").click();
     await expect(page.locator("#king-sub")).toBeHidden();
@@ -153,19 +154,24 @@ test.describe("PC 幅", () => {
 
         const ch = humanChoice(s);
         await selectPiece(page, ch.kind);
-        // 王を決められる手番は、状態の行で操作の場所を知らせる
-        if (kingInfo(s, 0).canDesignate) await expect(page.locator("#status")).toContainText("（王は持ち駒欄で指定）");
-        else await expect(page.locator("#status")).not.toContainText("王は");
+        // 王を決められる手番は、駒台の右端に王の駒（あと何手か）を出す。決めた後・決められない手番は出さない
+        await expect(page.locator("#status")).toHaveText("あなたの番");
+        if (kingInfo(s, 0).canDesignate) {
+          await expect(page.locator("#king-toggle")).toBeVisible();
+          await expect(page.locator("#king-toggle")).toContainText(`あと${rules.king.deadline - kingInfo(s, 0).nextMove + 1}手`);
+        } else {
+          await expect(page.locator("#king-toggle")).toHaveCount(0);
+        }
         if (ch.king) {
-          // 1 手目: 「この駒を王にする」を押す → 予測と影の駒に王の印
-          await expect(page.locator("#king-toggle")).toHaveText("王この駒を王にする");
+          // 1 手目: 王の駒（この駒を王にする）を押す → 持ち上がり、予測・吹き出し・影の駒に王の印
+          await expect(page.locator("#king-toggle")).toHaveAccessibleName("この駒を王にする");
           await expect(page.locator("#king-box")).toContainText("あと 5 手のうち 1 手");
           await page.locator("#king-toggle").click();
           await expect(page.locator("#king-toggle")).toHaveAttribute("aria-pressed", "true");
-          await expect(page.locator("#status")).toContainText("王にして置くマスを選んでください");
-          await expect(page.locator("#status")).not.toContainText("王は持ち駒欄で指定");
+          await expect(page.locator("#king-toggle")).toHaveClass(/\bon\b/);
           await cellAt(page, ch.r, ch.c).hover();
           await expect(page.locator("#preview .label")).toContainText("王にして置くと");
+          await expect(cellAt(page, ch.r, ch.c).locator(".pv-bubble")).toContainText("王にして置く");
           await expect(cellAt(page, ch.r, ch.c).locator(".stone.ghost .king-mark")).toBeVisible();
         }
         await cellAt(page, ch.r, ch.c).click();
@@ -174,8 +180,10 @@ test.describe("PC 幅", () => {
         if (ch.king) {
           await expect(page.locator("#toast")).toContainText(`${cellName(ch.r, ch.c)} の歩1をあなたの王にしました`);
           await expect(cellAt(page, ch.r, ch.c).locator(".king-mark")).toBeVisible();
+          // 自分の王の場所は名札（王の駒の形とマス名）。説明は title。駒台の王の駒は消える
           await expect(page.locator("#player-0 .king-tag")).toHaveText(`王 ${cellName(ch.r, ch.c)}`);
-          await expect(page.locator("#king-box")).toContainText(`あなたの王: ${cellName(ch.r, ch.c)}`);
+          await expect(page.locator("#player-0 .king-tag")).toHaveAttribute("title", `王は ${cellName(ch.r, ch.c)}（相手には見えない）`);
+          await expect(page.locator("#king-box")).toBeHidden();
         }
         if (m.king) {
           // CPU の王を返した: トースト・棋譜・王！の演出・体力（ダメージ＋罰）
@@ -192,7 +200,12 @@ test.describe("PC 幅", () => {
             await page.screenshot({ path: `${SHOT}/pc-king-hit${k.lose ? "-lose" : ""}.png` });
             hitShot = true;
           }
-          if (!s.result) await expect(page.locator("#player-1 .king-tag")).toHaveText("王 返された");
+          // 返された王は名札のマス名に取り消し線（赤）
+          if (!s.result) {
+            await expect(page.locator("#player-1 .king-tag")).toHaveText(`王 ${cellName(k.r, k.c)}`);
+            await expect(page.locator("#player-1 .king-tag")).toHaveClass(/\blost\b/);
+            await expect(page.locator("#player-1 .king-tag")).toHaveAttribute("title", "王は返された（以後ふつうの駒）");
+          }
         }
         // CPU の手番を鏡の対局で進める（同じ種なので同じ手になる）
         while (!s.result && s.turn === 1) {
@@ -204,10 +217,12 @@ test.describe("PC 幅", () => {
       // 終局: 画面と鏡の対局が一致。王の答え合わせが出て、両者の隠れた王の印が出る
       await expect(page.locator("#result-winner")).toHaveText(s.result!.winner === 0 ? "あなたの勝ち" : "CPU の勝ち");
       if (rules.king.penalty === "lose") {
-        await expect(page.locator("#result-reason")).toHaveText("王を返した — 後手（CPU）の王が返されたので即負け");
+        await expect(page.locator("#result-reason")).toHaveText("後手（CPU）の王が返されたので即負け");
       }
-      await expect(page.locator("#result-detail")).toContainText(" ／ 王: 先手 ");
-      await expect(page.locator("#result-detail")).toContainText("（返された）");
+      // 成績表の「王」の行で答え合わせ（列は先手・後手）
+      const kingRow = page.locator("#result-detail tbody tr").filter({ has: page.locator("th", { hasText: /^王$/ }) });
+      await expect(kingRow.locator("td")).toHaveCount(2);
+      await expect(kingRow.locator("td").nth(1)).toContainText("（返された）");
       await page.screenshot({ path: `${SHOT}/pc-king-result${rules.king.penalty === "lose" ? "-lose" : ""}.png` });
       await page.locator("#result-view").click();
       const hidden = ([0, 1] as const).map((p) => kingInfo(s, p).cell).filter((c) => c !== null);
@@ -256,7 +271,8 @@ test.describe("PC 幅", () => {
     await expect(page.locator("#king-toggle")).toBeDisabled();
     await expect(page.locator("#king-toggle")).toHaveAttribute("aria-pressed", "true");
     await expect(page.locator("#king-box")).toContainText("期限の 2 手目です。この手で置く駒が自動で王になります。王を返されたら体力−20");
-    await expect(page.locator("#status")).toContainText("王にして置くマスを選んでください");
+    await expect(page.locator("#king-toggle")).toContainText("この手で王");
+    await expect(page.locator("#status")).toHaveText("先手の番");
     [r, c] = first();
     await cellAt(page, r, c).click();
     s = playMove(s, r, c, "fu");
@@ -268,7 +284,7 @@ test.describe("PC 幅", () => {
     expect(await kingMarks(page)).toEqual([]);
     await expect(page.locator("#king-toggle")).toHaveCount(0);
     const peek = page.locator("#king-peek");
-    await expect(peek).toContainText("自分の王を確認");
+    await expect(peek).toHaveAccessibleName("自分の王を確認（押している間だけ表示）");
     await peek.hover();
     await page.mouse.down();
     expect(await kingMarks(page)).toEqual([whiteKing]);
@@ -307,7 +323,8 @@ test.describe("PC 幅", () => {
     await startGame(page);
     await expect(page.locator("#rules4")).toContainText("最初に置く駒が王（相手に見えない）。王を返されたら体力−20");
     await expect(page.locator("#king-toggle")).toBeDisabled();
-    await expect(page.locator("#king-toggle")).toHaveText("王この手で置く駒が王になる");
+    await expect(page.locator("#king-toggle")).toHaveAccessibleName("この手で置く駒が王になる");
+    await expect(page.locator("#king-toggle")).toContainText("この手で王");
     const cell = page.locator(".cell.can-take").first();
     const name = ((await cell.getAttribute("aria-label")) ?? "").split(" ")[0];
     await cell.click();
@@ -322,6 +339,7 @@ test.describe("スマホ幅 375px", () => {
   test("隠し王: 設定画面と対局画面で横スクロールなし。タップで王を指定して置ける", async ({ page }) => {
     await page.goto("/");
     await page.locator(".preset[data-preset=king]").tap();
+    await openRuleFields(page);
     await page.locator("#king-sub").scrollIntoViewIfNeeded();
     await expect(page.locator("#king-sub")).toBeVisible();
     await noHorizontalScroll(page, 375);
@@ -345,7 +363,10 @@ test.describe("スマホ幅 375px", () => {
     expect(await kingMarks(page)).toEqual([name]);
     await noHorizontalScroll(page, 375);
     await page.screenshot({ path: `${SHOT}/sp-king-placed.png` });
-    await page.locator("#king-box").scrollIntoViewIfNeeded();
+    // 王を決めたら駒台の王の駒は消え、名札に王の場所
+    await expect(page.locator("#king-box")).toBeHidden();
+    await expect(page.locator("#player-0 .king-tag")).toHaveText(`王 ${name}`);
+    await page.locator("#hand").scrollIntoViewIfNeeded();
     await noHorizontalScroll(page, 375);
     await page.screenshot({ path: `${SHOT}/sp-king-box.png` });
   });

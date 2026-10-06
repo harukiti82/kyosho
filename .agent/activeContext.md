@@ -4,9 +4,20 @@
 
 ## 現在の対象
 
-- 何を / どこを: 盤に「普通のオセロなら置けるマス」の点線の枠を出す（ユーザーの依頼「普通のオセロで置ける場所を駒ごとの置ける場所とは別で表示するようにして」）。駒の種類・方向・強さを考えない参考表示で、置けるかの判定は変えない
-- ステータス: PR #17（ブランチ `feature/othello-hint`）を #15・#16 の上に rebase し CI 待ち・未マージ（main へのマージで本番デプロイされるので、マージは master が確認してから）。CPU 対戦の手番ランダム（#15）・標準の先手の体力 110（#16）はマージ済み。本番の実機（スマホ 2 台）での対局は未確認
-- 最終更新: 2026-10-06（オセロの枠。#16 の上に rebase）
+- 何を / どこを: 画面をボードゲームアプリ風に作り直す（ユーザーの依頼「AI感が強すぎる。もっとゲームって感じに」。見た目と配置まで。ルール・engine・サーバーは変えない）。段階 1（対局画面の試作）はユーザー承認済み、段階 2（全画面・e2e・スクリーンショット・AGENTS.md）をブランチ `style/boardgame-ui` で実施中
+- ステータス: 段階 2 まで実装済み・PR（ブランチ `style/boardgame-ui`、origin/main の #18 の上に rebase 済み）で CI 待ち・未マージ（マージは master が確認してから。マージで本番デプロイ）。`npm test` / build / server test / `npm run e2e` 76 件 / `e2e:online` 14 件は緑。スマホ幅の特大のダメージ数のはみ出しも直した（`App.fitPop`）
+- 最終更新: 2026-10-06（ボードゲームアプリ風の段階 2）
+
+## 新デザインの要点（デザイン規約は AGENTS.md）
+
+- 対局画面: 名札（`#seat-top` / `#seat-bottom`、`App.placeSeats`。自分が下、2 人対戦は先手が下）・木枠の下の縁に手番（`#status` は「あなたの番」など短く）・手数（`#ply`「N 手」）・接続（`#net`）。手番の側の縁が光る（`.board-frame.turn-top` / `turn-bottom` / `turn-act`）
+- 名札: 短い名前（`shortName`。正式名は aria-label・title）・王の駒の形とマス名（`kingTag`。返されたら取り消し線 `.lost`、オンラインの相手は「候補N」で `#king-cands`）・持ち駒（駒台に出ている人の分は省く）・体力ゲージ（`.hp-gauge`、減った分は `.hp-ghost`）
+- 駒台（`.tray`）: 残り数は `.piece-count`、置けない駒は `.blocked` の斜線、隠し王は右端の王の駒（`#king-toggle`「あと N 手」、2 人対戦の `#king-peek`）。説明の文は sr-only の `#king-note`
+- 予測: マスのバッジ（`.dmg-badge` / `.heal-badge`）＋吹き出し（`App.bubble`。返す駒・端の駒がない側に出し、上下両方にあれば盤の外の縁 `.edge-top` / `.edge-bottom`）。文の詳細は引き出しの「予測」タブ（`#preview`、閉じても `.tab-off` で読み上げに残す）
+- 引き出し（`#drawer`、`setTab`）: 「ルール — 名前」「予測」「棋譜」「印」。PC は盤の横でルールを開いて始め、スマホは閉じて始める
+- 設定画面: 対戦 → ルール（名前だけのプリセットの札＋選んだ設定のルール文 `#setup-rules4`）→「ルールを細かく変える」（`#rule-details`、プリセットと違う設定なら開いて始める）。e2e は `openRuleFields` / `openTab`（`e2e/helpers.ts`）
+- 終局画面: 見出し（明朝、勝ちは琥珀）・理由の 1 文・成績表（`#result-detail` の `.score`。対局者が列、体力・石数・王が行、下に「N 手・ルール 名前」）・成績（`.stats`）
+- オンラインのダイアログ: 対戦待ちのように 2 つの席を VS で並べる（`.lobby`、空いた席は脈打つ）。ルールは「ルール — 名前」の折りたたみ
 
 ## 直近の観点・指摘
 
@@ -20,7 +31,7 @@
 - オンライン対戦: サーバーは engine を import する権威サーバー。各自には `viewFor` だけを送る（`server/test/king.test.ts` が、相手の王の指定だけ違う 2 部屋で自分に届くバイト列が一致することを検査）。3 人目は拒否（観戦なし）。先手・後手は作成者の `hostSeat`（既定 random）。再接続はトークン（`sessionStorage` 推奨）。放置した部屋は alarm で削除（24 時間・終局後 1 時間）
 - server/ は vitest 4（pool-workers の要件）。npm 11.4 は install で落ちるので `npx npm@11.21.0 install`。`worker-configuration.d.ts` は生成物（`npm run typecheck` / `test` の前に `wrangler types`）
 - 普通のオセロなら置けるマス: `board.ts` の `othelloCells`（石の色だけ・8 方向。駒の方向・強さ・持ち駒を見ない参考表示で、合法手の判定には使わない）。盤は操作できる手番だけ `.cell.othello`（点線の枠、`--othello`）、凡例 `.key-othello`。e2e `othello.spec.ts`・オンラインは `online.spec.ts`
-- 最重要要件は「ルールが一目で分かること」。ルールカードは設定から自動生成（`ui/ruletext.ts`、最大 8 行。7 行以上は `.denser`）。予測の赤枠＋ダメージ・回復、返されうる自駒の「!」、自分の王の赤い「!」、駒の方向アイコン、端の駒の青枠＋左下の「+数字」と内訳（返した駒 ＋ 端の金5 ＝ 7）を崩さない
+- 最重要要件は「ルールが一目で分かること」＝ルールはいつでも 1 タップで見られる。ルールカードは設定から自動生成（`ui/ruletext.ts`、最大 8 行）して引き出しの「ルール — 名前」のタブ（見出しは常に表示、PC は開いて始める）。予測の赤枠＋ダメージ・回復、返されうる自駒の「!」、自分の王の赤い「!」、駒の方向アイコン、端の駒の青枠＋左下の「+数字」と内訳（返した駒 ＋ 端の金5 ＝ 7）を崩さない
 - 決着の演出: 中身（種類・副題・接戦の励まし）は `ui/outcome.ts` の `outcomeOf`（DOM なし、接戦は自分の体力上限の `CLOSE_PERCENT`=10% 以下）。表示は `fx.ts` の `finale`（画面全体を覆いタップ／クリックで飛ばす）、音は `sound.ts` の `finale`、流れは `App.playFinale` / `endFinale`（Enter / Esc / スペースでも飛ばす）。最大 2.5 秒（`FINALE_MS` 2300）。負けたら終局画面の「再戦」を `.urge` で強調、励ましは `#result-cheer`
 - 手応えの演出: 段階は `ui/impact.ts` の `tierOf`（合計（上乗せ・王の罰込み）÷ 受けた側の体力上限。5% / 10% / 20% は `TIER_THRESHOLDS`、王を返した手は特大）。演出は `ui/fx.ts`（`#fx` 層・transform / opacity のみ）、効果音は `ui/sound.ts`（Web Audio 合成・消音は localStorage）。大・特大は `App.fxLock` で入力と CPU を最大 1.5 秒待たせる。`src/ui/` で `Math.random` を使わない（e2e の鏡の対局がずれる）
 - 端の駒の力: ダメージは `damageOf` ＝ `baseDamageOf` ＋ `anchorBonusOf`（返した列ごとの反対端 `Line.end` / `endAt`）。予測・警告・CPU はすべてこれを通す。`MoveEvent.anchors` は上乗せがあるときだけ
@@ -33,13 +44,14 @@
 
 ## 未解決・次の一手
 
-- [ ] オセロの枠の PR #17 を master が確認してマージ（マージで本番デプロイ）。ユーザーの試遊で枠の見やすさ（濃さ・駒ごとの丸との見分け）を聞く。RULES.md 本文を標準で新版に改稿するかはユーザー判断
+- [ ] ボードゲームアプリ風の PR を master が確認してマージ（マージで本番デプロイ）。ユーザーの試遊で見た目・操作感の感想を聞く
 - [ ] 本番 https://kyosho.rukiharukichi.com/ で設定画面に「オンライン（招待リンク）」が出ること、スマホ 2 台で作成 → 参加 → 終局・再読み込みを確かめる。確かめたら別タスクで GitHub Pages（`pages.yml`）を止める
 - [ ] 必要ならサーバーに「終局後の相手の王の公開」「同じ部屋での再戦」を足す（ユーザーの判断）
-- [ ] ユーザーの試遊で演出の手応え（段階の差・決着の演出の長さと派手さ・音量・テンポ・被弾の赤の強さ）を聞く。実機の音は未確認
-- [ ] ユーザーの試遊で方向駒・隠し王・拠点の感想を聞く（青枠と内訳で「端の駒もダメージに効く」が分かるか、強い駒を置くリスクとリターンが感じられるか、人間が隅に金を置く戦術で拠点が強すぎにならないか）
+- [ ] ユーザーの試遊で演出の手応え・方向駒・隠し王・拠点・オセロの枠の見やすさの感想を聞く。RULES.md 本文を標準で新版に改稿するかはユーザー判断
 
 ## 現フェーズで Read すべき設計書
+
+- 画面の見た目を直す: AGENTS.md の「デザイン規約」→ `web/src/style.css`（`:root` のトークン）, `web/index.html`, `web/src/ui/app.ts`（`placeSeats` / `renderPlayers` / `kingTag` / `bubble` / `setTab` / `renderScore`）
 
 - オンライン対戦の画面の修正: `.agent/online-protocol.md`（「画面側の挙動」）→ `web/src/net/online.ts` → `web/src/ui/app.ts`（「オンライン対戦」節）, `web/src/ui/online.ts`, `web/e2e/online/`
 - 設定項目・プリセットの変更: `RULES.md` の「Web 試遊版」節 → `web/src/engine/rules.ts` → AGENTS.md の「ルール・設定項目を変えるとき」
