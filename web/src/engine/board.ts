@@ -83,6 +83,14 @@ export function rawLines(b: Board, r: number, c: number, p: Player, values: Piec
   return out;
 }
 
+/**
+ * 普通のオセロのルールで p が置けるマス（石の色だけを見て、8 方向のどれかで相手の駒を 1 つ以上挟める空きマス）。
+ * 駒の種類・方向・強さ制限・持ち駒は見ない。画面の参考表示用で、置けるかの判定には使わない
+ */
+export function othelloCells(b: Board, p: Player): Cell[] {
+  return emptyCells(b).filter(([r, c]) => rawLines(b, r, c, p).length > 0);
+}
+
 /** 強さ制限ありなら、置いた駒（数字 placed）より大きい駒を含む列を除く */
 export const gateLines = (lines: readonly Line[], placed: number, gate: boolean): Line[] =>
   gate ? lines.filter((l) => l.top <= placed) : lines.slice();
