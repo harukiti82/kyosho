@@ -112,9 +112,9 @@ test.describe("PC 幅", () => {
     await expect(page.locator(".cell.open")).toHaveCount(4);
     await expect(handBtn(page, "kaku")).toBeEnabled();
 
-    // 不正な値は項目ごとに既定値にして知らせる
+    // 不正な値は項目ごとに URL の基準（v1.0）の値にして知らせる
     await page.goto("/?dir=diagonal&kaku=99&vfu=0&vkin=5");
-    await expect(page.locator("#setup-note")).toHaveText("URL の設定に読めない値があったため、挟める方向・角の数・歩の数字は既定値にしました。");
+    await expect(page.locator("#setup-note")).toHaveText("URL の設定に読めない値があったため、挟める方向・角の数・歩の数字はv1.0（取る）の値にしました。");
     const bad = await readSetup(page);
     expect([bad.dirs, bad.hand.kaku, bad.values.fu, bad.values.kin]).toEqual(["all", 0, 1, 5]);
     expect(errors).toEqual([]);

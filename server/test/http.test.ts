@@ -1,7 +1,7 @@
 // HTTP: 部屋の作成・情報・ルールの検証・/api の振り分け・Origin・不正な入力
 
 import { describe, expect, it } from "vitest";
-import { cloneRules, presetById, type RuleSet } from "../../web/src/engine/rules";
+import { cloneRules, defaultRules, PRESETS, presetById, type RuleSet } from "../../web/src/engine/rules";
 import { MAX_CREATE_BYTES, ROOM_ID_PATTERN, TOKEN_PATTERN, type RoomInfoResponse } from "../../web/src/net/protocol";
 import { apiParts, originAllowed } from "../src/index";
 import { BASE, call, Client, createRoom, site } from "./helpers";
@@ -34,11 +34,20 @@ describe("部屋の作成", () => {
   });
 
   it("全プリセットで作れる", async () => {
-    for (const id of ["v04", "v10", "v2", "orig", "king", "dir", "anchor"] as const) {
+    for (const { id } of PRESETS) {
       const { roomId } = await createRoom(id);
       const info: RoomInfoResponse = await (await call(`/rooms/${roomId}`)).json();
       expect(info.rules).toEqual(presetById(id).rules);
     }
+  });
+
+  it("画面の既定（標準）を rules で送ると、そのルールの部屋になる", async () => {
+    expect(defaultRules()).toEqual(presetById("std").rules);
+    const res = await post(JSON.stringify({ rules: defaultRules() }));
+    expect(res.status).toBe(201);
+    const { roomId } = (await res.json()) as { roomId: string };
+    const info: RoomInfoResponse = await (await call(`/rooms/${roomId}`)).json();
+    expect(info.rules).toEqual(defaultRules());
   });
 });
 

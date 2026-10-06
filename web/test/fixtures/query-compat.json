@@ -1,0 +1,292 @@
+{
+ "note": "既定を「標準」に変える前（main ab4d5c1）の encodeRules / decodeRules の結果。共有済みの URL の意味が変わらないことを確かめる（作り直さない）",
+ "urls": {
+  "v04": "take=flip&gate=0&dmg=max&heal=low&hp1=65&hp2=66&fu=14&gin=10&kin=6&hi=2&limit=0&king=0",
+  "v10": "take=capture&gate=0&dmg=sum&heal=none&hp1=20&hp2=20&fu=8&gin=0&kin=4&hi=2&limit=80&king=0",
+  "v2": "take=flip&gate=1&dmg=sum&heal=none&hp1=40&hp2=40&fu=20&gin=0&kin=8&hi=4&limit=0&king=0",
+  "orig": "take=flip&gate=0&dmg=sum&heal=avg&hp1=40&hp2=40&fu=14&gin=10&kin=6&hi=2&limit=0&king=0",
+  "king": "take=flip&gate=0&dmg=sum&heal=none&hp1=70&hp2=60&fu=14&gin=10&kin=6&hi=2&limit=0&king=1&kpen=hp&kdmg=20&kdue=5",
+  "dir": "take=flip&gate=0&dmg=sum&heal=none&hp1=60&hp2=65&fu=8&gin=0&kin=4&hi=6&limit=0&king=1&kpen=hp&kdmg=20&kdue=5&dir=piece&yoko=8&kaku=6&vkin=5&vhi=3",
+  "anchor": "take=flip&gate=0&dmg=sum&heal=none&hp1=125&hp2=130&fu=8&gin=0&kin=4&hi=6&limit=0&king=1&kpen=hp&kdmg=20&kdue=5&dir=piece&yoko=8&kaku=6&vkin=5&vhi=3&anc=atk"
+ },
+ "decoded": {
+  "?hp1=50": {
+   "rules": {
+    "action": "capture",
+    "gate": false,
+    "dirs": "all",
+    "damage": "sum",
+    "anchor": "none",
+    "heal": "none",
+    "hp": [
+     50,
+     20
+    ],
+    "hand": {
+     "fu": 8,
+     "yoko": 0,
+     "gin": 0,
+     "kaku": 0,
+     "kin": 4,
+     "hi": 2
+    },
+    "values": {
+     "fu": 1,
+     "yoko": 1,
+     "gin": 2,
+     "kaku": 3,
+     "kin": 3,
+     "hi": 5
+    },
+    "maxPlies": 80,
+    "king": {
+     "on": false,
+     "penalty": "hp",
+     "amount": 20,
+     "deadline": 5
+    }
+   },
+   "present": true,
+   "invalid": []
+  },
+  "?take=flip&dir=piece": {
+   "rules": {
+    "action": "flip",
+    "gate": false,
+    "dirs": "piece",
+    "damage": "sum",
+    "anchor": "none",
+    "heal": "none",
+    "hp": [
+     20,
+     20
+    ],
+    "hand": {
+     "fu": 8,
+     "yoko": 0,
+     "gin": 0,
+     "kaku": 0,
+     "kin": 4,
+     "hi": 2
+    },
+    "values": {
+     "fu": 1,
+     "yoko": 1,
+     "gin": 2,
+     "kaku": 3,
+     "kin": 3,
+     "hi": 5
+    },
+    "maxPlies": 80,
+    "king": {
+     "on": false,
+     "penalty": "hp",
+     "amount": 20,
+     "deadline": 5
+    }
+   },
+   "present": true,
+   "invalid": []
+  },
+  "?anc=atk&dir=piece": {
+   "rules": {
+    "action": "capture",
+    "gate": false,
+    "dirs": "piece",
+    "damage": "sum",
+    "anchor": "attack",
+    "heal": "none",
+    "hp": [
+     20,
+     20
+    ],
+    "hand": {
+     "fu": 8,
+     "yoko": 0,
+     "gin": 0,
+     "kaku": 0,
+     "kin": 4,
+     "hi": 2
+    },
+    "values": {
+     "fu": 1,
+     "yoko": 1,
+     "gin": 2,
+     "kaku": 3,
+     "kin": 3,
+     "hi": 5
+    },
+    "maxPlies": 80,
+    "king": {
+     "on": false,
+     "penalty": "hp",
+     "amount": 20,
+     "deadline": 5
+    }
+   },
+   "present": true,
+   "invalid": []
+  },
+  "?king=1": {
+   "rules": {
+    "action": "capture",
+    "gate": false,
+    "dirs": "all",
+    "damage": "sum",
+    "anchor": "none",
+    "heal": "none",
+    "hp": [
+     20,
+     20
+    ],
+    "hand": {
+     "fu": 8,
+     "yoko": 0,
+     "gin": 0,
+     "kaku": 0,
+     "kin": 4,
+     "hi": 2
+    },
+    "values": {
+     "fu": 1,
+     "yoko": 1,
+     "gin": 2,
+     "kaku": 3,
+     "kin": 3,
+     "hi": 5
+    },
+    "maxPlies": 80,
+    "king": {
+     "on": true,
+     "penalty": "hp",
+     "amount": 20,
+     "deadline": 5
+    }
+   },
+   "present": true,
+   "invalid": []
+  },
+  "?take=flip&gate=1&hp1=5&utm_source=x": {
+   "rules": {
+    "action": "flip",
+    "gate": true,
+    "dirs": "all",
+    "damage": "sum",
+    "anchor": "none",
+    "heal": "none",
+    "hp": [
+     5,
+     20
+    ],
+    "hand": {
+     "fu": 8,
+     "yoko": 0,
+     "gin": 0,
+     "kaku": 0,
+     "kin": 4,
+     "hi": 2
+    },
+    "values": {
+     "fu": 1,
+     "yoko": 1,
+     "gin": 2,
+     "kaku": 3,
+     "kin": 3,
+     "hi": 5
+    },
+    "maxPlies": 80,
+    "king": {
+     "on": false,
+     "penalty": "hp",
+     "amount": 20,
+     "deadline": 5
+    }
+   },
+   "present": true,
+   "invalid": []
+  },
+  "?vkin=7&yoko=3": {
+   "rules": {
+    "action": "capture",
+    "gate": false,
+    "dirs": "all",
+    "damage": "sum",
+    "anchor": "none",
+    "heal": "none",
+    "hp": [
+     20,
+     20
+    ],
+    "hand": {
+     "fu": 8,
+     "yoko": 3,
+     "gin": 0,
+     "kaku": 0,
+     "kin": 4,
+     "hi": 2
+    },
+    "values": {
+     "fu": 1,
+     "yoko": 1,
+     "gin": 2,
+     "kaku": 3,
+     "kin": 7,
+     "hi": 5
+    },
+    "maxPlies": 80,
+    "king": {
+     "on": false,
+     "penalty": "hp",
+     "amount": 20,
+     "deadline": 5
+    }
+   },
+   "present": true,
+   "invalid": []
+  },
+  "?take=zzz&hp1=-3&dir=diag&anc=bogus": {
+   "rules": {
+    "action": "capture",
+    "gate": false,
+    "dirs": "all",
+    "damage": "sum",
+    "anchor": "none",
+    "heal": "none",
+    "hp": [
+     20,
+     20
+    ],
+    "hand": {
+     "fu": 8,
+     "yoko": 0,
+     "gin": 0,
+     "kaku": 0,
+     "kin": 4,
+     "hi": 2
+    },
+    "values": {
+     "fu": 1,
+     "yoko": 1,
+     "gin": 2,
+     "kaku": 3,
+     "kin": 3,
+     "hi": 5
+    },
+    "maxPlies": 80,
+    "king": {
+     "on": false,
+     "penalty": "hp",
+     "amount": 20,
+     "deadline": 5
+    }
+   },
+   "present": true,
+   "invalid": [
+    "take",
+    "dir",
+    "anc",
+    "hp1"
+   ]
+  }
+ }
+}

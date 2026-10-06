@@ -3,6 +3,7 @@
 // サーバーは playwright.online.config.ts が起こす wrangler dev（本番と同じ 1 Worker・同一オリジン）
 
 import { expect, test, type Page, type WebSocketRoute } from "@playwright/test";
+import { defaultRules, presetById } from "../../src/engine/rules";
 import { cellAt, noHorizontalScroll } from "../helpers";
 import {
   createRoomFromSetup,
@@ -173,6 +174,25 @@ test("隠し王: 自分の王の指定と相手の王の候補。相手に届く
   // 先手の王の場所（ログ用）
   expect(hostKing).toHaveLength(2);
   await host.page.screenshot({ path: `${SHOT}/${pre}-online-king-result.png` });
+});
+
+test("既定（標準）のまま部屋を作る: 部屋のルールが標準になり、終局まで打てる", async ({ browser }, info) => {
+  const pre = prefix(info);
+  const host = await newPlayer(browser, info, "host");
+  const guest = await newPlayer(browser, info, "guest");
+  const url = await createRoomFromSetup(host, null, "first", `${SHOT}/${pre}-online-std-setup.png`);
+  await joinFromInvite(guest, url);
+  await waitPlaying(host, guest);
+  // サーバーが持つ部屋のルール（両者に届く view.rules）が既定と同じ
+  for (const p of [host, guest]) expect(p.last!.view.rules).toEqual(defaultRules());
+  await expect(host.page.locator("#rules4-name")).toHaveText(`ルール — ${presetById("std").name}`);
+  await expect(guest.page.locator("#player-1 .hp-max")).toHaveText("/ 130");
+
+  await playToEnd(host, guest);
+  await waitResult(host);
+  await waitResult(guest);
+  expect(host.last!.view.result).toEqual(guest.last!.view.result);
+  await host.page.screenshot({ path: `${SHOT}/${pre}-online-std-result.png` });
 });
 
 test("エラー: 存在しない部屋・満員の部屋の招待リンク", async ({ browser, request, baseURL }, info) => {
