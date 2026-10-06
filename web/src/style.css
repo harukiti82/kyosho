@@ -76,12 +76,6 @@ button {
 }
 
 /* ---- 共通部品 ---- */
-.panel {
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-}
-
 .btn {
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
@@ -198,93 +192,28 @@ button {
   gap: 0.4rem;
 }
 
-/* ---- レイアウト（モバイル優先の 1 カラム。広い画面は盤の列＋横の列） ---- */
+/* ---- レイアウト（モバイル優先の 1 列。広い画面は盤の列＋引き出しの列） ---- */
 .layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: 0.75rem;
+  gap: 0.9rem;
   max-width: 1080px;
   margin: 0 auto;
   padding: 0 16px 2rem;
 }
 .table {
   display: grid;
-  gap: 0.5rem;
+  gap: 0.4rem;
   min-width: 0;
-}
-.side {
-  display: grid;
-  gap: 0.6rem;
-  min-width: 0;
-  align-content: start;
-}
-.status-row {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.6rem;
-  min-width: 0;
-}
-.status {
-  margin: 0;
-  font-weight: 600;
-  font-size: 0.88rem;
-  text-align: center;
-  color: var(--ink-muted);
-  min-height: 1.5em;
-  min-width: 0;
-}
-.status.over {
-  color: var(--amber);
-}
-.ply {
-  flex: none;
-  padding: 0.1rem 0.5rem;
-  border-radius: var(--radius-sm);
-  background: var(--surface);
-  border: 1px solid var(--line);
-  font-size: 0.72rem;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  color: var(--ink-muted);
 }
 .board-wrap {
   min-width: 0;
 }
 
-/* 狭い画面: 相手 → 盤 → 自分 → 状態 → 持ち駒 → 予測 → ルール・印・棋譜 の 1 列 */
-@media (max-width: 899.98px) {
-  .layout {
-    gap: 0.5rem;
-  }
-  .table,
-  .side {
-    display: contents;
-  }
-  .seat-top {
-    order: 1;
-  }
-  .board-wrap {
-    order: 2;
-  }
-  .seat-bottom {
-    order: 3;
-  }
-  .status-row {
-    order: 4;
-  }
-  .tray {
-    order: 5;
-  }
-  .side > .panel {
-    order: 6;
-  }
-}
-
 @media (min-width: 900px) {
   .layout {
-    grid-template-columns: minmax(0, 560px) minmax(0, 1fr);
-    column-gap: 1.5rem;
+    grid-template-columns: minmax(0, 540px) minmax(0, 1fr);
+    column-gap: 1.75rem;
     align-items: start;
   }
   .side {
@@ -293,34 +222,44 @@ button {
   }
 }
 
-/* ---- 対局者の欄（相手は盤の上、自分は盤の下） ---- */
+/* 読み上げだけに残す（見た目は消す） */
+.sr-only,
+.tab-off {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0 !important;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ---- 名札（相手は盤の上、自分は盤の下。カードにせず細い帯） ---- */
 .seat {
   min-width: 0;
 }
 .player-card {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  grid-template-areas:
-    "av info hp"
-    "av hand hp";
+  grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
-  gap: 0.25rem 0.6rem;
-  padding: 0.4rem 0.45rem 0.4rem 0.55rem;
-  border-radius: var(--radius);
-  background: var(--surface);
-  border: 1px solid var(--line);
+  gap: 0.55rem;
+  padding: 0.3rem 0.5rem 0.35rem 0.4rem;
+  border-left: 3px solid transparent;
+  border-radius: 4px;
   min-width: 0;
   transition: border-color 0.2s, background-color 0.2s;
 }
+/* 手番の側は左の縁と地が光る */
 .player-card.active {
-  border-color: var(--go);
-  background: var(--surface-2);
+  border-left-color: var(--go);
+  background: linear-gradient(90deg, rgba(134, 184, 79, 0.17), rgba(134, 184, 79, 0) 70%);
 }
 /* 顔の代わりの石 */
 .avatar {
-  grid-area: av;
-  width: 2.3rem;
-  height: 2.3rem;
+  width: 2rem;
+  height: 2rem;
   border-radius: 50%;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.6);
 }
@@ -331,148 +270,176 @@ button {
   background: radial-gradient(circle at 34% 28%, #fff, var(--stone-1) 55%, #bdb5a5);
 }
 .player-card.active .avatar {
-  box-shadow: 0 0 0 2px var(--surface-2), 0 0 0 4px var(--go), 0 2px 6px rgba(0, 0, 0, 0.6);
+  box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--go), 0 0 12px 2px rgba(134, 184, 79, 0.55);
 }
-.seat-info {
-  grid-area: info;
+.plate {
   display: grid;
-  gap: 0.22rem;
+  gap: 0.25rem;
   min-width: 0;
 }
-.player-head {
+.plate-head {
   display: flex;
   align-items: center;
-  gap: 0.35rem;
+  gap: 0.55rem;
   min-width: 0;
+  min-height: 1.3rem;
 }
 .player-name {
-  font-weight: 700;
-  font-size: 0.88rem;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  min-width: 0;
-}
-.turn-tag {
   flex: none;
-  padding: 0 0.4rem;
-  border-radius: 4px;
-  background: var(--go);
-  color: var(--go-ink);
-  font-size: 0.68rem;
   font-weight: 800;
-  line-height: 1.5;
+  font-size: 0.88rem;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
 }
-/* 体力: 持ち時間の欄のような箱。手番の側は明るく */
-.hp-row {
-  grid-area: hp;
-  position: relative;
-  display: grid;
-  grid-template-columns: auto auto;
-  align-items: baseline;
-  column-gap: 0.25rem;
-  min-width: 4.6rem;
-  padding: 0.2rem 0.55rem 0.25rem;
-  border-radius: var(--radius-sm);
-  background: var(--bg);
+.player-card:not(.active) .player-name {
+  color: var(--ink-muted);
+}
+/* 王の状態: 王の駒の形とマス名 */
+.king-tag {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+  font-size: 0.74rem;
+  font-weight: 800;
   font-variant-numeric: tabular-nums;
-  text-align: right;
+  color: #ead39a;
+  white-space: nowrap;
 }
-.player-card.active .hp-row {
-  background: var(--ink);
-  color: var(--bg);
+.king-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 0.95rem;
+  height: 1.08rem;
+  padding-top: 0.12rem;
+  clip-path: polygon(50% 0, 88% 16%, 100% 100%, 0 100%, 12% 16%);
+  background: linear-gradient(170deg, #f3dfae, #c9a463);
+  color: #2b1a0b;
+  font-family: var(--font-piece);
+  font-size: 0.56rem;
+  font-weight: 800;
+  line-height: 1;
 }
-.hp-label {
-  grid-column: 1 / -1;
-  font-size: 0.62rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
+.king-tag.unknown,
+.king-tag.cand,
+.king-tag.unset {
   color: var(--ink-dim);
-  line-height: 1.2;
 }
-.player-card.active .hp-label,
-.player-card.active .hp-max {
-  color: #5a5348;
+.king-tag.unknown .king-icon,
+.king-tag.cand .king-icon,
+.king-tag.unset .king-icon {
+  opacity: 0.55;
+}
+.king-tag.lost {
+  color: #ff8a7f;
+  text-decoration: line-through;
+}
+.king-tag.lost .king-icon {
+  background: linear-gradient(170deg, #b9a58a, #6f604e);
+  filter: grayscale(0.6);
+}
+/* 体力: 数字を重ねた太いゲージ */
+.hp-gauge {
+  position: relative;
+  height: 1.2rem;
+  border-radius: 4px;
+  background: #0b0a09;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.9), 0 0 0 1px rgba(255, 255, 255, 0.07);
+  overflow: hidden;
+  font-variant-numeric: tabular-nums;
+}
+.hp-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  background: linear-gradient(180deg, #b4e27a, #6aa83c 55%, #4f8a2b);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  transition: width 0.45s ease-out;
+}
+.player-card.low .hp-fill {
+  background: linear-gradient(180deg, #ff8f7f, #d9402f 55%, #b02e20);
+}
+/* 直前の手で減った分（赤く残ってから縮む） */
+.hp-ghost {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: linear-gradient(180deg, #ffd2c8, #f06a5c);
+  transform-origin: left center;
+  animation: ghost 0.8s ease-in 0.45s forwards;
+}
+@keyframes ghost {
+  to {
+    transform: scaleX(0);
+  }
+}
+.hp-text {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0 0.45rem;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.95), 0 0 3px rgba(0, 0, 0, 0.7);
+  line-height: 1;
 }
 .hp-num {
-  font-size: 1.55rem;
-  font-weight: 800;
-  letter-spacing: -0.02em;
-  line-height: 1.05;
-}
-.player-card.low .hp-num {
-  color: var(--danger);
-}
-.player-card.low.active .hp-num {
-  color: #c4291e;
+  font-size: 0.9rem;
+  font-weight: 900;
 }
 .hp-max {
-  font-size: 0.72rem;
-  font-weight: 600;
-  color: var(--ink-dim);
+  font-size: 0.66rem;
+  font-weight: 700;
+  opacity: 0.8;
 }
-/* 直前の手で減った・増えた量（体力の箱の左上の角に重ねるバッジ） */
+/* 直前の手で減った・増えた量（ゲージの右端） */
 .delta {
   position: absolute;
-  left: -0.4rem;
-  top: -0.45rem;
-  padding: 0 0.35rem;
-  border-radius: 4px;
-  background: var(--danger);
-  color: #fff;
-  font-size: 0.8rem;
-  font-weight: 800;
-  white-space: nowrap;
+  top: 0;
+  bottom: 0;
+  right: 0.4rem;
+  display: flex;
+  align-items: center;
+  font-size: 0.74rem;
+  font-weight: 900;
+  color: #ff9d92;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.95);
 }
 .delta.heal {
-  background: var(--heal);
-  color: #0b1a0d;
+  color: #a6ecb0;
 }
 .delta.fresh {
   animation: rise 0.6s ease-out;
 }
-.hp-bar {
-  height: 0.38rem;
-  border-radius: 3px;
-  background: var(--bg);
-  overflow: hidden;
-}
-.hp-fill {
-  display: block;
-  height: 100%;
-  border-radius: inherit;
-  background: linear-gradient(90deg, #5f9a36, var(--go-hi));
-}
-.player-card.low .hp-fill {
-  background: var(--danger);
-}
+/* 名札の持ち駒（小さな石の角に残り数） */
 .hand-mini {
-  grid-area: hand;
   display: flex;
   flex-wrap: wrap;
-  gap: 0.15rem 0.45rem;
-  font-size: 0.74rem;
+  justify-content: flex-end;
+  gap: 0.2rem 0.8rem;
+  margin-left: auto;
+  font-size: 0.72rem;
   font-weight: 700;
-  font-variant-numeric: tabular-nums;
   color: var(--ink-muted);
 }
 .mini {
+  position: relative;
   display: inline-flex;
-  align-items: center;
-  gap: 0.12rem;
-  border-radius: 4px;
+  border-radius: 50%;
 }
 .mini.empty {
-  opacity: 0.35;
+  opacity: 0.3;
 }
 .mini-stone {
   display: inline-grid;
   place-items: center;
-  width: 1.2rem;
-  height: 1.2rem;
+  width: 1.15rem;
+  height: 1.15rem;
   border-radius: 50%;
   font-family: var(--font-piece);
-  font-size: 0.66rem;
+  font-size: 0.62rem;
   font-weight: 800;
 }
 .mini-stone.p0 {
@@ -483,6 +450,21 @@ button {
 .mini-stone.p1 {
   background: radial-gradient(circle at 34% 28%, #fff, var(--stone-1) 60%, #cfc8b8);
   color: var(--stone-1-ink);
+}
+.mini-count {
+  position: absolute;
+  right: -0.42rem;
+  bottom: -0.28rem;
+  min-width: 0.78rem;
+  padding: 0 0.1rem;
+  border-radius: 0.4rem;
+  background: #0b0a09;
+  color: var(--ink);
+  font-size: 0.56rem;
+  font-weight: 800;
+  line-height: 0.78rem;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
 }
 /* 取った駒が届いたタイミングで持ち駒の表示を光らせる */
 .gain {
@@ -506,12 +488,65 @@ button {
 /* ---- 盤（木枠・座標・緑の羅紗） ---- */
 .board-frame {
   position: relative;
-  /* 座標の文字の幅 */
+  /* 座標の文字の幅と、下の縁（手番・手数）の高さ */
   --coord: clamp(0.85rem, 3.4vw, 1.2rem);
-  padding: var(--coord);
+  --foot: clamp(1.45rem, 6vw, 1.75rem);
+  --wood: inset 0 1px 0 rgba(255, 220, 170, 0.25), inset 0 -2px 0 rgba(0, 0, 0, 0.35), 0 18px 40px -16px rgba(0, 0, 0, 0.85);
+  --turn: var(--amber);
+  --turn-glow: rgba(240, 181, 74, 0.5);
+  padding: var(--coord) var(--coord) var(--foot);
   border-radius: 12px;
   background: linear-gradient(160deg, var(--wood-1), var(--wood-2));
-  box-shadow: inset 0 1px 0 rgba(255, 220, 170, 0.25), inset 0 -2px 0 rgba(0, 0, 0, 0.35), 0 18px 40px -16px rgba(0, 0, 0, 0.85);
+  box-shadow: var(--wood);
+  transition: box-shadow 0.3s;
+}
+/* 手番の側の縁を光らせる（操作できる手番は緑、待つ手番は琥珀） */
+.board-frame.turn-act {
+  --turn: var(--go);
+  --turn-glow: rgba(134, 184, 79, 0.7);
+}
+.board-frame.turn-bottom {
+  box-shadow: inset 0 -3px 0 var(--turn), var(--wood), 0 12px 22px -10px var(--turn-glow);
+}
+.board-frame.turn-top {
+  box-shadow: inset 0 3px 0 var(--turn), var(--wood), 0 -10px 22px -10px var(--turn-glow);
+}
+/* 木枠の下の縁に彫った文字: 手番（中央）・手数（右）・オンラインの接続（左） */
+.frame-foot {
+  position: absolute;
+  left: var(--coord);
+  right: var(--coord);
+  bottom: 0;
+  height: var(--foot);
+  display: grid;
+  grid-template-columns: 1fr minmax(0, max-content) 1fr;
+  align-items: center;
+  gap: 0.5rem;
+}
+.status {
+  grid-column: 2;
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: clamp(0.72rem, 3vw, 0.84rem);
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: #f6e2bd;
+  text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.55), 0 1px 0 rgba(255, 220, 170, 0.12);
+}
+.status.over {
+  color: var(--amber);
+}
+.ply {
+  grid-column: 3;
+  justify-self: end;
+  font-size: clamp(0.6rem, 2.4vw, 0.7rem);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: rgba(244, 222, 186, 0.6);
+  white-space: nowrap;
 }
 .coords {
   position: absolute;
@@ -1248,14 +1283,107 @@ button {
   }
 }
 
-/* ---- 予測 ---- */
-.preview {
-  padding: 0.7rem 0.85rem;
-  min-height: 6.5rem;
+/* ---- 予測の吹き出し（狙っているマスの上。上の 2 行では下に出す） ---- */
+.pv-bubble {
+  --tail: 5px;
+  position: absolute;
+  z-index: 6;
+  bottom: calc(100% + 7px);
+  left: 50%;
+  transform: translateX(-50%);
+  display: grid;
+  gap: 0.12rem;
+  width: max-content;
+  max-width: 12rem;
+  padding: 0.3rem 0.55rem;
+  border-radius: 6px;
+  background: #14120f;
+  color: var(--ink);
+  font-size: clamp(0.66rem, 2.8vw, 0.78rem);
+  font-weight: 800;
+  line-height: 1.35;
+  white-space: nowrap;
+  box-shadow: 0 8px 18px -6px rgba(0, 0, 0, 0.9), 0 0 0 1px rgba(255, 255, 255, 0.1);
+  pointer-events: none;
 }
-.preview.on {
-  border-color: var(--amber);
+.pv-bubble::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  margin-left: calc(var(--tail) * -1);
+  border: var(--tail) solid transparent;
+  border-top-color: #14120f;
 }
+.pv-bubble.below {
+  bottom: auto;
+  top: calc(100% + 11px);
+}
+.pv-bubble.below::after {
+  top: auto;
+  bottom: 100%;
+  border-top-color: transparent;
+  border-bottom-color: #14120f;
+}
+/* 盤の左右の端の 2 列では、吹き出しを盤の内側に伸ばす（尾はマスの中央のまま） */
+.pv-bubble.to-r {
+  transform: translateX(-1.2rem);
+}
+.pv-bubble.to-r::after {
+  left: 1.2rem;
+}
+.pv-bubble.to-l {
+  transform: translateX(calc(-100% + 1.2rem));
+}
+.pv-bubble.to-l::after {
+  left: auto;
+  right: 1.2rem;
+  margin: 0 calc(var(--tail) * -1) 0 0;
+}
+.bb-line {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+.bb-king {
+  color: var(--gold);
+}
+.bb-anchor {
+  color: #7fb2ff;
+}
+.bb-warn {
+  color: var(--warn);
+}
+.bb-warn.king {
+  color: #ff8a7f;
+}
+.bb-warn.soft {
+  color: var(--ink-muted);
+}
+.bb-mark {
+  display: inline-grid;
+  place-items: center;
+  width: 1.1em;
+  height: 1.1em;
+  border-radius: 50%;
+  background: var(--warn);
+  color: #1f1b14;
+  font-size: 0.9em;
+  line-height: 1;
+}
+.bb-warn.king .bb-mark {
+  background: var(--danger);
+  color: #fff;
+}
+.bb-warn.soft .bb-mark {
+  background: var(--surface-3);
+  color: var(--ink);
+}
+.bb-hint {
+  color: var(--amber);
+}
+
+/* ---- 予測の詳細（引き出しの「予測」） ---- */
 .preview-main {
   margin: 0;
   font-size: 0.95rem;
@@ -1302,140 +1430,184 @@ button {
   color: var(--ink-muted);
 }
 
-/* ---- 持ち駒（駒台。自分の欄の下） ---- */
+/* ---- 駒台（盤の木枠と同じ木。見出しの文字なしで駒を並べる） ---- */
 .tray {
-  padding: 0.5rem 0.6rem 0.6rem;
-  border-radius: var(--radius);
-  background: linear-gradient(170deg, #4a3220, #33220f);
-  box-shadow: inset 0 1px 0 rgba(255, 220, 170, 0.18), inset 0 -2px 0 rgba(0, 0, 0, 0.35), 0 8px 20px -12px rgba(0, 0, 0, 0.8);
-}
-.tray .label {
-  margin-bottom: 0.35rem;
-  color: rgba(244, 222, 186, 0.75);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 0.35rem 0.6rem;
+  padding: 0.65rem 0.7rem 0.55rem;
+  border-radius: 10px;
+  background: linear-gradient(160deg, var(--wood-1), var(--wood-2));
+  box-shadow: inset 0 1px 0 rgba(255, 220, 170, 0.25), inset 0 -2px 0 rgba(0, 0, 0, 0.35), 0 12px 26px -14px rgba(0, 0, 0, 0.85);
 }
 .hand-buttons {
-  display: grid;
-  /* 方向駒の 5 種がスマホ幅でも 1 行に収まる幅 */
-  grid-template-columns: repeat(auto-fit, minmax(3.3rem, 1fr));
-  gap: 0.4rem;
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
+  gap: clamp(0.45rem, 2.6vw, 0.95rem);
+  min-width: 0;
 }
-.hand-buttons .btn {
-  justify-self: stretch;
+.tray.over .hand-buttons {
+  gap: 0.5rem;
 }
+/* 駒は台の上に立つ石。残り数は右下の角、選んだ駒は持ち上がる */
 .piece-btn {
+  position: relative;
   display: grid;
-  justify-items: center;
-  gap: 0.15rem;
-  padding: 0.4rem 0.2rem 0.3rem;
-  border: 1px solid rgba(0, 0, 0, 0.35);
-  border-radius: var(--radius-sm);
-  background: rgba(0, 0, 0, 0.22);
-  color: #f4dfbd;
+  place-items: center;
+  flex: none;
+  width: clamp(2.55rem, 11.5vw, 3rem);
+  aspect-ratio: 1;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
   cursor: pointer;
   container-type: inline-size;
-  transition: transform 0.1s, background-color 0.15s;
+  transition: transform 0.15s ease-out;
 }
-.piece-btn:hover:not(:disabled) {
-  background: rgba(0, 0, 0, 0.1);
+/* 台に落ちる影 */
+.piece-btn::before {
+  content: "";
+  position: absolute;
+  left: 14%;
+  right: 14%;
+  bottom: -9%;
+  height: 18%;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.5);
+  filter: blur(2px);
+  transition: transform 0.15s ease-out, opacity 0.15s;
 }
 .piece-btn .stone {
-  width: 2.4rem;
+  width: 100%;
 }
 .piece-btn .stone-name {
-  font-size: 1.1rem;
+  font-size: 40cqi;
 }
 .piece-btn .stone-val {
-  font-size: 0.66rem;
+  font-size: 22cqi;
+}
+.piece-btn .stone-dir {
+  width: 26cqi;
+  height: 26cqi;
+}
+.piece-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+}
+.piece-btn.selected {
+  transform: translateY(-7px);
+}
+.piece-btn.selected::before {
+  transform: translateY(7px) scale(0.8);
+  opacity: 0.55;
+}
+.piece-btn.selected .stone {
+  outline: 2.5px solid var(--amber);
+  outline-offset: 2px;
+  filter: drop-shadow(0 0 7px rgba(240, 181, 74, 0.7));
 }
 .piece-count {
-  font-size: 0.78rem;
-  font-weight: 700;
+  position: absolute;
+  right: -10%;
+  bottom: -8%;
+  min-width: 1.15rem;
+  height: 1.15rem;
+  padding: 0 0.2rem;
+  border-radius: 0.6rem;
+  background: #1a120a;
+  color: #f4dfbd;
+  box-shadow: 0 0 0 1.5px rgba(244, 222, 186, 0.35);
+  font-size: 0.7rem;
+  font-weight: 800;
+  line-height: 1.15rem;
+  text-align: center;
   font-variant-numeric: tabular-nums;
-}
-/* 選んだ駒は持ち上げて琥珀の枠 */
-.piece-btn.selected {
-  background: rgba(240, 181, 74, 0.16);
-  border-color: var(--amber);
-  box-shadow: 0 0 0 2px var(--amber), 0 6px 14px -6px rgba(0, 0, 0, 0.8);
-  transform: translateY(-2px);
 }
 .piece-btn:disabled {
   cursor: not-allowed;
   opacity: 0.4;
 }
-.piece-blocked {
-  font-size: 0.65rem;
-  font-weight: 700;
-  color: #ff9b8f;
+/* 持っているが置けるマスがない駒: 斜線 */
+.piece-btn.blocked::after {
+  content: "";
+  position: absolute;
+  left: 4%;
+  right: 4%;
+  top: calc(50% - 1.5px);
+  height: 3px;
+  border-radius: 2px;
+  background: var(--danger);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45);
+  transform: rotate(-35deg);
 }
 
-/* ---- 隠し王の操作欄 ---- */
+/* ---- 隠し王の操作（駒台の右端の王の駒） ---- */
 .king-box {
-  display: grid;
-  gap: 0.35rem;
-  margin-top: 0.55rem;
-  padding-top: 0.5rem;
-  border-top: 1px solid rgba(0, 0, 0, 0.35);
+  display: contents;
 }
 .king-toggle {
-  display: inline-flex;
-  align-items: center;
-  justify-self: start;
-  gap: 0.45rem;
-  padding: 0.4rem 0.8rem;
-  border: 1.5px solid var(--gold);
-  border-radius: var(--radius-sm);
-  background: rgba(0, 0, 0, 0.25);
-  color: #f6e3b8;
-  font-size: 0.88rem;
-  font-weight: 700;
+  flex: none;
+  display: grid;
+  justify-items: center;
+  gap: 0.2rem;
+  padding: 0 0.15rem;
+  border: 0;
+  background: none;
+  color: rgba(244, 222, 186, 0.85);
   cursor: pointer;
+  touch-action: manipulation;
 }
-.king-toggle.on {
-  background: var(--gold);
-  color: #1f1708;
-  box-shadow: 0 0 0 2px #33220f, 0 0 0 4px var(--gold);
+.king-piece {
+  position: relative;
+  z-index: 0;
+  display: grid;
+  place-items: center;
+  width: clamp(2rem, 9vw, 2.35rem);
+  aspect-ratio: 0.86;
+  padding-top: 0.25rem;
+  color: #2b1a0b;
+  font-family: var(--font-piece);
+  font-size: clamp(0.95rem, 4.2vw, 1.15rem);
+  font-weight: 800;
+  filter: drop-shadow(0 3px 2px rgba(0, 0, 0, 0.55));
+  transition: transform 0.15s ease-out, filter 0.15s;
+}
+/* 将棋の駒の五角形（影は親の filter で付ける） */
+.king-piece::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  clip-path: polygon(50% 0, 88% 16%, 100% 100%, 0 100%, 12% 16%);
+  background: linear-gradient(170deg, #f3dfae, #d6b473 60%, #b08a52);
+}
+.king-cap {
+  font-size: 0.62rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+.king-toggle.on .king-piece,
+.king-peek[aria-pressed="true"] .king-piece {
+  transform: translateY(-6px);
+  filter: drop-shadow(0 0 7px rgba(240, 181, 74, 0.95)) drop-shadow(0 6px 3px rgba(0, 0, 0, 0.5));
+}
+.king-toggle.on .king-cap {
+  color: var(--amber);
 }
 .king-toggle:disabled {
   cursor: default;
 }
-.king-note {
-  margin: 0;
-  font-size: 0.78rem;
-  color: rgba(244, 222, 186, 0.8);
-}
 .king-privacy {
+  flex-basis: 100%;
   margin: 0;
-  font-size: 0.8rem;
+  font-size: 0.74rem;
   font-weight: 700;
-  color: #ff9b8f;
-}
-.king-peek {
-  justify-self: start;
-  touch-action: none;
-  user-select: none;
-  -webkit-user-select: none;
-  -webkit-touch-callout: none;
-}
-.king-peek[aria-pressed="true"] {
-  background: var(--gold);
-  color: #1f1708;
-}
-.king-tag {
-  flex: none;
-  margin-left: auto;
-  padding: 0 0.4rem;
-  border-radius: 4px;
-  background: rgba(217, 170, 69, 0.18);
-  color: #f0cf85;
-  font-size: 0.7rem;
-  font-weight: 700;
-  line-height: 1.5;
-  white-space: nowrap;
-}
-.king-tag.lost {
-  background: rgba(239, 91, 79, 0.18);
-  color: #ff9b8f;
+  color: #ffb3aa;
+  text-align: center;
 }
 .warn.king {
   color: #ff8a7f;
@@ -1453,89 +1625,80 @@ button {
   background: var(--surface-2);
 }
 
-/* ---- 折りたたみの欄（ルール・印の見かた） ---- */
-.fold {
-  padding: 0;
+/* ---- 引き出し（ルール・予測の詳細・棋譜・印の見かた）。カードを積まず、タブにまとめて控えめに ---- */
+.drawer {
+  min-width: 0;
 }
-.fold-head {
+.tabs {
   display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  padding: 0.6rem 0.85rem;
-  cursor: pointer;
-  list-style: none;
-}
-.fold-head::-webkit-details-marker {
-  display: none;
-}
-.fold-head .label {
-  flex: 1;
-  margin: 0;
-}
-.fold-head::after {
-  content: "";
-  width: 0.45rem;
-  height: 0.45rem;
-  border-right: 2px solid var(--ink-muted);
-  border-bottom: 2px solid var(--ink-muted);
-  transform: rotate(45deg) translateY(-2px);
-  transition: transform 0.15s;
-}
-.fold[open] > .fold-head::after {
-  transform: rotate(-135deg) translateY(-2px);
-}
-.fold[open] > .fold-head {
+  gap: 0.1rem;
   border-bottom: 1px solid var(--line);
+  overflow-x: auto;
+  scrollbar-width: none;
 }
-.rules4 .rules4-list,
-.legend-box .legend {
-  padding-top: 0.55rem;
-  padding-bottom: 0.7rem;
+.tab {
+  flex: none;
+  margin-bottom: -1px;
+  padding: 0.5rem 0.7rem 0.45rem;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--ink-dim);
+  font-size: 0.8rem;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.tab:hover {
+  color: var(--ink-muted);
+}
+.tab[aria-selected="true"] {
+  color: var(--ink);
+  border-bottom-color: var(--amber);
+}
+.tab-panel {
+  padding: 0.75rem 0.15rem 0.25rem;
 }
 .rules4-list {
   margin: 0;
-  padding-left: 1.9rem;
-  padding-right: 0.85rem;
+  padding-left: 1.6rem;
   font-size: 0.84rem;
-  line-height: 1.5;
+  line-height: 1.55;
+  color: var(--ink-muted);
 }
 .rules4-list li::marker {
   font-weight: 800;
-  color: var(--amber);
+  color: var(--ink-dim);
 }
 .rules4-list strong {
-  color: #fff3d6;
-  background: linear-gradient(transparent 64%, rgba(240, 181, 74, 0.3) 64%);
+  color: var(--ink);
 }
 
 /* ---- 棋譜 ---- */
-.log {
-  padding: 0.7rem 0.85rem;
-}
 .log-list {
   margin: 0;
   padding: 0;
   list-style: none;
-  max-height: 11rem;
+  max-height: 18rem;
   overflow-y: auto;
   font-size: 0.8rem;
   font-variant-numeric: tabular-nums;
+  color: var(--ink-muted);
 }
 .log-item {
   display: flex;
   gap: 0.5rem;
-  padding: 0.2rem 0.3rem;
-  border-bottom: 1px solid var(--line);
+  padding: 0.22rem 0.3rem;
 }
 .log-item:nth-child(odd) {
-  background: rgba(255, 255, 255, 0.025);
+  background: rgba(255, 255, 255, 0.03);
 }
 .log-item.pass {
   color: var(--amber);
   font-weight: 600;
 }
 .log-item.hit {
-  font-weight: 600;
+  color: var(--ink);
 }
 .log-ply {
   flex: none;
@@ -2313,7 +2476,6 @@ button {
   flex-wrap: wrap;
   gap: 0.35rem 1rem;
   margin: 0;
-  padding: 0 0.85rem;
   font-size: 0.78rem;
   color: var(--ink-muted);
 }
@@ -2332,34 +2494,25 @@ button {
     display: none;
   }
   .avatar {
-    width: 1.9rem;
-    height: 1.9rem;
+    width: 1.75rem;
+    height: 1.75rem;
   }
   .player-card {
-    grid-template-areas:
-      "av info hp"
-      "av hand hand";
-    column-gap: 0.5rem;
+    gap: 0.45rem;
+  }
+  .plate-head {
+    gap: 0.45rem;
   }
   .player-name {
     font-size: 0.82rem;
   }
-  .king-tag,
-  .turn-tag {
-    font-size: 0.64rem;
-  }
-  .hp-row {
-    min-width: 4.1rem;
-    padding: 0.15rem 0.45rem 0.2rem;
-  }
   .hand-mini {
-    gap: 0.1rem 0.3rem;
-    font-size: 0.68rem;
+    gap: 0.2rem 0.7rem;
   }
   .mini-stone {
     width: 1.05rem;
     height: 1.05rem;
-    font-size: 0.6rem;
+    font-size: 0.58rem;
   }
   .rules4-list {
     font-size: 0.8rem;
@@ -2367,23 +2520,16 @@ button {
   /* 6 行以上（方向駒・強さ制限＋隠し王など）は詰める */
   .rules4-list.dense {
     font-size: 0.76rem;
-    line-height: 1.32;
-  }
-  /* 7 行以上（拠点など）はさらに行間を詰める */
-  .rules4-list.denser {
-    line-height: 1.26;
-  }
-  .status {
-    font-size: 0.85rem;
+    line-height: 1.4;
   }
   .btn {
     padding: 0.45rem 0.7rem;
     font-size: 0.85rem;
   }
-  .hp-num {
-    font-size: 1.35rem;
+  .tab {
+    padding: 0.5rem 0.55rem 0.45rem;
   }
-  /* 体力カードの持ち駒は方向のマークを省く（盤上の駒と持ち駒欄に出ている） */
+  /* 名札の持ち駒は方向のマークを省く（盤上の駒と駒台に出ている） */
   .mini-dir {
     display: none;
   }
@@ -2432,39 +2578,38 @@ button {
   font-size: 0.8rem;
   color: var(--ink-muted);
 }
-/* 状態の行の接続表示 */
-.status-row:has(.net:not([hidden])) {
-  flex-wrap: wrap;
-  row-gap: 0.25rem;
-}
+/* 木枠の下の縁（左）の接続表示: 色の点と短い文字 */
 .net {
-  flex: none;
+  grid-column: 1;
+  justify-self: start;
   display: inline-flex;
   align-items: center;
-  gap: 0.35rem;
-  padding: 0.1rem 0.6rem;
-  border-radius: var(--radius-sm);
-  background: var(--surface);
-  border: 1px solid var(--line);
-  font-size: 0.75rem;
+  gap: 0.3rem;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  font-size: clamp(0.58rem, 2.4vw, 0.68rem);
   font-weight: 700;
-  color: var(--ink-muted);
+  color: rgba(244, 222, 186, 0.75);
 }
 .net::before {
   content: "";
-  width: 0.55rem;
-  height: 0.55rem;
+  flex: none;
+  width: 0.5rem;
+  height: 0.5rem;
   border-radius: 50%;
-  background: currentColor;
+  background: var(--dot, currentColor);
+  box-shadow: 0 0 6px var(--dot, transparent);
 }
 .net.ok {
-  color: var(--heal);
+  --dot: var(--heal);
 }
 .net.warn {
-  color: var(--warn);
+  --dot: var(--warn);
 }
 .net.bad {
-  color: var(--danger);
+  --dot: var(--danger);
 }
 /* 案内のダイアログ */
 .online-lead {

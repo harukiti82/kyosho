@@ -17,18 +17,24 @@
     </header>
 
     <main class="layout" id="game" hidden>
-      <!-- 狭い画面では .table と .side を display: contents にして 1 列に並べ替える（style.css の order） -->
       <div class="table">
-        <!-- 相手（上）と自分（下）の欄。体力・持ち駒・王の状態。ui/app.ts の placeSeats が手番の向きで入れる -->
+        <!-- 相手（上）と自分（下）の名札。ui/app.ts の placeSeats が手番の向きで入れる -->
         <div class="seat seat-top" id="seat-top">
           <div class="player-card" id="player-1"></div>
         </div>
 
         <div class="board-wrap">
-          <div class="board-frame">
+          <!-- 手番の側の縁が光る（turn-top / turn-bottom） -->
+          <div class="board-frame" id="board-frame">
             <div class="coords coords-x" aria-hidden="true"><span>a</span><span>b</span><span>c</span><span>d</span><span>e</span><span>f</span><span>g</span><span>h</span></div>
             <div class="coords coords-y" aria-hidden="true"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span></div>
             <div class="board" id="board" role="grid" aria-label="盤面"></div>
+            <!-- 木枠の下の縁: 手番・手数・オンラインの接続 -->
+            <div class="frame-foot">
+              <span class="net" id="net" role="status" hidden></span>
+              <p class="status" id="status" role="status" aria-live="polite"></p>
+              <span class="ply" id="ply"></span>
+            </div>
           </div>
         </div>
 
@@ -36,35 +42,34 @@
           <div class="player-card" id="player-0"></div>
         </div>
 
-        <div class="status-row">
-          <p class="status" id="status" role="status" aria-live="polite"></p>
-          <span class="ply" id="ply"></span>
-          <!-- オンライン対戦の接続の状態（相手の接続・つなぎ直し中） -->
-          <span class="net" id="net" role="status" hidden></span>
-        </div>
-      </div>
-
-      <div class="side">
-        <!-- 持ち駒（駒台）。狭い画面では自分の欄の下、広い画面では盤の横の一番上 -->
+        <!-- 駒台（見出しは読み上げ用だけ） -->
         <div class="tray hand" id="hand">
-          <h2 class="label" id="hand-title">持ち駒</h2>
+          <h2 class="sr-only" id="hand-title">持ち駒</h2>
           <div class="hand-buttons" id="hand-buttons"></div>
           <div class="king-box" id="king-box" hidden></div>
         </div>
-        <div class="panel preview" id="preview" aria-live="polite"></div>
-        <!-- ルールカード（現在の設定から自動生成）。盤を主役にするため折りたたむ（広い画面では開いて始める） -->
-        <details class="panel fold rules4" id="rules4">
-          <summary class="fold-head"><h2 class="label rules4-head" id="rules4-name">ルール</h2></summary>
-          <ol class="rules4-list" id="rules4-list"></ol>
-        </details>
-        <details class="panel fold legend-box" id="legend-box">
-          <summary class="fold-head"><h2 class="label">盤の印の見かた</h2></summary>
-          <p class="legend" id="legend"></p>
-        </details>
-        <div class="panel log">
-          <h2 class="label">棋譜</h2>
-          <ol class="log-list" id="log"></ol>
+      </div>
+
+      <!-- ルール・予測の詳細・棋譜・印の見かたをまとめた引き出し。選んだタブを押し直すと閉じる -->
+      <div class="side drawer" id="drawer">
+        <div class="tabs" role="tablist" aria-label="ルール・予測・棋譜・印の見かた">
+          <button type="button" class="tab" role="tab" id="tab-rules4" aria-controls="rules4" aria-selected="false"><span id="rules4-name">ルール</span></button>
+          <button type="button" class="tab" role="tab" id="tab-preview" aria-controls="preview" aria-selected="false" tabindex="-1">予測</button>
+          <button type="button" class="tab" role="tab" id="tab-log-panel" aria-controls="log-panel" aria-selected="false" tabindex="-1">棋譜</button>
+          <button type="button" class="tab" role="tab" id="tab-legend-box" aria-controls="legend-box" aria-selected="false" tabindex="-1">印</button>
         </div>
+        <!-- ルールカード（現在の設定から自動生成） -->
+        <section class="tab-panel rules4" id="rules4" role="tabpanel" aria-labelledby="tab-rules4" hidden>
+          <ol class="rules4-list" id="rules4-list"></ol>
+        </section>
+        <!-- 予測の詳細。読み上げのため閉じていても DOM に残す（tab-off で見た目だけ隠す） -->
+        <section class="tab-panel preview tab-off" id="preview" role="tabpanel" aria-labelledby="tab-preview" aria-live="polite"></section>
+        <section class="tab-panel log" id="log-panel" role="tabpanel" aria-labelledby="tab-log-panel" hidden>
+          <ol class="log-list" id="log"></ol>
+        </section>
+        <section class="tab-panel legend-box" id="legend-box" role="tabpanel" aria-labelledby="tab-legend-box" hidden>
+          <p class="legend" id="legend"></p>
+        </section>
       </div>
     </main>
 
