@@ -8,7 +8,7 @@ import { createGame, lastMoveOf, playMove, previewMove, viewFor, type MoveEvent,
 import { presetById, type PieceKind, type RuleSet } from "../src/engine/rules";
 import { encodeRules } from "../src/ui/query";
 import { pieceLabel, ruleLines, sentenceText } from "../src/ui/ruletext";
-import { noHorizontalScroll, readSetup, rng, startGame, waitHumanTurnOrEnd } from "./helpers";
+import { noHorizontalScroll, openRuleFields, openTab, readSetup, rng, startGame, waitHumanTurnOrEnd } from "./helpers";
 
 const SHOT = "screenshots";
 const ANCHOR = presetById("anchor").rules;
@@ -53,11 +53,20 @@ async function seedPage(page: Page, seed: number) {
   }, seed);
 }
 
-/** 予測中の盤: 赤枠（返す駒）・青枠（端の駒）と「+数字」がエンジンの予測と一致する */
-async function previewMatches(page: Page, pv: Preview) {
+/**
+ * 予測中の盤: 赤枠（返す駒）・青枠（端の駒）と「+数字」、狙ったマスの吹き出しの短い内訳（例: 2 ＋ 端5 ＝ 7）、
+ * 引き出しの「予測」の内訳の文がエンジンの予測と一致する
+ */
+async function previewMatches(page: Page, pv: Preview, at: { r: number; c: number }) {
   expect(await cellsWith(page, ".cell.will-take")).toEqual(names(pv.targets.map(([r, c]) => ({ r, c }))));
   expect(await cellsWith(page, ".cell.anchor")).toEqual(names(pv.anchors));
   for (const a of pv.anchors) await expect(cellAt(page, a.r, a.c).locator(".anchor-badge")).toHaveText(`+${ANCHOR.values[a.kind]}`);
+  const sum = cellAt(page, at.r, at.c).locator(".pv-bubble .bb-sum");
+  if (pv.anchors.length > 0) {
+    await expect(sum).toHaveText(`${pv.base}${pv.anchors.map((a) => ` ＋ 端${ANCHOR.values[a.kind]}`).join("")} ＝ ${pv.damage}`);
+  } else {
+    await expect(sum).toHaveCount(0);
+  }
   await expect(page.locator("#preview .breakdown")).toHaveText(breakdownOf(ANCHOR, pv));
 }
 
@@ -71,6 +80,7 @@ test.describe("PC 幅", () => {
     await page.locator(".preset[data-preset=anchor]").click();
     expect(await readSetup(page)).toEqual(ANCHOR);
     await expect(page.locator("#custom-tag")).toHaveText("— 拠点");
+    await openRuleFields(page);
     await expect(page.locator("#setup-rules4 li")).toHaveText(ruleLines(ANCHOR).map(sentenceText));
     await expect(page.locator("#setup-rules4")).toContainText("挟んだ端の自分の駒の数字もダメージに足す");
     expect(new URL(page.url()).search.slice(1)).toBe(encodeRules(ANCHOR));
@@ -111,7 +121,8 @@ test.describe("PC 幅", () => {
     await expect(page.locator("#rules4-name")).toHaveText("ルール — 拠点");
     await expect(page.locator("#rules4 li")).toHaveText(ruleLines(ANCHOR).map(sentenceText));
     await expect(page.locator("#legend")).toContainText("ダメージに上乗せする端の自分の駒");
-    await expect(page.locator("#preview")).toContainText("青枠の端の自分の駒の数字もダメージに足されます。");
+    // 端の駒の見本（青枠）は「印」のタブ
+    await expect(page.locator("#legend .key-anchor")).toHaveCount(1);
 
     const rand = rng(seed);
     let s = createGame(ANCHOR);
@@ -128,7 +139,7 @@ test.describe("PC 幅", () => {
       await selectPiece(page, ch.kind);
       await cellAt(page, ch.r, ch.c).hover();
       const pv = previewMove(s, ch.r, ch.c, ch.kind)!;
-      await previewMatches(page, pv);
+      await previewMatches(page, pv, ch);
       await expect(cellAt(page, ch.r, ch.c).locator(".dmg-badge")).toHaveText(String(pv.damage));
       if (pv.anchors.length >= 2) multi++;
       if (!shot && pv.anchors.length >= 2) {
@@ -154,9 +165,10 @@ test.describe("PC 幅", () => {
     expect(multi).toBeGreaterThan(0);
     expect(humanMoves).toBeGreaterThan(5);
     await expect(page.locator("#result-winner")).toHaveText(s.result!.winner === 0 ? "あなたの勝ち" : "CPU の勝ち");
-    await expect(page.locator("#result-detail")).toContainText(`（${s.ply} 手・ルール 拠点）`);
+    await expect(page.locator("#result-detail")).toContainText(`${s.ply} 手・ルール 拠点`);
     await page.screenshot({ path: `${SHOT}/pc-anchor-result.png` });
     await page.locator("#result-view").click();
+    await openTab(page, "log-panel");
     // 棋譜は CPU の手も含めて全手に内訳が付く
     const moves = s.history.filter((e): e is MoveEvent => e.type === "move").reverse();
     const logs = await page.locator("#log .log-item.move").allTextContents();
@@ -180,6 +192,7 @@ test.describe("スマホ幅 375px", () => {
     await seedPage(page, seed);
     await page.goto("/");
     await page.locator(".preset[data-preset=anchor]").tap();
+    await openRuleFields(page);
     await page.locator("#opt-anchor").scrollIntoViewIfNeeded();
     await noHorizontalScroll(page, 375);
     await page.screenshot({ path: `${SHOT}/sp-anchor-setup.png` });
@@ -202,13 +215,15 @@ test.describe("スマホ幅 375px", () => {
       await cell.tap();
       await expect(page.locator("#preview")).toContainText("もう一度タップ");
       const pv = previewMove(s, ch.r, ch.c, ch.kind)!;
-      await previewMatches(page, pv);
+      await previewMatches(page, pv, ch);
       expect(await page.locator("#log .log-item.move").count()).toBe(before);
       await noHorizontalScroll(page, 375);
       if (!shot && pv.anchors.length >= 1 && s.ply >= 4) {
         shot = true;
         await page.evaluate(() => window.scrollTo(0, 0));
         await page.screenshot({ path: `${SHOT}/sp-anchor.png` });
+        // 文の詳細は引き出しの「予測」タブ（開いてもマスの選択は外れない）
+        await openTab(page, "preview");
         await page.locator("#preview").scrollIntoViewIfNeeded();
         await page.screenshot({ path: `${SHOT}/sp-anchor-preview.png` });
       }
@@ -220,10 +235,11 @@ test.describe("スマホ幅 375px", () => {
       }
     }
     expect(shot).toBe(true);
-    await expect(page.locator("#result-detail")).toContainText(`（${s.ply} 手・ルール 拠点）`);
+    await expect(page.locator("#result-detail")).toContainText(`${s.ply} 手・ルール 拠点`);
     await noHorizontalScroll(page, 375);
     await page.screenshot({ path: `${SHOT}/sp-anchor-result.png` });
     await page.locator("#result-view").tap();
+    await openTab(page, "log-panel");
     await page.locator("#log").scrollIntoViewIfNeeded();
     await noHorizontalScroll(page, 375);
     await page.screenshot({ path: `${SHOT}/sp-anchor-log.png` });

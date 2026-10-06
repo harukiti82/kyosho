@@ -13,6 +13,15 @@ export interface DialogAction {
   onClick: () => void;
 }
 
+/** この部屋のルール（見出し「ルール — 名前」を押すと開く） */
+function roomRules(rules: RuleSet, name: string, open = false) {
+  const list = h("ol", { class: "rules4-list" });
+  fillSentences(list, ruleLines(rules));
+  const box = h("details", { class: "online-rules" }, [h("summary", { text: `ルール — ${name}` }), list]);
+  box.open = open;
+  return box;
+}
+
 /** 先手（黒）・後手（白） */
 export const seatText = (p: Player) => `${PLAYER_NAME[p]}（${p === 0 ? "黒" : "白"}）`;
 
@@ -65,18 +74,28 @@ export class OnlineDialog {
       });
       buttons.push(share);
     }
-    const rules = h("ol", { class: "rules4-list" });
-    fillSentences(rules, ruleLines(o.rules));
     this.show(
       "invite",
-      "招待リンクを相手に送ってください",
+      "対戦相手を招待",
       [
-        h("p", { class: "online-lead", text: "相手がこのリンクを開いて「参加する」を押すと、対局が始まります（ログイン不要）。" }),
+        // 対局アプリの対戦待ちのように、自分の席と空いている相手の席を並べる
+        h("div", { class: "lobby" }, [
+          h("div", { class: "lobby-seat" }, [
+            h("span", { class: `avatar p${o.you}`, attrs: { "aria-hidden": "true" } }),
+            h("span", { class: "lobby-name", text: "あなた" }),
+            h("span", { class: "online-seat", text: seatText(o.you) }),
+          ]),
+          h("span", { class: "lobby-vs", text: "VS", attrs: { "aria-hidden": "true" } }),
+          h("div", { class: "lobby-seat waiting", attrs: { id: "invite-waiting" } }, [
+            h("span", { class: "avatar empty", attrs: { "aria-hidden": "true" } }),
+            h("span", { class: "lobby-name", text: "相手" }),
+            h("span", { class: "online-wait" }, [h("span", { class: "spinner", attrs: { "aria-hidden": "true" } }), "参加を待っています"]),
+          ]),
+        ]),
+        h("p", { class: "online-lead", text: "このリンクを相手に送ってください。開いて「参加する」を押すと始まります" }),
         input,
         h("div", { class: "share invite-actions" }, [...buttons, status]),
-        h("p", { class: "online-seat" }, ["あなたは ", h("strong", { text: seatText(o.you) }), `・ルール ${o.ruleName}`]),
-        h("p", { class: "online-wait", attrs: { id: "invite-waiting" } }, [h("span", { class: "spinner", attrs: { "aria-hidden": "true" } }), "相手の参加を待っています…"]),
-        h("details", { class: "online-rules" }, [h("summary", { text: "この部屋のルール" }), rules]),
+        roomRules(o.rules, o.ruleName),
       ],
       [{ label: "やめて設定画面へ", id: "invite-leave", onClick: o.onLeave }],
     );
@@ -84,13 +103,23 @@ export class OnlineDialog {
 
   /** 招待リンクから開いたときの参加の確認 */
   join(o: { rules: RuleSet; ruleName: string; createdHere: boolean; onJoin: () => void; onCancel: () => void }) {
-    const rules = h("ol", { class: "rules4-list" });
-    fillSentences(rules, ruleLines(o.rules));
     this.show(
       "join",
-      "オンライン対戦に招待されました",
+      "対戦の招待",
       [
-        h("p", { class: "online-lead", text: `ルール「${o.ruleName}」の対局です。先手・後手は部屋を作った人の設定で決まります。` }),
+        h("div", { class: "lobby" }, [
+          h("div", { class: "lobby-seat" }, [
+            // 先手・後手はまだ分からないので、白黒半分の石
+            h("span", { class: "avatar half", attrs: { "aria-hidden": "true" } }),
+            h("span", { class: "lobby-name", text: "招いた人" }),
+          ]),
+          h("span", { class: "lobby-vs", text: "VS", attrs: { "aria-hidden": "true" } }),
+          h("div", { class: "lobby-seat" }, [
+            h("span", { class: "avatar half", attrs: { "aria-hidden": "true" } }),
+            h("span", { class: "lobby-name", text: "あなた" }),
+          ]),
+        ]),
+        h("p", { class: "online-lead", text: "先手・後手は部屋を作った人の設定で決まります" }),
         o.createdHere
           ? h("p", {
               class: "setup-note",
@@ -98,7 +127,7 @@ export class OnlineDialog {
               text: "この部屋はこのブラウザで作られました。ここで参加すると、あなたが相手の席に座ります。相手と遊ぶなら、参加せずにリンクを相手に送ってください。",
             })
           : null,
-        h("section", { class: "setup-preview" }, [h("h3", { class: "label", text: "この部屋のルール" }), rules]),
+        roomRules(o.rules, o.ruleName, true),
       ],
       [
         { label: "参加しないで設定画面へ", onClick: o.onCancel },

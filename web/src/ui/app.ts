@@ -936,10 +936,10 @@ export class App {
 
   private renderRuleCard(r: RuleSet) {
     this.el.rulesName.textContent = `ルール — ${ruleName(r)}`;
+    byId("tab-rules4").title = `ルール — ${ruleName(r)}`;
     const lines = ruleLines(r);
     fillSentences(this.el.rulesList, lines);
     this.el.rulesList.classList.toggle("dense", lines.length >= 6);
-    this.el.rulesList.classList.toggle("denser", lines.length >= 7);
     // 盤を主役にするため、ルールは引き出しに入れる。横に余裕のある画面（盤の横に置く）では開いて始める
     this.setTab(window.matchMedia("(min-width: 900px)").matches ? "rules4" : null);
   }
@@ -1116,13 +1116,20 @@ export class App {
     const touch = this.lastPointer === "touch" || this.lastPointer === "pen";
     if (touch && !this.tapLearned) lines.push(h("span", { class: "bb-line bb-hint", text: "もう一度タップで置く" }));
     if (lines.length === 0) return null;
-    // 返す駒・端の駒を隠さないよう、それらが少ない側（上か下）に出す。盤の一番上の行は下、一番下の行は上
+    // 返す駒・端の駒を隠さないよう、それらがない側（上か下）に出す。両側にあれば盤の外（近い方の縁）に出す
     const rows = [...pv.targets.map(([y]) => y), ...pv.anchors.map((a) => a.r)];
-    const up = rows.filter((y) => y < r).length;
-    const down = rows.filter((y) => y > r).length;
-    const below = r === 0 || (r < SIZE - 1 && up > down);
+    const up = rows.some((y) => y < r);
+    const down = rows.some((y) => y > r);
+    let place: string;
+    if (!up && r > 0) place = "";
+    else if (!down && r < SIZE - 1) place = " below";
+    else place = r < SIZE / 2 ? " edge-top" : " edge-bottom";
     const side = c <= 1 ? " to-r" : c >= SIZE - 2 ? " to-l" : "";
-    return h("div", { class: `pv-bubble${below ? " below" : ""}${side}`, attrs: { "aria-hidden": "true" } }, lines);
+    return h(
+      "div",
+      { class: `pv-bubble${place}${side}`, attrs: { "aria-hidden": "true", style: `--up:${r};--down:${SIZE - 1 - r}` } },
+      lines,
+    );
   }
 
   private renderPlayers(g: GameState) {
@@ -1619,25 +1626,26 @@ export class App {
     const g = this.game!;
     const [d0, d1] = discCount(g.board);
     const loser = r.winner === null ? null : other(r.winner);
+    const v = verb(g.rules);
     let judged: string;
-    if (r.winner === null) judged = `体力（${g.hp[0]}）も石数（${d0}）も同じなので引き分け`;
-    else if (r.byDiscs) judged = `体力が同じ（${g.hp[0]}）なので、石数 ${d0} 対 ${d1} で${this.name(r.winner)}の勝ち`;
+    if (r.winner === null) judged = `体力（${g.hp[0]}）も石数（${d0}）も同じで引き分け`;
+    else if (r.byDiscs) judged = `体力が同じ（${g.hp[0]}）で、石数 ${d0} 対 ${d1} で${this.name(r.winner)}の勝ち`;
     else judged = `体力 ${g.hp[0]} 対 ${g.hp[1]} で${this.name(r.winner)}の勝ち`;
-    const stall = g.ply === 0 ? "最初から両者とも打てない設定のため終局" : "両者とも打てる手がなくなって終局";
+    const stall = g.ply === 0 ? "最初から両者とも打てない設定" : "両者とも打てる手がなくなった";
+    const loserName = loser !== null ? this.name(loser) : "";
     const reason = {
-      ko: `体力 0 — ${loser !== null ? this.name(loser) : ""}の体力が 0 以下になりました`,
-      limit: `${g.rules.maxPlies} 手に達して打ち切り — ${judged}`,
-      stalled: `${stall} — ${judged}`,
-      king: `王を${verb(g.rules).past} — ${loser !== null ? this.name(loser) : ""}の王が${verb(g.rules).hit}ので即負け`,
+      ko: `${loserName}の体力が 0 になった`,
+      limit: `${g.rules.maxPlies} 手で打ち切り。${judged}`,
+      stalled: `${stall}。${judged}`,
+      king: `${loserName}の王が${v.hit}ので即負け`,
     }[r.reason];
+    const o = this.outcome(g);
+    this.el.result.dataset.outcome = o.kind;
     byId("result-winner").textContent = this.resultHeadline(r);
     byId("result-reason").textContent = reason;
-    byId("result-detail").textContent =
-      `${this.name(0)} 体力 ${g.hp[0]} ／ ${this.name(1)} 体力 ${g.hp[1]} ／ 石数 ${d0} 対 ${d1}（${g.ply} 手・ルール ${ruleName(g.rules)}）` +
-      this.kingSummary(g);
+    this.renderScore(g, d0, d1);
     this.renderStats(g);
     // 負けたときは接戦の励ましを添え、「再戦」を強調する
-    const o = this.outcome(g);
     const cheer = byId("result-cheer");
     cheer.textContent = o.cheer ?? "";
     cheer.hidden = !o.cheer;
@@ -1646,6 +1654,27 @@ export class App {
     rematch.textContent = this.online ? "新しい部屋で再戦" : "再戦";
     this.hideToast();
     if (!this.el.result.open) this.el.result.showModal();
+  }
+
+  /** 終局画面の成績表: 対局者を列に、体力・石数・王（隠し王のとき）を行に。下に手数とルール */
+  private renderScore(g: GameState, d0: number, d1: number) {
+    const discs = [d0, d1];
+    const winner = g.result?.winner ?? null;
+    const head = (p: Player) =>
+      h("th", { class: `score-head${winner === p ? " won" : ""}`, attrs: { scope: "col" } }, [
+        h("span", { class: `avatar p${p}`, attrs: { "aria-hidden": "true" } }),
+        this.name(p),
+      ]);
+    const row = (label: string, cells: [string, string]) =>
+      h("tr", {}, [h("th", { text: label, attrs: { scope: "row" } }), h("td", { text: cells[0] }), h("td", { text: cells[1] })]);
+    const king = g.rules.king.on ? row("王", [this.kingResult(g, 0), this.kingResult(g, 1)]) : null;
+    byId("result-detail").replaceChildren(
+      h("table", { class: "score" }, [
+        h("thead", {}, [h("tr", {}, [h("td"), head(0), head(1)])]),
+        h("tbody", {}, [row("体力", [String(g.hp[0]), String(g.hp[1])]), row("石数", [String(discs[0]), String(discs[1])]), king]),
+      ]),
+      h("p", { class: "score-foot", text: `${g.ply} 手・ルール ${ruleName(g.rules)}` }),
+    );
   }
 
   /** 終局画面の成績（CPU 対戦は自分だけ、2 人対戦は両者） */
@@ -1683,19 +1712,15 @@ export class App {
     return rows;
   }
 
-  /** 終局後の王の答え合わせ（例: 「／ 王: 先手 d3（隠れたまま）・後手 e5（返された）」） */
-  private kingSummary(g: GameState): string {
-    if (!g.rules.king.on) return "";
-    const one = (p: Player) => {
-      const ki = this.kingOf(g, p);
-      const moved = lastKingHit(g, p);
-      if (moved) return `${PLAYER_NAME[p]} ${cellName(moved.r, moved.c)}（${verb(g.rules).hit}）`;
-      if (ki.cell) return `${PLAYER_NAME[p]} ${cellName(ki.cell[0], ki.cell[1])}（隠れたまま）`;
-      // オンライン対戦では、返されなかった相手の王はサーバーが終局後も送らない
-      if (this.online && p !== this.me()) return `${PLAYER_NAME[p]} ？（明かされない）`;
-      return `${PLAYER_NAME[p]} なし（決める前に終局）`;
-    };
-    return ` ／ 王: ${one(0)}・${one(1)}`;
+  /** 終局後の王の答え合わせ（例: 「d3（隠れたまま）」「e5（返された）」） */
+  private kingResult(g: GameState, p: Player): string {
+    const ki = this.kingOf(g, p);
+    const moved = lastKingHit(g, p);
+    if (moved) return `${cellName(moved.r, moved.c)}（${verb(g.rules).hit}）`;
+    if (ki.cell) return `${cellName(ki.cell[0], ki.cell[1])}（隠れたまま）`;
+    // オンライン対戦では、返されなかった相手の王はサーバーが終局後も送らない
+    if (this.online && p !== this.me()) return "？（明かされない）";
+    return "なし（決める前に終局）";
   }
 
   /** ルール詳細ダイアログを設定から作って開く */

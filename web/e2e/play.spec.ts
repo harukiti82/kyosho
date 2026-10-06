@@ -7,7 +7,7 @@ import { createGame, legalCells, playableKinds, playMove, previewMove, targetsAt
 import { defaultRules, kindsByValue, KIND_ORDER, PIECES, PRESETS, presetById, type PieceKind, type RuleSet } from "../src/engine/rules";
 import { encodeRules } from "../src/ui/query";
 import { ruleLines, sentenceText } from "../src/ui/ruletext";
-import { noHorizontalScroll, readSetup, rng, seedPage, startGame, waitHumanTurnOrEnd } from "./helpers";
+import { noHorizontalScroll, openRuleFields, openTab, readSetup, rng, seedPage, startGame, waitHumanTurnOrEnd } from "./helpers";
 
 const SHOT = "screenshots";
 /** ユーザーが既定に指定した URL のクエリ（プリセット「標準」。先手の体力は 125 から 110 に下げた） */
@@ -26,11 +26,19 @@ async function cellsUniform(page: Page) {
   for (const [cw, ch] of sizes) expect([Math.abs(cw - w) <= 1, Math.abs(ch - h) <= 1]).toEqual([true, true]);
 }
 
-/** ルールカードの文言が設定から作った文と同じで、画面内に見えている */
+/**
+ * ルールカードの文言が設定から作った文と同じで、いつでも 1 タップで見られる:
+ * 見出し（引き出しのタブ）は最初の画面に見えていて、PC は開いて始め、スマホは閉じて始めてタブで開く
+ */
 async function ruleCardIs(page: Page, rules: RuleSet) {
   const want = ruleLines(rules).map(sentenceText);
   await expect(page.locator("#rules4 li")).toHaveText(want);
-  await expect(page.locator("#rules4")).toBeInViewport({ ratio: 1 });
+  await expect(page.locator("#tab-rules4")).toBeInViewport({ ratio: 1 });
+  if (page.viewportSize()!.width < 900) {
+    await expect(page.locator("#rules4")).toBeHidden();
+    await openTab(page, "rules4");
+  }
+  await expect(page.locator("#rules4")).toBeVisible();
 }
 
 const boardSnapshot = (page: Page) =>
@@ -86,15 +94,27 @@ async function checkBoardFrozen(page: Page, touch = false) {
   await expect(page.locator("#result")).toBeHidden();
 }
 
-/** 持ち駒の表示（両者）がエンジンの状態と一致 */
+/**
+ * 持ち駒の表示（両者）がエンジンの状態と一致。駒台に並んでいる人（操作する人）は駒台の駒の角の数、
+ * もう一人は名札の小さな石の角の数（駒台に出ている人の分は名札では省く）
+ */
 async function handsMatch(page: Page, s: GameState) {
+  const kinds = kindsByValue(
+    s.rules,
+    KIND_ORDER.filter((k) => s.rules.hand[k] > 0 || (s.rules.action === "capture" && k === "fu") || s.hands[0][k] + s.hands[1][k] > 0),
+  );
+  // 終局後の駒台は「結果を見る・再戦」なので、両者とも名札に出る
+  const btns = page.locator("#hand-buttons .piece-btn");
+  const tray = (await btns.count()) > 0 ? Number(await btns.first().getAttribute("data-owner")) : -1;
   for (const p of [0, 1] as const) {
-    const shown = await page.locator(`#player-${p} .mini`).allTextContents();
-    const kinds = kindsByValue(
-      s.rules,
-      KIND_ORDER.filter((k) => s.rules.hand[k] > 0 || (s.rules.action === "capture" && k === "fu") || s.hands[0][k] + s.hands[1][k] > 0),
-    );
-    expect(shown).toEqual(kinds.map((k) => `${PIECES[k].name}×${s.hands[p][k]}`));
+    if (p === tray) {
+      await expect(page.locator(`#player-${p} .mini`)).toHaveCount(0);
+      const shown = await page.locator("#hand-buttons .piece-btn").evaluateAll((bs) => bs.map((b) => `${b.getAttribute("data-kind")}:${b.querySelector(".piece-count")?.textContent}`));
+      expect(shown).toEqual(kinds.map((k) => `${k}:${s.hands[p][k]}`));
+    } else {
+      const shown = await page.locator(`#player-${p} .mini`).allTextContents();
+      expect(shown).toEqual(kinds.map((k) => `${PIECES[k].name}${s.hands[p][k]}`));
+    }
   }
 }
 
@@ -121,6 +141,7 @@ test.describe("PC 幅", () => {
     }
     // 個別に変えるとカスタムになる（取るルール＋強さ制限は「取れない」）
     await page.locator(".preset[data-preset=v2]").click();
+    await openRuleFields(page);
     await page.locator("input[name=action][value=capture]").check({ force: true });
     await expect(page.locator("#custom-tag")).toContainText("カスタム");
     await expect(page.locator(".preset[aria-pressed=true]")).toHaveCount(0);
@@ -155,6 +176,7 @@ test.describe("PC 幅", () => {
     await context.grantPermissions(["clipboard-read", "clipboard-write"]);
     await page.goto("/");
     await page.locator(".preset[data-preset=v04]").click();
+    await openRuleFields(page);
     await page.locator("input[name=gate][value='1']").check({ force: true });
     await page.locator("input[name=maxPlies]").fill("50");
     await page.locator("input[name=maxPlies]").press("Tab");
@@ -174,7 +196,7 @@ test.describe("PC 幅", () => {
     await expect(other.locator("#custom-tag")).toContainText("カスタム");
     await startGame(other);
     await ruleCardIs(other, want);
-    await expect(other.locator("#ply")).toHaveText("手数 0 / 50");
+    await expect(other.locator("#ply")).toHaveText("0 / 50 手");
 
     // 不正なクエリ: エラーにならず、不正な項目は URL の基準（v1.0）の値（既定を変える前と同じ解釈）
     await other.goto("/?take=zzz&gate=7&dmg=<script>&hp1=-3&hp2=1e9&fu=abc&hi=99&limit=99999&heal=__proto__");
@@ -210,7 +232,7 @@ test.describe("PC 幅", () => {
     await expect(page.locator("#player-0 .hp-max")).toHaveText("/ 110");
     await expect(page.locator("#player-1 .hp-num")).toHaveText("130");
     await expect(page.locator("#player-1 .hp-max")).toHaveText("/ 130");
-    await expect(page.locator("#ply")).toHaveText("手数 0");
+    await expect(page.locator("#ply")).toHaveText("0 手");
     await handsMatch(page, createGame(std));
     // 始めた設定がアドレスバーに載り、指定の URL と同じ
     expect(new URL(page.url()).search.slice(1)).toBe(STD_QUERY);
@@ -237,7 +259,7 @@ test.describe("PC 幅", () => {
       await expect(page.locator("#rules4-name")).toHaveText(`ルール — ${preset.name}`);
       await expect(page.locator("#player-0 .hp-num")).toHaveText(String(r.hp[0]));
       await expect(page.locator("#player-1 .hp-max")).toHaveText(`/ ${r.hp[1]}`);
-      await expect(page.locator("#ply")).toHaveText(r.maxPlies > 0 ? `手数 0 / ${r.maxPlies}` : "手数 0");
+      await expect(page.locator("#ply")).toHaveText(r.maxPlies > 0 ? `0 / ${r.maxPlies} 手` : "0 手");
       const g0 = createGame(r);
       await handsMatch(page, g0);
       // 置けるマス: 裏返すルールは初手 4 マス（方向駒の歩は縦の 2 マス）、取るルールは空き 60 マス
@@ -289,7 +311,7 @@ test.describe("PC 幅", () => {
       expect(shot).toBe(true);
       expect(sawThreat).toBe(true);
       await expect(page.locator("#result-winner")).toHaveText(/あなたの勝ち|CPU の勝ち|引き分け/);
-      await expect(page.locator("#result-reason")).toHaveText(/体力 0|手に達して打ち切り|打てる手がなくなって終局/);
+      await expect(page.locator("#result-reason")).toHaveText(/体力が 0 になった|手で打ち切り|打てる手がなくなった/);
       await expect(page.locator("#result-detail")).toContainText(`ルール ${preset.name}`);
       if (preset.id === "v2") await page.screenshot({ path: `${SHOT}/pc-result.png` });
       await checkBoardFrozen(page);
@@ -316,7 +338,9 @@ test.describe("PC 幅", () => {
       // 強さ制限で置けない駒のボタンは押せない
       for (const k of KIND_ORDER.filter((k) => s.hands[s.turn][k] > 0 && !playableKinds(s).includes(k))) {
         await expect(handBtn(page, k)).toBeDisabled();
-        await expect(handBtn(page, k)).toContainText("置けない");
+        // 置けない駒は斜線（読み上げと title では理由を添える）
+        await expect(handBtn(page, k)).toHaveClass(/\bblocked\b/);
+        await expect(handBtn(page, k)).toHaveAttribute("aria-label", /（置けるマスなし）$/);
       }
       await selectPiece(page, m.kind);
       await expect(page.locator(".cell.open")).toHaveCount(legalCells(s, m.kind).length);
@@ -359,7 +383,7 @@ test.describe("PC 幅", () => {
     await startGame(page);
     await expect(page.locator("#result")).toBeVisible();
     await expect(page.locator("#result-winner")).toHaveText("引き分け");
-    await expect(page.locator("#result-reason")).toContainText("最初から両者とも打てない設定のため終局");
+    await expect(page.locator("#result-reason")).toContainText("最初から両者とも打てない設定");
     await checkBoardFrozen(page);
     await expect(page.locator(".hand-mini").first()).toHaveText("持ち駒なし");
 
@@ -373,7 +397,7 @@ test.describe("PC 幅", () => {
       if (await waitHumanTurnOrEnd(page)) break;
       await humanMove(page, false);
     }
-    await expect(page.locator("#result-reason")).toContainText("体力 0");
+    await expect(page.locator("#result-reason")).toContainText("体力が 0 になった");
     expect(errors).toEqual([]);
   });
 });

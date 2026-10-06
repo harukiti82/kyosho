@@ -17,7 +17,7 @@ import {
 import { kindsByValue, KIND_ORDER, presetById, type PieceKind } from "../src/engine/rules";
 import { encodeRules } from "../src/ui/query";
 import { dirMark, pieceLabel, ruleLines, sentenceText } from "../src/ui/ruletext";
-import { noHorizontalScroll, readSetup, rng, startGame, waitHumanTurnOrEnd } from "./helpers";
+import { noHorizontalScroll, openRuleFields, readSetup, rng, startGame, waitHumanTurnOrEnd } from "./helpers";
 
 const SHOT = "screenshots";
 const DIR = presetById("dir").rules;
@@ -72,6 +72,7 @@ test.describe("PC 幅", () => {
     await page.locator(".preset[data-preset=dir]").click();
     expect(await readSetup(page)).toEqual(DIR);
     await expect(page.locator("#custom-tag")).toHaveText("— 方向駒");
+    await openRuleFields(page);
     await expect(page.locator("#setup-rules4 li")).toHaveText(ruleLines(DIR).map(sentenceText));
     await expect(page.locator("#setup-rules4")).toContainText("挟めるのは駒の矢印の方向だけ（歩↕ 横↔ 角✕ 飛✚ 金✱）");
     // 駒の表: 6 種。方向は種類で固定（表示のみ）
@@ -138,7 +139,9 @@ test.describe("PC 幅", () => {
     await expect(handBtn(page, "kin")).toHaveAttribute("aria-label", "金（数字 5・全 8 方向に挟める）残り 4 個");
     // 初手: 角は斜めに挟める所がないので押せない
     await expect(handBtn(page, "kaku")).toBeDisabled();
-    await expect(handBtn(page, "kaku")).toContainText("置けない");
+    // 置けない駒は斜線（理由は読み上げと title）
+    await expect(handBtn(page, "kaku")).toHaveClass(/\bblocked\b/);
+    await expect(handBtn(page, "kaku")).toHaveAttribute("aria-label", /（置けるマスなし）$/);
 
     const rand = rng(seed);
     let s = createGame(DIR);
@@ -208,7 +211,7 @@ test.describe("PC 幅", () => {
     expect(usedKinds.size).toBeGreaterThanOrEqual(4);
     await expect(page.locator("#result-winner")).toHaveText(s.result!.winner === 0 ? "あなたの勝ち" : "CPU の勝ち");
     await expect(page.locator("#result-detail")).toContainText("ルール 方向駒");
-    await expect(page.locator("#result-detail")).toContainText(`（${s.ply} 手`);
+    await expect(page.locator("#result-detail .score-foot")).toHaveText(`${s.ply} 手・ルール 方向駒`);
     await page.screenshot({ path: `${SHOT}/pc-dir-result.png` });
     await page.locator("#result-view").click();
     await dirIconsMatch(page, s);
@@ -240,6 +243,7 @@ test.describe("スマホ幅 375px", () => {
     await seedPage(page, 1);
     await page.goto("/");
     await page.locator(".preset[data-preset=dir]").tap();
+    await openRuleFields(page);
     await page.locator("#piece-table").scrollIntoViewIfNeeded();
     await noHorizontalScroll(page, 375);
     await page.screenshot({ path: `${SHOT}/sp-dir-setup.png` });
@@ -249,7 +253,8 @@ test.describe("スマホ幅 375px", () => {
     await expect(page.locator("#board")).toBeInViewport({ ratio: 1 });
     await noHorizontalScroll(page, 375);
     // 持ち駒 5 種が 1 行に並ぶ
-    const tops = await page.locator("#hand-buttons .piece-btn").evaluateAll((bs) => bs.map((b) => Math.round(b.getBoundingClientRect().top)));
+    // 行はレイアウトの位置で比べる（選んだ駒は transform で持ち上がるので見た目の上端はずれる）
+    const tops = await page.locator("#hand-buttons .piece-btn").evaluateAll((bs) => bs.map((b) => (b as HTMLElement).offsetTop));
     expect(new Set(tops).size).toBe(1);
 
     // 横を選ぶと印は横に挟める 2 マス。1 回目のタップで予測、2 回目で確定
@@ -276,7 +281,7 @@ test.describe("スマホ幅 375px", () => {
       await cell.tap();
       await noHorizontalScroll(page, 375);
     }
-    await expect(page.locator("#result-reason")).toHaveText(/体力 0|打てる手がなくなって終局/);
+    await expect(page.locator("#result-reason")).toHaveText(/体力が 0 になった|打てる手がなくなった/);
     await page.screenshot({ path: `${SHOT}/sp-dir-result.png` });
     await noHorizontalScroll(page, 375);
     await page.locator("#result-view").tap();

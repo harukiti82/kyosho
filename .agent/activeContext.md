@@ -4,20 +4,20 @@
 
 ## 現在の対象
 
-- 何を / どこを: 画面を「ボードゲームアプリ風」に作り直す（ユーザーの依頼「AI感が強すぎる。もっとゲームって感じに」。範囲は見た目と配置まで。ルール・engine・サーバーは変えない）。2 段階: 段階 1 = 対局画面の試作 → master の承認 → 段階 2 = 全画面（設定・オンラインのダイアログ・終局・ルール詳細・トースト・演出）にそろえ、e2e とスクリーンショットを更新して PR
-- ステータス: 段階 1 の手直し（盤はそのまま、盤以外の UI を作り直し）をブランチ `style/boardgame-ui` にコミット（push・PR はまだ）。master の確認待ち。試作のスクリーンショットは `web/screenshots/*-proto-*.png`
-- 最終更新: 2026-10-06（段階 1 の手直し: 名札・駒台・吹き出し・引き出し）
+- 何を / どこを: 画面をボードゲームアプリ風に作り直す（ユーザーの依頼「AI感が強すぎる。もっとゲームって感じに」。見た目と配置まで。ルール・engine・サーバーは変えない）。段階 1（対局画面の試作）はユーザー承認済み、段階 2（全画面・e2e・スクリーンショット・AGENTS.md）をブランチ `style/boardgame-ui` で実施中
+- ステータス: 段階 2 の実装・e2e 更新中。PR を出して CI が緑になったら止まる（マージは master が確認してから。マージで本番デプロイ）
+- 最終更新: 2026-10-06（ボードゲームアプリ風の段階 2）
 
-## 試作のデザイン（段階 1）
+## 新デザインの要点（デザイン規約は AGENTS.md）
 
-- 方針（ユーザーの感想「盤はいいが、その下の UI が AI っぽい」）: 説明の文・ピル型のバッジ・同じ形のカードを縦に積む構成をやめ、盤と同じ「モノ」の質感で、文ではなく形と動きで伝える
-- 配色: 暗い卓（`--bg` #171512）。決定・操作できる手番は緑 `--go`、選んだ駒・待つ手番は琥珀 `--amber`、王は金 `--gold`。旧トークン（`--accent*` 等）は演出・ダイアログ用に残している（段階 2 で整理）。書体はシステムフォントのみ、駒の漢字とタイトルは明朝（`--font-piece`）
-- 盤: 木枠＋座標＋緑の羅紗＋立体の石（承認済み・変えない）。木枠の下の縁に彫った文字で手番（`#status`「あなたの番」など短く）・手数（`#ply`）・接続（`#net`）。手番の側の縁が光る（`.board-frame.turn-top` / `turn-bottom`、操作できるときは緑 `turn-act`）
-- 名札（`.player-card`、`App.placeSeats` で自分が下）: 石・短い名前（`shortName`。正式名は title と aria-label）・王の駒の形とマス名（`kingTag`。オンラインの相手は「候補N」で `#king-cands`）・持ち駒（石の角に数。駒台に出ている人は省く）・数字を重ねた太い体力ゲージ（直前に減った分は `.hp-ghost` が赤く残ってから縮む）
-- 駒台（`.tray`、見出しは sr-only）: 木の台に石を並べ、残り数は角、選んだ駒は持ち上がる、置けない駒は斜線。隠し王の操作は右端の王の駒（`#king-toggle`「あと N 手」、2 人対戦の `#king-peek`）。説明の文は sr-only の `#king-note` と title
-- 予測: 数字はマスのバッジ、短い内訳・警告・王にして置く・タッチの置き方（覚えるまで）は狙っているマスの吹き出し（`App.bubble`、返す駒が少ない側に出す）。文の詳細は引き出しの「予測」タブ（`#preview`、閉じても `.tab-off` で読み上げに残す）
-- 引き出し（`#drawer`）: タブ「ルール — 標準」「予測」「棋譜」「印」（`setTab`。押し直すと閉じる・左右キー）。PC は盤の横でルールを開いて始める、スマホは盤の下で閉じて始める（ユーザー承認済み）
-- 段階 2 で決めること: AGENTS.md の最重要要件を「ルールはいつでも 1 タップで見られる」に、デザイン規約を新デザインに書き換える。e2e の更新（`#status` の文・`.king-tag` の文・`#rules4` の表示・`.hand-mini` など）
+- 対局画面: 名札（`#seat-top` / `#seat-bottom`、`App.placeSeats`。自分が下、2 人対戦は先手が下）・木枠の下の縁に手番（`#status` は「あなたの番」など短く）・手数（`#ply`「N 手」）・接続（`#net`）。手番の側の縁が光る（`.board-frame.turn-top` / `turn-bottom` / `turn-act`）
+- 名札: 短い名前（`shortName`。正式名は aria-label・title）・王の駒の形とマス名（`kingTag`。返されたら取り消し線 `.lost`、オンラインの相手は「候補N」で `#king-cands`）・持ち駒（駒台に出ている人の分は省く）・体力ゲージ（`.hp-gauge`、減った分は `.hp-ghost`）
+- 駒台（`.tray`）: 残り数は `.piece-count`、置けない駒は `.blocked` の斜線、隠し王は右端の王の駒（`#king-toggle`「あと N 手」、2 人対戦の `#king-peek`）。説明の文は sr-only の `#king-note`
+- 予測: マスのバッジ（`.dmg-badge` / `.heal-badge`）＋吹き出し（`App.bubble`。返す駒・端の駒がない側に出し、上下両方にあれば盤の外の縁 `.edge-top` / `.edge-bottom`）。文の詳細は引き出しの「予測」タブ（`#preview`、閉じても `.tab-off` で読み上げに残す）
+- 引き出し（`#drawer`、`setTab`）: 「ルール — 名前」「予測」「棋譜」「印」。PC は盤の横でルールを開いて始め、スマホは閉じて始める
+- 設定画面: 対戦 → ルール（名前だけのプリセットの札＋選んだ設定のルール文 `#setup-rules4`）→「ルールを細かく変える」（`#rule-details`、プリセットと違う設定なら開いて始める）。e2e は `openRuleFields` / `openTab`（`e2e/helpers.ts`）
+- 終局画面: 見出し（明朝、勝ちは琥珀）・理由の 1 文・成績表（`#result-detail` の `.score`。対局者が列、体力・石数・王が行、下に「N 手・ルール 名前」）・成績（`.stats`）
+- オンラインのダイアログ: 対戦待ちのように 2 つの席を VS で並べる（`.lobby`、空いた席は脈打つ）。ルールは「ルール — 名前」の折りたたみ
 
 ## 直近の観点・指摘
 
@@ -31,7 +31,7 @@
 - オンライン対戦: サーバーは engine を import する権威サーバー。各自には `viewFor` だけを送る（`server/test/king.test.ts` が、相手の王の指定だけ違う 2 部屋で自分に届くバイト列が一致することを検査）。3 人目は拒否（観戦なし）。先手・後手は作成者の `hostSeat`（既定 random）。再接続はトークン（`sessionStorage` 推奨）。放置した部屋は alarm で削除（24 時間・終局後 1 時間）
 - server/ は vitest 4（pool-workers の要件）。npm 11.4 は install で落ちるので `npx npm@11.21.0 install`。`worker-configuration.d.ts` は生成物（`npm run typecheck` / `test` の前に `wrangler types`）
 - 普通のオセロなら置けるマス: `board.ts` の `othelloCells`（石の色だけ・8 方向。駒の方向・強さ・持ち駒を見ない参考表示で、合法手の判定には使わない）。盤は操作できる手番だけ `.cell.othello`（点線の枠、`--othello`）、凡例 `.key-othello`。e2e `othello.spec.ts`・オンラインは `online.spec.ts`
-- 最重要要件は「ルールが一目で分かること」。ルールカードは設定から自動生成（`ui/ruletext.ts`、最大 8 行。7 行以上は `.denser`）。予測の赤枠＋ダメージ・回復、返されうる自駒の「!」、自分の王の赤い「!」、駒の方向アイコン、端の駒の青枠＋左下の「+数字」と内訳（返した駒 ＋ 端の金5 ＝ 7）を崩さない
+- 最重要要件は「ルールが一目で分かること」＝ルールはいつでも 1 タップで見られる。ルールカードは設定から自動生成（`ui/ruletext.ts`、最大 8 行）して引き出しの「ルール — 名前」のタブ（見出しは常に表示、PC は開いて始める）。予測の赤枠＋ダメージ・回復、返されうる自駒の「!」、自分の王の赤い「!」、駒の方向アイコン、端の駒の青枠＋左下の「+数字」と内訳（返した駒 ＋ 端の金5 ＝ 7）を崩さない
 - 決着の演出: 中身（種類・副題・接戦の励まし）は `ui/outcome.ts` の `outcomeOf`（DOM なし、接戦は自分の体力上限の `CLOSE_PERCENT`=10% 以下）。表示は `fx.ts` の `finale`（画面全体を覆いタップ／クリックで飛ばす）、音は `sound.ts` の `finale`、流れは `App.playFinale` / `endFinale`（Enter / Esc / スペースでも飛ばす）。最大 2.5 秒（`FINALE_MS` 2300）。負けたら終局画面の「再戦」を `.urge` で強調、励ましは `#result-cheer`
 - 手応えの演出: 段階は `ui/impact.ts` の `tierOf`（合計（上乗せ・王の罰込み）÷ 受けた側の体力上限。5% / 10% / 20% は `TIER_THRESHOLDS`、王を返した手は特大）。演出は `ui/fx.ts`（`#fx` 層・transform / opacity のみ）、効果音は `ui/sound.ts`（Web Audio 合成・消音は localStorage）。大・特大は `App.fxLock` で入力と CPU を最大 1.5 秒待たせる。`src/ui/` で `Math.random` を使わない（e2e の鏡の対局がずれる）
 - 端の駒の力: ダメージは `damageOf` ＝ `baseDamageOf` ＋ `anchorBonusOf`（返した列ごとの反対端 `Line.end` / `endAt`）。予測・警告・CPU はすべてこれを通す。`MoveEvent.anchors` は上乗せがあるときだけ
@@ -44,14 +44,14 @@
 
 ## 未解決・次の一手
 
-- [ ] master の承認を待つ（試作のスクリーンショット `web/screenshots/{pc,sp}-proto-*.png`）。承認後に段階 2: 設定画面・オンラインのダイアログ・終局画面・ルール詳細・トースト・決着の演出（`.fin-*` に淡い色が残る）を新デザインにそろえる → e2e（`npm run e2e` / `e2e:online`）とスクリーンショットを更新 → origin/main に rebase して PR（マージしない）。e2e の前に固定ポート（4179・8790・8787・5173）が空いているか `lsof` で確かめる（別ワーカーが `~/repos/kyosho-flaky` で e2e を直している）
+- [ ] ボードゲームアプリ風の PR を master が確認してマージ（マージで本番デプロイ）。ユーザーの試遊で見た目・操作感の感想を聞く
 - [ ] 本番 https://kyosho.rukiharukichi.com/ で設定画面に「オンライン（招待リンク）」が出ること、スマホ 2 台で作成 → 参加 → 終局・再読み込みを確かめる。確かめたら別タスクで GitHub Pages（`pages.yml`）を止める
 - [ ] 必要ならサーバーに「終局後の相手の王の公開」「同じ部屋での再戦」を足す（ユーザーの判断）
 - [ ] ユーザーの試遊で演出の手応え・方向駒・隠し王・拠点・オセロの枠の見やすさの感想を聞く。RULES.md 本文を標準で新版に改稿するかはユーザー判断
 
 ## 現フェーズで Read すべき設計書
 
-- ボードゲームアプリ風の段階 2: `web/src/style.css`（`:root` のトークン）, `web/index.html`, `web/src/ui/app.ts`（`placeSeats` / `renderPlayers` / `renderRuleCard`）, `web/src/ui/setup.ts`, `web/src/ui/online.ts`, `web/src/ui/fx.ts`, `web/e2e/`
+- 画面の見た目を直す: AGENTS.md の「デザイン規約」→ `web/src/style.css`（`:root` のトークン）, `web/index.html`, `web/src/ui/app.ts`（`placeSeats` / `renderPlayers` / `kingTag` / `bubble` / `setTab` / `renderScore`）
 
 - オンライン対戦の画面の修正: `.agent/online-protocol.md`（「画面側の挙動」）→ `web/src/net/online.ts` → `web/src/ui/app.ts`（「オンライン対戦」節）, `web/src/ui/online.ts`, `web/e2e/online/`
 - 設定項目・プリセットの変更: `RULES.md` の「Web 試遊版」節 → `web/src/engine/rules.ts` → AGENTS.md の「ルール・設定項目を変えるとき」
