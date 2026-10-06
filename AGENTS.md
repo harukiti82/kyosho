@@ -62,7 +62,7 @@ server/               ← 画面（web/dist の静的アセット）と /api（�
 - オンライン対戦の画面は手を送るだけで、盤はサーバーから届いた `view`（`PlayerView`）で描く（画面で `playMove` しない）。王の情報は `App.kingOf`（オンラインでは `view.myKing` / `view.oppKing`。`kingInfo` は view に使えない）。トークンは `sessionStorage`（`kyosho:token:<roomId>`）。通信層は `net/online.ts` に分け、DOM を入れない
 - サーバーは engine をコピーせず `../web/src/engine` を import する。各プレイヤーには `viewFor(state, そのプレイヤー)` だけを送り、`GameState`（`kings` を含む）をそのまま送らない（`server/test/king.test.ts` が検査する）。通信の型を変えたら `web/src/net/protocol.ts` と `.agent/online-protocol.md` を揃える
 - API と WebSocket は画面と同じオリジンの `/api` の下（`protocol.ts` の `API_PATH`。変えたら `server/wrangler.jsonc` の `assets.run_worker_first` も）。画面はサーバーの URL を持たず絶対パスで呼ぶ。サーバーは同一オリジン（＋ `ALLOWED_ORIGINS`、本番は `https://kyosho.rukiharukichi.com`）だけを受け、CORS のヘッダーは返さない。静的アセットへのリクエストで Worker・Durable Object を起こさない
-- `src/ui/` で `Math.random` を使わない（CPU の乱数と共有で、e2e は Math.random を種付きにして CPU の手を再現する）。CPU 対戦の手番の抽選（「ランダム」）は `ui/setup.ts` の `drawSeat`（既定は `crypto.getRandomValues`。e2e `seat.spec.ts` は crypto を差し替える）で、`App.start` が対局を始めるたびに引く（`PlaySettings.randomSeat`）。効果音の AudioContext は最初のユーザー操作の後にだけ作る
+- `src/ui/` で `Math.random` を使わない（CPU の乱数と共有で、e2e は Math.random を種付きにして CPU の手を再現する。CPU に打たせる e2e は `e2e/helpers.ts` の `seedPage` で種を固定する。種がないと終局の形が実行ごとに変わり、ときどき落ちる）。CPU 対戦の手番の抽選（「ランダム」）は `ui/setup.ts` の `drawSeat`（既定は `crypto.getRandomValues`。e2e `seat.spec.ts` は crypto を差し替える）で、`App.start` が対局を始めるたびに引く（`PlaySettings.randomSeat`）。効果音の AudioContext は最初のユーザー操作の後にだけ作る
 
 ## コマンド
 
