@@ -7,55 +7,65 @@
     <title>挟将（きょうしょう）試遊版</title>
   </head>
   <body>
-    <div class="stage" aria-hidden="true">
-      <span class="blob blob-a"></span><span class="blob blob-b"></span><span class="blob blob-c"></span>
-    </div>
-
     <header class="topbar">
-      <h1 class="title">挟将<span class="title-sub">きょうしょう 試遊版</span></h1>
+      <h1 class="title"><span class="title-mark" aria-hidden="true"></span>挟将<span class="title-sub">きょうしょう 試遊版</span></h1>
       <div class="topbar-actions">
-        <button type="button" class="mute-btn" id="btn-mute" aria-label="消音" aria-pressed="false"></button>
-        <button type="button" class="btn ghost" id="btn-rules">ルール詳細</button>
-        <button type="button" class="btn ghost" id="btn-new">新しい対局</button>
+        <button type="button" class="icon-btn mute-btn" id="btn-mute" aria-label="消音" aria-pressed="false"></button>
+        <button type="button" class="icon-btn" id="btn-rules" aria-label="ルール詳細" title="ルール詳細">?</button>
+        <button type="button" class="btn" id="btn-new">新しい対局</button>
       </div>
     </header>
 
     <main class="layout" id="game" hidden>
-      <!-- 常に見えるルールカード（現在の設定から自動生成） -->
-      <section class="glass rules4" id="rules4" aria-labelledby="rules4-name">
-        <h2 class="label rules4-head" id="rules4-name">ルール</h2>
-        <ol class="rules4-list" id="rules4-list"></ol>
-      </section>
+      <!-- 狭い画面では .table と .side を display: contents にして 1 列に並べ替える（style.css の order） -->
+      <div class="table">
+        <!-- 相手（上）と自分（下）の欄。体力・持ち駒・王の状態。ui/app.ts の placeSeats が手番の向きで入れる -->
+        <div class="seat seat-top" id="seat-top">
+          <div class="player-card" id="player-1"></div>
+        </div>
 
-      <section class="players" aria-label="体力と持ち駒">
-        <div class="player-card" id="player-0"></div>
-        <div class="player-card" id="player-1"></div>
-      </section>
+        <div class="board-wrap">
+          <div class="board-frame">
+            <div class="coords coords-x" aria-hidden="true"><span>a</span><span>b</span><span>c</span><span>d</span><span>e</span><span>f</span><span>g</span><span>h</span></div>
+            <div class="coords coords-y" aria-hidden="true"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span></div>
+            <div class="board" id="board" role="grid" aria-label="盤面"></div>
+          </div>
+        </div>
 
-      <div class="status-row">
-        <p class="status" id="status" role="status" aria-live="polite"></p>
-        <span class="ply" id="ply"></span>
-        <!-- オンライン対戦の接続の状態（相手の接続・つなぎ直し中） -->
-        <span class="net" id="net" role="status" hidden></span>
+        <div class="seat seat-bottom" id="seat-bottom">
+          <div class="player-card" id="player-0"></div>
+        </div>
+
+        <div class="status-row">
+          <p class="status" id="status" role="status" aria-live="polite"></p>
+          <span class="ply" id="ply"></span>
+          <!-- オンライン対戦の接続の状態（相手の接続・つなぎ直し中） -->
+          <span class="net" id="net" role="status" hidden></span>
+        </div>
       </div>
 
-      <div class="board-wrap">
-        <div class="board" id="board" role="grid" aria-label="盤面"></div>
-        <p class="legend" id="legend"></p>
-      </div>
-
-      <section class="side">
-        <div class="glass hand" id="hand">
+      <div class="side">
+        <!-- 持ち駒（駒台）。狭い画面では自分の欄の下、広い画面では盤の横の一番上 -->
+        <div class="tray hand" id="hand">
           <h2 class="label" id="hand-title">持ち駒</h2>
           <div class="hand-buttons" id="hand-buttons"></div>
           <div class="king-box" id="king-box" hidden></div>
         </div>
-        <div class="glass preview" id="preview" aria-live="polite"></div>
-        <div class="glass log">
+        <div class="panel preview" id="preview" aria-live="polite"></div>
+        <!-- ルールカード（現在の設定から自動生成）。盤を主役にするため折りたたむ（広い画面では開いて始める） -->
+        <details class="panel fold rules4" id="rules4">
+          <summary class="fold-head"><h2 class="label rules4-head" id="rules4-name">ルール</h2></summary>
+          <ol class="rules4-list" id="rules4-list"></ol>
+        </details>
+        <details class="panel fold legend-box" id="legend-box">
+          <summary class="fold-head"><h2 class="label">盤の印の見かた</h2></summary>
+          <p class="legend" id="legend"></p>
+        </details>
+        <div class="panel log">
           <h2 class="label">棋譜</h2>
           <ol class="log-list" id="log"></ol>
         </div>
-      </section>
+      </div>
     </main>
 
     <div class="toast" id="toast" role="alert" hidden></div>

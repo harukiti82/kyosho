@@ -138,12 +138,14 @@ export class App {
     game: byId("game"),
     board: byId("board"),
     legend: byId("legend"),
+    rulesBox: byId<HTMLDetailsElement>("rules4"),
     rulesName: byId("rules4-name"),
     rulesList: byId("rules4-list"),
     status: byId("status"),
     ply: byId("ply"),
     net: byId("net"),
     players: [byId("player-0"), byId("player-1")] as const,
+    seats: [byId("seat-bottom"), byId("seat-top")] as const,
     preview: byId("preview"),
     handTitle: byId("hand-title"),
     handButtons: byId("hand-buttons"),
@@ -897,6 +899,8 @@ export class App {
     fillSentences(this.el.rulesList, lines);
     this.el.rulesList.classList.toggle("dense", lines.length >= 6);
     this.el.rulesList.classList.toggle("denser", lines.length >= 7);
+    // 盤を主役にするため、ルールは折りたたむ。横に余裕のある画面（盤の横に置く）では開いて始める
+    this.el.rulesBox.open = window.matchMedia("(min-width: 900px)").matches;
   }
 
   private renderLegend(r: RuleSet) {
@@ -925,6 +929,7 @@ export class App {
     const g = this.game;
     if (!g) return;
     const pv = this.currentPreview(g);
+    this.placeSeats();
     this.renderBoard(g, pv);
     this.renderPlayers(g);
     this.renderStatus(g);
@@ -933,6 +938,16 @@ export class App {
     this.renderKingBox(g);
     this.renderLog(g);
     this.renderNet();
+  }
+
+  /** 自分の欄を盤の下、相手の欄を盤の上に置く（2 人対戦は先手が下で固定。同じ端末を挟んで座る） */
+  private placeSeats() {
+    const bottom: Player = this.settings?.mode === "pvp" ? 0 : (this.settings?.human ?? 0);
+    const [low, high] = this.el.seats;
+    const mine = this.el.players[bottom];
+    const theirs = this.el.players[other(bottom)];
+    if (mine.parentElement !== low) low.append(mine);
+    if (theirs.parentElement !== high) high.append(theirs);
   }
 
   private renderBoard(g: GameState, pv: Preview | null) {
@@ -1037,36 +1052,35 @@ export class App {
       const lost = last && last.player !== p ? last.damage + (last.king?.penalty ?? 0) : 0;
       if (lost > 0) delta = h("span", { class: `delta${fresh}`, text: `−${lost}` });
       if (last && last.player === p && last.heal > 0) delta = h("span", { class: `delta heal${fresh}`, text: `+${last.heal}` });
-      el.className = `player-card glass p${p}`;
-      el.classList.toggle("active", !g.result && g.turn === p);
+      const turn = !g.result && g.turn === p;
+      el.className = `player-card p${p}`;
+      el.classList.toggle("active", turn);
       el.classList.toggle("low", hp <= max * 0.25);
+      el.setAttribute("role", "group");
+      el.setAttribute("aria-label", PLAYER_NAME[p]);
       el.replaceChildren(
-        h("div", { class: "player-head" }, [
-          h("span", { class: `dot p${p}`, attrs: { "aria-hidden": "true" } }),
-          h("span", { class: "player-name", text: this.name(p) }),
-          !g.result && g.turn === p ? h("span", { class: "pill", text: "手番" }) : null,
-          this.kingTag(g, p),
-        ]),
-        h("div", { class: "hp-row" }, [
-          h("span", { class: "hp-label", text: "体力" }),
-          h("span", { class: "hp-num", text: String(hp) }),
-          h("span", { class: "hp-max", text: `/ ${max}` }),
-          delta,
-        ]),
-        h(
-          "div",
-          {
-            class: "hp-bar",
-            attrs: {
-              role: "meter",
-              "aria-label": `${PLAYER_NAME[p]}の体力`,
-              "aria-valuemin": "0",
-              "aria-valuemax": String(Math.max(max, hp)),
-              "aria-valuenow": String(Math.max(0, hp)),
+        h("span", { class: `avatar p${p}`, attrs: { "aria-hidden": "true" } }),
+        h("div", { class: "seat-info" }, [
+          h("div", { class: "player-head" }, [
+            h("span", { class: "player-name", text: this.name(p) }),
+            turn ? h("span", { class: "turn-tag", text: "手番" }) : null,
+            this.kingTag(g, p),
+          ]),
+          h(
+            "div",
+            {
+              class: "hp-bar",
+              attrs: {
+                role: "meter",
+                "aria-label": `${PLAYER_NAME[p]}の体力`,
+                "aria-valuemin": "0",
+                "aria-valuemax": String(Math.max(max, hp)),
+                "aria-valuenow": String(Math.max(0, hp)),
+              },
             },
-          },
-          [h("span", { class: "hp-fill", attrs: { style: `width:${pct}%` } })],
-        ),
+            [h("span", { class: "hp-fill", attrs: { style: `width:${pct}%` } })],
+          ),
+        ]),
         h(
           "div",
           { class: "hand-mini", attrs: { "aria-label": `${PLAYER_NAME[p]}の持ち駒` } },
@@ -1087,6 +1101,13 @@ export class App {
                 ),
               ),
         ),
+        // 体力は対局アプリの持ち時間の欄のように右端の箱に大きく出す（手番の側が明るくなる）
+        h("div", { class: "hp-row" }, [
+          h("span", { class: "hp-label", text: "体力" }),
+          h("span", { class: "hp-num", text: String(hp) }),
+          h("span", { class: "hp-max", text: `/ ${max}` }),
+          delta,
+        ]),
       );
     }
   }
@@ -1139,11 +1160,8 @@ export class App {
       else {
         box.append(
           h("p", { class: "muted" }, [
-            `置けるマスにカーソルを乗せると（スマホは 1 回タップ）、${v.can}駒とダメージを表示します。`,
             h("span", { class: "key-dot", attrs: { "aria-hidden": "true" } }),
-            ` のマスは置くと${v.can}マス。`,
-            g.rules.dirs === "piece" ? "持ち駒を選び替えると、その駒の矢印の方向で返せるマスに印が付きます。" : null,
-            g.rules.anchor === "attack" ? "青枠の端の自分の駒の数字もダメージに足されます。" : null,
+            ` のマスを選ぶと、${v.can}駒とダメージを予測します。`,
           ]),
         );
       }
