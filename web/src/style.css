@@ -2168,13 +2168,13 @@ button {
 }
 .key-othello {
   display: inline-block;
-  width: 0.95em;
-  height: 0.95em;
+  box-sizing: border-box;
+  width: 1.05em;
+  height: 1.05em;
+  border: 1.5px dashed var(--othello);
   border-radius: 2px;
   background: var(--board-cell);
-  outline: 1.5px dashed var(--othello);
-  outline-offset: -3px;
-  vertical-align: -0.1em;
+  vertical-align: -0.15em;
 }
 .legend {
   display: flex;

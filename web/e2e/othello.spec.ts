@@ -131,6 +131,21 @@ test.describe("普通のオセロなら置けるマス", () => {
     await page.locator(".board").screenshot({ path: `${SHOT}/${pre}-othello-board.png` });
     await noHorizontalScroll(page, width);
 
+    // 隠し王: 王にして置く予測の駒（王の印）が枠のマスに出ても、枠と王の印の両方が見える
+    const king = page.locator("#king-toggle");
+    if (touch) await king.tap();
+    else await king.click();
+    await expect(king).toHaveAttribute("aria-pressed", "true");
+    const d3 = page.locator('.cell[data-r="2"][data-c="3"]');
+    if (touch) await d3.tap();
+    else await d3.hover();
+    await expect(page.locator(".cell.othello.focus .ghost .king-mark")).toBeVisible();
+    await expect(d3).toHaveCSS("outline-style", "dashed");
+    await page.locator(".board").screenshot({ path: `${SHOT}/${pre}-othello-king.png` });
+    if (touch) await king.tap();
+    else await king.click();
+    await expect(king).toHaveAttribute("aria-pressed", "false");
+
     // 横（横だけ）に選び替えると丸は c4・f5 に移り、枠は変わらない
     if (touch) await handBtn(page, "yoko").tap();
     else await handBtn(page, "yoko").click();
