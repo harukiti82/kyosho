@@ -71,7 +71,7 @@ describe("CPU の強さ", () => {
   });
 
   it("対戦させると ハード > ノーマル > イージー（標準・30 局ずつ、先手・後手を入れ替え）", () => {
-    // npm run balance -- vs 400 std の結果: ノーマル対イージー 87.5%、ハード対ノーマル 67.0%
+    // npm run balance -- vs 400 std の結果: ノーマル対イージー 85.8%、ハード対ノーマル 72.0%（この 30 局は 27 勝・22 勝）
     expect(wins("std", "normal", "easy", 30)).toBeGreaterThanOrEqual(22);
     expect(wins("std", "hard", "normal", 30)).toBeGreaterThanOrEqual(18);
   });

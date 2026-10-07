@@ -52,13 +52,14 @@ test("開くとメニュー。CPU対戦 → 強さを選ぶと、設定画面を
 });
 
 test("強さごとに CPU の手が違う（種付き乱数で、エンジンの chooseMove と同じ手を打つ）", async ({ browser }) => {
-  // 種 7 では、標準の初手がイージー 歩・ノーマル 金・ハード 飛 と分かれる（人間が後手で CPU が先に打つ）
-  const seed = 7;
+  // 種 8 では、標準の初手がイージー 金・ノーマル 金・ハード 横 と分かれる（人間が後手で CPU が先に打つ）。
+  // 回復が低い方−1 だと初手はどの手もダメージ 2・回復 0 の同点で、イージーとノーマルは同じ手になる
+  const seed = 8;
   const expected = (["easy", "normal", "hard"] as CpuLevel[]).map((level) => ({
     level,
     move: chooseMove(viewFor(createGame(defaultRules()), 0), level, rng(seed))!,
   }));
-  expect(new Set(expected.map((e) => e.move.kind)).size).toBe(3);
+  expect(new Set(expected.map((e) => e.move.kind)).size).toBeGreaterThanOrEqual(2);
   for (const { level, move } of expected) {
     const page = await browser.newPage();
     await seedPage(page, seed);
