@@ -5,14 +5,11 @@
 ## 現在の対象
 
 - 何を / どこを: 1 手ごとの制限時間（ユーザー要望「毎ターン思考時間を設定」「CPU 対戦は難易度が高いほど短く」「イージーは無制限」。依頼元セッション経由）。ブランチ `feat/turn-timer`（作業ツリー `../kyosho-timer`）
-- ステータス: 実装・テスト済み、PR → マージ → 本番デプロイの確認中
-- 直前: 標準を 回復 低い方−1・王の指定期限 7 手・体力 129・130 に変更（PR #22、重いテストの制限時間 PR #23。マージ・本番デプロイ済み）
+- ステータス: 実装・テスト済み、PR → マージ → 本番デプロイの確認中。直前に標準を 回復 低い方−1・王の指定期限 7 手・体力 129・130 に変更（PR #22、重いテストの制限時間 PR #23。マージ・本番デプロイ済み）
 - 最終更新: 2026-10-08
-
 ## 1 手の制限時間の要点
 
-- ルール（`RuleSet`）ではなく `PlaySettings.turnSeconds`（URL に載せない）。設定メニュー「1 手の制限時間」: CPU 対戦 `Saved.timeCpu`（`auto` = `CPU_TURN_SECONDS` イージー 0・ノーマル 45・ハード 20 / 0 / 20 / 45 / 90）、マルチ `timeMulti`（既定 45）。選択肢は `net/protocol.ts` の `TURN_SECONDS`
-- 時間切れの手は engine の `playTimeout(state, rng)`（置ける手から一様、棋譜の手に `timeout: true`）。画面: `ui/clock.ts` の `TurnClock`（Date.now の差）を `App.syncClock` が描き直しのたびに合わせ、`clockShouldRun`（操作できる手番・演出なし・決着の演出なし・メニューなし）で進める。`checkTimeout` は時計の tick と盤の入力の前に呼ぶ（二重に打たない）。時計は手番の人の名札（`#turn-clock`）
+- ルール（`RuleSet`）ではなく `PlaySettings.turnSeconds`（URL に載せない）。設定メニュー「1 手の制限時間」: CPU 対戦 `Saved.timeCpu`（`auto` = `CPU_TURN_SECONDS` イージー 0・ノーマル 45・ハード 20 / 0 / 20 / 45 / 90）、マルチ `timeMulti`（既定 45）。選択肢は `net/protocol.ts` の `TURN_SECONDS`。時間切れの手は engine の `playTimeout(state, rng)`（置ける手から一様、棋譜の手に `timeout: true`）。画面: `ui/clock.ts` の `TurnClock`（Date.now の差）を `App.syncClock` が描き直しのたびに合わせ、`clockShouldRun`（操作できる手番・演出なし・決着の演出なし・メニューなし）で進める。`checkTimeout` は時計の tick と盤の入力の前に呼ぶ（二重に打たない）。時計は手番の人の名札（`#turn-clock`）
 - オンライン: サーバーが `deadline`（+ 猶予 `TURN_GRACE_MS` 1.5 秒）に alarm を張って打つ。両者切断でも進めて終局させる。`state.clock` / `move.seq` / `stale_move`。e2e は `timer.spec.ts`（`page.clock`）・`online/timer.spec.ts`（`TEST_TURN_SECONDS:3`）、ポートは `E2E_PORT` / `E2E_ONLINE_PORT`
 
 ## メニューと CPU の強さの要点
