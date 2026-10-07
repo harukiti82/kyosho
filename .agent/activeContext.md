@@ -4,10 +4,16 @@
 
 ## 現在の対象
 
-- 何を / どこを: プリセット「標準」を 回復 低い方−1・王の指定期限 7 手・体力 129・130 に変える（ユーザー要望「王将を置けるターン数はデフォルト 7」「回復は弱めて残す」。依頼元セッション経由）。ブランチ `feat/std-heal-king7`
-- ステータス: PR #22 でマージ・本番デプロイ済み（2026-10-08。本番の配信物で標準が heal lowMinus1・hp [129,130]・deadline 7 になっていることを確認）。マージ後の deploy で `test/level.test.ts` の強さ対戦が 5 秒の制限を超えたので、PR #23 で重いテストに 30 秒の制限時間（`HEAVY_MS`）を付けた
-- 並行: 1 手ごとの制限時間を別ワーカーが実装中（web/src/ui/・server/・protocol.ts）
+- 何を / どこを: 1 手ごとの制限時間（ユーザー要望「毎ターン思考時間を設定」「CPU 対戦は難易度が高いほど短く」「イージーは無制限」。依頼元セッション経由）。ブランチ `feat/turn-timer`（作業ツリー `../kyosho-timer`）
+- ステータス: 実装・テスト済み、PR → マージ → 本番デプロイの確認中
+- 直前: 標準を 回復 低い方−1・王の指定期限 7 手・体力 129・130 に変更（PR #22、重いテストの制限時間 PR #23。マージ・本番デプロイ済み）
 - 最終更新: 2026-10-08
+
+## 1 手の制限時間の要点
+
+- ルール（`RuleSet`）ではなく `PlaySettings.turnSeconds`（URL に載せない）。設定メニュー「1 手の制限時間」: CPU 対戦 `Saved.timeCpu`（`auto` = `CPU_TURN_SECONDS` イージー 0・ノーマル 45・ハード 20 / 0 / 20 / 45 / 90）、マルチ `timeMulti`（既定 45）。選択肢は `net/protocol.ts` の `TURN_SECONDS`
+- 時間切れの手は engine の `playTimeout(state, rng)`（置ける手から一様、棋譜の手に `timeout: true`）。画面: `ui/clock.ts` の `TurnClock`（Date.now の差）を `App.syncClock` が描き直しのたびに合わせ、`clockShouldRun`（操作できる手番・演出なし・決着の演出なし・メニューなし）で進める。`checkTimeout` は時計の tick と盤の入力の前に呼ぶ（二重に打たない）。時計は手番の人の名札（`#turn-clock`）
+- オンライン: サーバーが `deadline`（+ 猶予 `TURN_GRACE_MS` 1.5 秒）に alarm を張って打つ。両者切断でも進めて終局させる。`state.clock` / `move.seq` / `stale_move`。e2e は `timer.spec.ts`（`page.clock`）・`online/timer.spec.ts`（`TEST_TURN_SECONDS:3`）、ポートは `E2E_PORT` / `E2E_ONLINE_PORT`
 
 ## メニューと CPU の強さの要点
 
@@ -52,6 +58,7 @@
 
 ## 未解決・次の一手
 
+- [ ] ユーザーの試遊で制限時間の長さ（ノーマル 45 秒・ハード 20 秒・マルチ 45 秒）と時計の見やすさの感想を聞く
 - [ ] ユーザーの試遊で CPU の強さの手応え（イージーで勝てるか・ハードが強すぎないか）とメニューの流れの感想を聞く。スマホ 2 台でオンラインの作成 → 参加も実機で確かめる
 - [ ] ユーザーの試遊で 期限 7 手・回復 低い方−1 の標準の手応えを聞く（CPU の強さの差: ハード対ノーマル 72.0%・ノーマル対イージー 85.8%）
 - [ ] 本番 https://kyosho.rukiharukichi.com/ でメニューの「マルチ」に「オンライン（招待リンク）」が出ること、スマホ 2 台で作成 → 参加 → 終局・再読み込みを確かめる。確かめたら別タスクで GitHub Pages（`pages.yml`）を止める
@@ -59,6 +66,8 @@
 - [ ] ユーザーの試遊で演出の手応え・方向駒・隠し王・拠点・オセロの枠の見やすさの感想を聞く。RULES.md 本文を標準で新版に改稿するかはユーザー判断
 
 ## 現フェーズで Read すべき設計書
+
+- 制限時間: `web/src/ui/clock.ts`, `web/src/ui/app.ts`（「制限時間」節 `syncClock` / `checkTimeout`）, `web/src/engine/game.ts`（`playTimeout`）, `server/src/room.ts`, `.agent/online-protocol.md`「1 手の制限時間」
 
 - メニュー・設定メニュー・CPU の強さ: `web/src/ui/menu.ts`, `web/src/ui/setup.ts`, `web/src/ui/app.ts`（`showMenu` / `resume` / `leaveToMenu`）, `web/src/engine/cpu.ts`（`chooseMove`）
 
