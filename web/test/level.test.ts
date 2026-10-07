@@ -18,6 +18,9 @@ function rng(seed: number) {
   };
 }
 
+/** CPU 同士で何局も打たせるテストの制限時間（既定の 5 秒は CI のランナーで超えることがある） */
+const HEAVY_MS = 30_000;
+
 /** 強さ a と b を games 局対戦させた a の勝ち数（偶数局は a が先手。局 i は種 i + 1） */
 function wins(preset: PresetId, a: CpuLevel, b: CpuLevel, games: number): number {
   let n = 0;
@@ -63,7 +66,7 @@ describe("CPU の強さ", () => {
         }
       }
     }
-  });
+  }, HEAVY_MS);
 
   it("打てる手がなければ null", () => {
     const s = stateOf(boardOf({ c1: [0, 1] }), { hands: [{}, { fu: 1 }] });
@@ -74,7 +77,7 @@ describe("CPU の強さ", () => {
     // npm run balance -- vs 400 std の結果: ノーマル対イージー 85.8%、ハード対ノーマル 72.0%（この 30 局は 27 勝・22 勝）
     expect(wins("std", "normal", "easy", 30)).toBeGreaterThanOrEqual(22);
     expect(wins("std", "hard", "normal", 30)).toBeGreaterThanOrEqual(18);
-  });
+  }, HEAVY_MS);
 
   it("ハードは相手の体力を削り切る手があれば必ず打つ", () => {
     // 後手の体力 1: 1 枚でも取れば勝ち。ハードはどの種でも取って勝つ
