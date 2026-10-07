@@ -82,7 +82,7 @@ describe("URL クエリ", () => {
 describe("既定（標準）と共有済みの URL の互換", () => {
   // ユーザーが既定に指定した URL のクエリ（先手の体力は 125 から 110 に下げた）
   const STD_QUERY =
-    "take=flip&gate=0&dmg=sum&heal=avg&hp1=110&hp2=130&fu=10&gin=0&kin=2&hi=3&limit=0&king=1&kpen=hp&kdmg=30&kdue=7&dir=piece&yoko=10&kaku=4&vkin=5&vhi=3&anc=atk";
+    "take=flip&gate=0&dmg=sum&heal=avg&hp1=110&hp2=130&fu=10&gin=0&kin=2&hi=3&limit=0&king=1&kpen=hp&kdmg=30&kdue=5&dir=piece&yoko=10&kaku=4&vkin=5&vhi=3&anc=atk";
   it("指定の URL を読むと、丸めも不正もなく既定の設定と同じ。既定を書き出すと指定の URL と同じ", () => {
     expect(decodeRules(`?${STD_QUERY}`)).toEqual({ rules: defaultRules(), present: true, invalid: [] });
     expect(encodeRules(defaultRules())).toBe(STD_QUERY);
@@ -90,12 +90,6 @@ describe("既定（標準）と共有済みの URL の互換", () => {
   it("先手の体力を 110 に下げる前に共有した標準の URL（hp1=125）は、体力 125・130 のまま読める", () => {
     const before = STD_QUERY.replace("hp1=110", "hp1=125");
     expect(decodeRules(`?${before}`)).toEqual({ rules: { ...defaultRules(), hp: [125, 130] }, present: true, invalid: [] });
-  });
-  it("王の期限を 7 手にする前に共有した標準の URL（kdue=5）は、期限 5 手のまま読める（プリセットとは一致しない）", () => {
-    const before = STD_QUERY.replace("kdue=7", "kdue=5");
-    const d = decodeRules(`?${before}`);
-    expect(d).toEqual({ rules: { ...defaultRules(), king: { ...defaultRules().king, deadline: 5 } }, present: true, invalid: [] });
-    expect(matchPreset(d.rules)).toBeNull();
   });
   it("既存プリセットの URL は既定を変える前と同じ文字列で、同じ設定に読める", () => {
     for (const [id, q] of Object.entries(compat.urls)) {
@@ -160,7 +154,7 @@ describe("ルールカードの文言", () => {
       "返した駒の数字の合計がダメージ",
       "挟んだ端の自分の駒の数字もダメージに足す",
       "挟んだ両端の駒の平均だけ回復",
-      "最初の7手のうち1つを王に（相手に見えない）。王を返されたら体力−30",
+      "最初の5手のうち1つを王に（相手に見えない）。王を返されたら体力−30",
       "体力 先手 110・後手 130 が 0 で負け",
     ]);
   });

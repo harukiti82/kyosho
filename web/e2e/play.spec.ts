@@ -12,7 +12,7 @@ import { noHorizontalScroll, openRuleFields, openTab, readSetup, rng, seedPage, 
 const SHOT = "screenshots";
 /** ユーザーが既定に指定した URL のクエリ（プリセット「標準」。先手の体力は 125 から 110 に下げた） */
 const STD_QUERY =
-  "take=flip&gate=0&dmg=sum&heal=avg&hp1=110&hp2=130&fu=10&gin=0&kin=2&hi=3&limit=0&king=1&kpen=hp&kdmg=30&kdue=7&dir=piece&yoko=10&kaku=4&vkin=5&vhi=3&anc=atk";
+  "take=flip&gate=0&dmg=sum&heal=avg&hp1=110&hp2=130&fu=10&gin=0&kin=2&hi=3&limit=0&king=1&kpen=hp&kdmg=30&kdue=5&dir=piece&yoko=10&kaku=4&vkin=5&vhi=3&anc=atk";
 
 /** 盤の 64 マスがすべて同じ大きさ（中身の印やバッジで行の高さが変わらない） */
 async function cellsUniform(page: Page) {
