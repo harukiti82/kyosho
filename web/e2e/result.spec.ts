@@ -323,17 +323,17 @@ test.describe("PC 幅（動きを減らす設定・音・飛ばす操作・エ�
     await expect(page.locator("#result")).toBeVisible();
   });
 
-  test("演出中に「新しい対局」を押す: 演出を飛ばして終局画面へ（設定画面は重ならない）。そこから新しい対局を始めると演出は残らない", async ({ page }) => {
+  test("演出中に「メニュー」を押す: 演出を飛ばして終局画面へ（メニューは重ならない）。そこから新しい対局を始めると演出は残らない", async ({ page }) => {
     await playToEnd(page, LOSE_CLOSE, false);
     await waitFinale(page, "lose");
-    const box = (await page.locator("#btn-new").boundingBox())!;
+    const box = (await page.locator("#btn-menu").boundingBox())!;
     await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
     await expect(page.locator("#result")).toBeVisible();
-    await expect(page.locator("#setup")).toBeHidden();
-    await page.locator("#result-setup").click();
-    await expect(page.locator("#setup")).toBeVisible();
-    await page.locator("#setup-start").click();
-    await expect(page.locator("#setup")).toBeHidden();
+    await expect(page.locator("#menu")).toBeHidden();
+    await page.locator("#result-menu").click();
+    await expect(page.locator("#menu")).toBeVisible();
+    await expect(page.locator("#result")).toBeHidden();
+    await startGame(page);
     await expect(finale(page)).toHaveCount(0);
     expect(await moveCount(page)).toBe(0);
     // 元の演出の時間が過ぎても終局画面は出ない
@@ -341,12 +341,11 @@ test.describe("PC 幅（動きを減らす設定・音・飛ばす操作・エ�
     expect(await resultOpen(page)).toBe(false);
   });
 
-  test("最後の一手の演出の前に「新しい対局」から始め直すと、前の対局の決着の演出は出ない", async ({ page }) => {
+  test("最後の一手の演出の前に「メニュー」から始め直すと、前の対局の決着の演出は出ない", async ({ page }) => {
     await playToEnd(page, WIN, false);
-    // 特大の演出中（決着の演出の前）に設定画面を開いて始め直す
-    await page.locator("#btn-new").click();
-    await page.locator("#setup-start").click();
-    await expect(page.locator("#setup")).toBeHidden();
+    // 特大の演出中（決着の演出の前）にメニューを開いて始め直す
+    await page.locator("#btn-menu").click();
+    await startGame(page);
     await page.waitForTimeout(1800 + FINALE_MS);
     await expect(finale(page)).toHaveCount(0);
     expect(await resultOpen(page)).toBe(false);

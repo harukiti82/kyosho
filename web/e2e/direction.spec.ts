@@ -17,7 +17,7 @@ import {
 import { kindsByValue, KIND_ORDER, presetById, type PieceKind } from "../src/engine/rules";
 import { encodeRules } from "../src/ui/query";
 import { dirMark, pieceLabel, ruleLines, sentenceText } from "../src/ui/ruletext";
-import { noHorizontalScroll, openRuleFields, readSetup, rng, startGame, waitHumanTurnOrEnd } from "./helpers";
+import { noHorizontalScroll, openRuleFields, openSettings, readSetup, rng, saveSettings, startGame, waitHumanTurnOrEnd } from "./helpers";
 
 const SHOT = "screenshots";
 const DIR = presetById("dir").rules;
@@ -65,10 +65,11 @@ async function dirIconsMatch(page: Page, s: GameState) {
 test.describe("PC 幅", () => {
   test.beforeEach(({}, info) => test.skip(info.project.name !== "desktop", "PC 幅のみ"));
 
-  test("設定画面: 挟める方向・駒種ごとの数と数字・全方向への切り替え・URL の復元・不正値", async ({ page }) => {
+  test("設定メニュー: 挟める方向・駒種ごとの数と数字・全方向への切り替え・URL の復元・不正値", async ({ page }) => {
     const errors: string[] = [];
     page.on("pageerror", (e) => errors.push(String(e)));
     await page.goto("/");
+    await openSettings(page);
     await page.locator(".preset[data-preset=dir]").click();
     expect(await readSetup(page)).toEqual(DIR);
     await expect(page.locator("#custom-tag")).toHaveText("— 方向駒");
@@ -95,16 +96,20 @@ test.describe("PC 幅", () => {
     await page.locator("input[name=kaku]").press("Tab");
     await expect(page.locator("#custom-tag")).toContainText("カスタム");
     await expect(page.locator("#setup-rules4")).toContainText("体力 先手 60・後手 65 が 0 で負け");
-    // URL に反映され、再読み込みで復元される
+    // 保存すると URL に反映され、再読み込みで復元される
     const custom = await readSetup(page);
     expect(custom).toEqual({ ...DIR, values: { ...DIR.values, kin: 20 }, hand: { ...DIR.hand, kaku: 12 } });
+    await saveSettings(page);
     expect(new URL(page.url()).search.slice(1)).toBe(encodeRules(custom));
     expect(new URL(page.url()).search).toContain("&dir=piece&yoko=8&kaku=12&vkin=20&vhi=3");
     await page.reload();
     expect(await readSetup(page)).toEqual(custom);
+    await openRuleFields(page);
 
     // 全方向に切り替えると、方向の行が消え、方向の表示が薄くなり、対局では矢印が出ず歩でも 4 マス置ける
-    await page.locator("input[name=dirs][value=all]").check({ force: true });
+    // ラベルを押す（見えない 1px のラジオへの force のクリックは、レイアウトによって別の要素に当たる）
+    await page.locator("label:has(> input[name=dirs][value=all])").click();
+    await expect(page.locator("input[name=dirs][value=all]")).toBeChecked();
     await expect(page.locator("#piece-table")).toHaveClass(/dirs-all/);
     await expect(page.locator("#setup-rules4")).not.toContainText("矢印");
     await startGame(page);
@@ -115,7 +120,7 @@ test.describe("PC 幅", () => {
 
     // 不正な値は項目ごとに URL の基準（v1.0）の値にして知らせる
     await page.goto("/?dir=diagonal&kaku=99&vfu=0&vkin=5");
-    await expect(page.locator("#setup-note")).toHaveText("URL の設定に読めない値があったため、挟める方向・角の数・歩の数字はv1.0（取る）の値にしました。");
+    await expect(page.locator("#menu-note")).toHaveText("URL の設定に読めない値があったため、挟める方向・角の数・歩の数字はv1.0（取る）の値にしました。");
     const bad = await readSetup(page);
     expect([bad.dirs, bad.hand.kaku, bad.values.fu, bad.values.kin]).toEqual(["all", 0, 1, 5]);
     expect(errors).toEqual([]);
@@ -211,7 +216,7 @@ test.describe("PC 幅", () => {
     expect(usedKinds.size).toBeGreaterThanOrEqual(4);
     await expect(page.locator("#result-winner")).toHaveText(s.result!.winner === 0 ? "あなたの勝ち" : "CPU の勝ち");
     await expect(page.locator("#result-detail")).toContainText("ルール 方向駒");
-    await expect(page.locator("#result-detail .score-foot")).toHaveText(`${s.ply} 手・ルール 方向駒`);
+    await expect(page.locator("#result-detail .score-foot")).toHaveText(`${s.ply} 手・ルール 方向駒・CPU ノーマル`);
     await page.screenshot({ path: `${SHOT}/pc-dir-result.png` });
     await page.locator("#result-view").click();
     await dirIconsMatch(page, s);
@@ -242,13 +247,13 @@ test.describe("スマホ幅 375px", () => {
     // CPU の手を毎回同じにする
     await seedPage(page, 1);
     await page.goto("/");
+    await openSettings(page);
     await page.locator(".preset[data-preset=dir]").tap();
     await openRuleFields(page);
     await page.locator("#piece-table").scrollIntoViewIfNeeded();
     await noHorizontalScroll(page, 375);
     await page.screenshot({ path: `${SHOT}/sp-dir-setup.png` });
-    await page.locator("#setup-start").tap();
-    await expect(page.locator("#setup")).toBeHidden();
+    await startGame(page);
     await expect(page.locator("#rules4 li")).toHaveText(ruleLines(DIR).map(sentenceText));
     await expect(page.locator("#board")).toBeInViewport({ ratio: 1 });
     await noHorizontalScroll(page, 375);

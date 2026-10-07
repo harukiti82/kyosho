@@ -12,9 +12,38 @@
       <div class="topbar-actions">
         <button type="button" class="icon-btn mute-btn" id="btn-mute" aria-label="消音" aria-pressed="false"></button>
         <button type="button" class="icon-btn" id="btn-rules" aria-label="ルール詳細" title="ルール詳細">?</button>
-        <button type="button" class="btn" id="btn-new">新しい対局</button>
+        <button type="button" class="btn" id="btn-menu" hidden>メニュー</button>
       </div>
     </header>
+
+    <!-- メニュー（起動時の画面）。CPU対戦は強さを選ぶとそのまま始まる。ルールは「設定」で変えたもの（変えなければ標準） -->
+    <main class="menu" id="menu" hidden>
+      <div class="menu-inner">
+        <div class="menu-logo" aria-hidden="true"><span class="menu-stone p0">挟</span><span class="menu-stone p1">将</span></div>
+        <p class="setup-note menu-note" id="menu-note" role="status" hidden></p>
+        <div class="menu-panel" id="menu-main">
+          <button type="button" class="btn menu-btn" id="menu-resume" hidden>対局に戻る</button>
+          <button type="button" class="btn primary menu-btn" id="menu-cpu">CPU対戦</button>
+          <button type="button" class="btn menu-btn" id="menu-multi">マルチ</button>
+          <button type="button" class="btn ghost menu-btn" id="menu-settings">設定</button>
+        </div>
+        <div class="menu-panel" id="menu-levels" role="group" aria-labelledby="menu-levels-title" hidden>
+          <h2 class="menu-head" id="menu-levels-title">CPU の強さ</h2>
+          <button type="button" class="btn menu-btn" data-level="easy" title="1 手先だけを見て、ときどき適当に打つ">イージー</button>
+          <button type="button" class="btn menu-btn" data-level="normal" title="相手の次の 1 手まで読む">ノーマル</button>
+          <button type="button" class="btn menu-btn" data-level="hard" title="さらに先まで読み、決着を狙う">ハード</button>
+          <button type="button" class="btn ghost menu-btn menu-back">戻る</button>
+        </div>
+        <div class="menu-panel" id="menu-modes" role="group" aria-labelledby="menu-modes-title" hidden>
+          <h2 class="menu-head" id="menu-modes-title">マルチ</h2>
+          <button type="button" class="btn menu-btn" id="menu-pvp">この端末で 2 人</button>
+          <!-- オンライン対戦のサーバー（/api/health）に届く公開先でだけ出す（ui/app.ts） -->
+          <button type="button" class="btn menu-btn" id="menu-online" hidden>オンライン（招待リンク）</button>
+          <button type="button" class="btn ghost menu-btn menu-back">戻る</button>
+        </div>
+        <button type="button" class="menu-rule" id="menu-rule" title="ルール詳細"><span>ルール</span><strong id="menu-rule-name"></strong></button>
+      </div>
+    </main>
 
     <main class="layout" id="game" hidden>
       <div class="table">
@@ -77,32 +106,10 @@
     <!-- ダメージの段階の演出（文言・粒・発光）。画面に固定し、はみ出しは切る -->
     <div class="fx-layer" id="fx" aria-hidden="true"></div>
 
-    <!-- 対局設定（ルールの組み合わせ・対戦相手） -->
+    <!-- 設定（ルールの組み合わせ・手番）。保存すると次の対局から使う（ui/setup.ts。この端末に保存） -->
     <dialog class="modal modal-wide" id="setup" aria-labelledby="setup-title">
       <form method="dialog" class="modal-body setup" id="setup-form" novalidate>
-        <h2 class="modal-title" id="setup-title" tabindex="-1" autofocus>対局の設定</h2>
-        <p class="setup-note" id="setup-note" role="status" hidden></p>
-
-        <fieldset class="field">
-          <legend class="label">対戦</legend>
-          <div class="seg">
-            <label><input type="radio" name="mode" value="cpu" checked /><span>CPU 対戦</span></label>
-            <label><input type="radio" name="mode" value="pvp" /><span>2 人対戦（同じ端末）</span></label>
-            <!-- オンライン対戦のサーバー（/api/health）に届く公開先でだけ出す（ui/app.ts） -->
-            <label id="mode-online" hidden><input type="radio" name="mode" value="online" /><span>オンライン（招待リンク）</span></label>
-          </div>
-          <div class="seg side-seg" id="side-field" role="radiogroup" aria-label="CPU 対戦での自分の手番">
-            <label><input type="radio" name="side" value="random" /><span>先手・後手はランダム</span></label>
-            <label><input type="radio" name="side" value="0" checked /><span>自分が先手（黒）</span></label>
-            <label><input type="radio" name="side" value="1" /><span>自分が後手（白）</span></label>
-          </div>
-          <div class="seg side-seg" id="host-field" role="radiogroup" aria-label="オンライン対戦での自分の手番" hidden>
-            <label><input type="radio" name="host" value="random" checked /><span>先手・後手はランダム</span></label>
-            <label><input type="radio" name="host" value="first" /><span>自分が先手（黒）</span></label>
-            <label><input type="radio" name="host" value="second" /><span>自分が後手（白）</span></label>
-          </div>
-          <p class="opt-help online-help" id="online-help" hidden>部屋を作ると招待リンクが出ます（ログイン不要）</p>
-        </fieldset>
+        <h2 class="modal-title" id="setup-title" tabindex="-1" autofocus>設定</h2>
 
         <fieldset class="field">
           <legend class="label">ルール <span class="custom-tag" id="custom-tag"></span></legend>
@@ -210,10 +217,32 @@
           <input type="text" class="share-url" id="share-url" readonly aria-label="この設定の URL" hidden />
         </div>
 
+        <fieldset class="field">
+          <legend class="label">手番</legend>
+          <div class="opt">
+            <span class="opt-name" id="opt-side">CPU対戦</span>
+            <div class="seg side-seg" id="side-field" role="radiogroup" aria-labelledby="opt-side">
+              <label><input type="radio" name="side" value="random" /><span>ランダム</span></label>
+              <label><input type="radio" name="side" value="0" checked /><span>先手（黒）</span></label>
+              <label><input type="radio" name="side" value="1" /><span>後手（白）</span></label>
+            </div>
+          </div>
+          <!-- オンライン対戦の入口がある公開先でだけ出す -->
+          <div class="opt" id="host-field" hidden>
+            <span class="opt-name" id="opt-host">オンライン（部屋を作る側）</span>
+            <div class="seg side-seg" role="radiogroup" aria-labelledby="opt-host">
+              <label><input type="radio" name="host" value="random" checked /><span>ランダム</span></label>
+              <label><input type="radio" name="host" value="first" /><span>先手（黒）</span></label>
+              <label><input type="radio" name="host" value="second" /><span>後手（白）</span></label>
+            </div>
+          </div>
+        </fieldset>
+
         <div class="modal-actions">
           <button type="button" class="icon-btn" id="setup-rules" aria-label="ルール詳細" title="ルール詳細">?</button>
           <button type="button" class="btn ghost" id="setup-copy">URL をコピー</button>
-          <button type="submit" class="btn primary" id="setup-start">対局開始</button>
+          <button type="button" class="btn ghost" id="setup-cancel">やめる</button>
+          <button type="submit" class="btn primary" id="setup-save">保存</button>
         </div>
       </form>
     </dialog>
@@ -229,7 +258,7 @@
         <div class="result-stats" id="result-stats"></div>
         <div class="modal-actions">
           <button type="button" class="btn ghost" id="result-view">盤面を見る</button>
-          <button type="button" class="btn ghost" id="result-setup">設定を変える</button>
+          <button type="button" class="btn ghost" id="result-menu">メニュー</button>
           <button type="button" class="btn primary" id="result-rematch" autofocus>再戦</button>
         </div>
       </div>

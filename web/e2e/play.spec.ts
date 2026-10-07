@@ -1,4 +1,4 @@
-// ヘッドレスブラウザで設定画面を操作し、各プリセットで実際に対局して画面遷移と表示を確かめる。
+// ヘッドレスブラウザでメニュー・設定メニューを操作し、各プリセットで実際に対局して画面遷移と表示を確かめる。
 // スクリーンショットは web/screenshots/ に保存する。
 
 import { expect, test, type Page } from "@playwright/test";
@@ -7,7 +7,7 @@ import { createGame, legalCells, playableKinds, playMove, previewMove, targetsAt
 import { defaultRules, kindsByValue, KIND_ORDER, PIECES, PRESETS, presetById, type PieceKind, type RuleSet } from "../src/engine/rules";
 import { encodeRules } from "../src/ui/query";
 import { ruleLines, sentenceText } from "../src/ui/ruletext";
-import { noHorizontalScroll, openRuleFields, openTab, readSetup, rng, seedPage, startGame, waitHumanTurnOrEnd } from "./helpers";
+import { noHorizontalScroll, openRuleFields, openSettings, openTab, readSetup, rng, saveSettings, seedPage, startGame, waitHumanTurnOrEnd } from "./helpers";
 
 const SHOT = "screenshots";
 /** ユーザーが既定に指定した URL のクエリ（プリセット「標準」。先手の体力は 125 から 110 に下げた） */
@@ -121,11 +121,11 @@ async function handsMatch(page: Page, s: GameState) {
 test.describe("PC 幅", () => {
   test.beforeEach(({}, info) => test.skip(info.project.name !== "desktop", "PC 幅のみ"));
 
-  test("設定画面: プリセット・個別変更・ルール文の連動・範囲外の値の補正", async ({ page }) => {
+  test("設定メニュー: プリセット・個別変更・ルール文の連動・範囲外の値の補正", async ({ page }) => {
     const errors: string[] = [];
     page.on("pageerror", (e) => errors.push(String(e)));
     await page.goto("/");
-    await expect(page.locator("#setup")).toBeVisible();
+    await openSettings(page);
     // 既定は標準
     await expect(page.locator(".preset[aria-pressed=true]")).toHaveAttribute("data-preset", "std");
     expect(await readSetup(page)).toEqual(defaultRules());
@@ -163,18 +163,21 @@ test.describe("PC 幅", () => {
     await page.locator("input[name=hp1]").press("Tab");
     await expect(page.locator("input[name=hp1]")).toHaveValue("5");
     await expect(page.locator("#setup-rules4")).toContainText("体力 先手 200・後手 5 が 0 で負け");
-    // 設定はアドレスバーにも反映される（再読み込みしても同じ設定）
+    // 保存するとアドレスバーにも反映される（再読み込みしても同じ設定）
     const custom = await readSetup(page);
+    await saveSettings(page);
+    await expect(page.locator("#menu-rule-name")).toHaveText("カスタム");
     expect(new URL(page.url()).search.slice(1)).toBe(encodeRules(custom));
     await page.reload();
+    await expect(page.locator("#menu-note")).toHaveText("URL の設定を読み込みました。");
     expect(await readSetup(page)).toEqual(custom);
-    await expect(page.locator("#setup-note")).toHaveText("URL の設定を読み込みました。");
     expect(errors).toEqual([]);
   });
 
   test("URL 共有: コピーした URL を新しいページで開くと同じ設定。不正なクエリは既定値で始まる", async ({ page, context }) => {
     await context.grantPermissions(["clipboard-read", "clipboard-write"]);
     await page.goto("/");
+    await openSettings(page);
     await page.locator(".preset[data-preset=v04]").click();
     await openRuleFields(page);
     await page.locator("input[name=gate][value='1']").check({ force: true });
@@ -200,7 +203,7 @@ test.describe("PC 幅", () => {
 
     // 不正なクエリ: エラーにならず、不正な項目は URL の基準（v1.0）の値（既定を変える前と同じ解釈）
     await other.goto("/?take=zzz&gate=7&dmg=<script>&hp1=-3&hp2=1e9&fu=abc&hi=99&limit=99999&heal=__proto__");
-    await expect(other.locator("#setup-note")).toContainText("v1.0（取る）の値にしました");
+    await expect(other.locator("#menu-note")).toContainText("v1.0（取る）の値にしました");
     expect(await readSetup(other)).toEqual(presetById("v10").rules);
     await expect(other.locator(".preset[aria-pressed=true]")).toHaveAttribute("data-preset", "v10");
     await startGame(other);
@@ -216,13 +219,13 @@ test.describe("PC 幅", () => {
     expect(std).toEqual(presetById("std").rules);
     // 指定の URL: 読めない値はなく、プリセット「標準」と一致する
     await page.goto(`/?${STD_QUERY}`);
-    await expect(page.locator("#setup-note")).toHaveText("URL の設定を読み込みました。");
+    await expect(page.locator("#menu-note")).toHaveText("URL の設定を読み込みました。");
     expect(await readSetup(page)).toEqual(std);
     await expect(page.locator(".preset[aria-pressed=true]")).toHaveAttribute("data-preset", "std");
 
     // クエリなし: 同じ設定で始まる
     await page.goto("/");
-    await expect(page.locator("#setup-note")).toBeHidden();
+    await expect(page.locator("#menu-note")).toBeHidden();
     expect(await readSetup(page)).toEqual(std);
     await expect(page.locator("#custom-tag")).toHaveText("— 標準");
     await startGame(page);
@@ -405,16 +408,16 @@ test.describe("PC 幅", () => {
 test.describe("スマホ幅 375px", () => {
   test.beforeEach(({}, info) => test.skip(info.project.name !== "mobile", "スマホ幅のみ"));
 
-  test("設定画面と各プリセットの対局画面で横スクロールが出ず、盤が最初の画面に入る", async ({ page }) => {
+  test("設定メニューと各プリセットの対局画面で横スクロールが出ず、盤が最初の画面に入る", async ({ page }) => {
     await page.goto("/");
-    await expect(page.locator("#setup")).toBeVisible();
+    await openSettings(page);
     await noHorizontalScroll(page, 375);
     await page.screenshot({ path: `${SHOT}/sp-setup.png` });
-    // 設定画面の下の方（ルール文・対戦・URL コピー）
-    await page.locator("#setup-copy").scrollIntoViewIfNeeded();
+    // 設定メニューの下の方（ルール文・手番・URL コピー）
+    await page.locator("#side-field").scrollIntoViewIfNeeded();
     await noHorizontalScroll(page, 375);
     await page.screenshot({ path: `${SHOT}/sp-setup-bottom.png` });
-    await expect(page.locator("#setup-start")).toBeInViewport();
+    await expect(page.locator("#setup-save")).toBeInViewport();
     // クエリなしの既定（標準）で始めた対局画面
     await startGame(page);
     await ruleCardIs(page, defaultRules());
@@ -437,9 +440,9 @@ test.describe("スマホ幅 375px", () => {
     // CPU の手を毎回同じにする
     await seedPage(page, 1);
     await page.goto("/");
+    await openSettings(page);
     await page.locator(".preset[data-preset=v2]").tap();
-    await page.locator("#setup-start").tap();
-    await expect(page.locator("#setup")).toBeHidden();
+    await startGame(page);
     await ruleCardIs(page, presetById("v2").rules);
 
     // 金を選び、返せるマスを 1 回タップ → 予測、もう一度タップ → 確定

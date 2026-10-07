@@ -56,21 +56,28 @@ export function watch(page: Page, name: string, touch: boolean): Player {
 
 export const prefix = (info: TestInfo) => (info.project.name === "desktop" ? "pc" : "sp");
 
-/** 設定画面でオンライン対戦を選び、部屋を作って招待リンクを返す。preset が null ならプリセットを押さない（既定のまま） */
+/**
+ * 設定メニューでルール（preset が null ならプリセットを押さない＝既定のまま）とオンラインの手番を選んで保存し、
+ * メニューのマルチ → オンラインで部屋を作って招待リンクを返す
+ */
 export async function createRoomFromSetup(host: Player, preset: PresetId | null, seat: "first" | "second" | "random", shot?: string): Promise<string> {
   const { page } = host;
   await page.goto("/");
-  await expect(page.locator("#setup")).toBeVisible();
+  await expect(page.locator("#menu")).toBeVisible();
   // /api/health に届いたら入口が出る
-  await expect(page.locator("#mode-online")).toBeVisible();
+  await page.locator("#menu-multi").click();
+  await expect(page.locator("#menu-online")).toBeVisible();
+  await page.locator("#menu-modes .menu-back").click();
+  await page.locator("#menu-settings").click();
+  await expect(page.locator("#setup")).toBeVisible();
+  await expect(page.locator("#host-field")).toBeVisible();
   if (preset) await page.locator(`.preset[data-preset=${preset}]`).click();
-  await page.locator("#mode-online").click();
-  await expect(page.locator("input[name=mode][value=online]")).toBeChecked();
-  await expect(page.locator("#side-field")).toBeHidden();
   await page.locator(`label:has(> input[name=host][value=${seat}])`).click();
-  await expect(page.locator("#setup-start")).toHaveText("部屋を作る");
+  await page.locator("#setup-save").click();
+  await expect(page.locator("#setup")).toBeHidden();
+  await page.locator("#menu-multi").click();
   if (shot) await page.screenshot({ path: shot });
-  await page.locator("#setup-start").click();
+  await page.locator("#menu-online").click();
   await expect(page.locator("#online")).toHaveAttribute("data-view", "invite");
   const url = await page.locator("#invite-url").inputValue();
   expect(url).toMatch(/\?room=[A-Za-z0-9_-]{22}$/);

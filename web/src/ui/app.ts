@@ -1,7 +1,7 @@
 // 画面の制御。ゲームの計算はすべて engine/ に任せ、ここは表示と入力だけを扱う。
 
 import { cellName, discCount, othelloCells, SIZE, type Cell } from "../engine/board";
-import { chooseLookahead } from "../engine/cpu";
+import { chooseMove, CPU_LEVEL_NAME, DEFAULT_CPU_LEVEL } from "../engine/cpu";
 import {
   availableKinds,
   createGame,
@@ -64,6 +64,7 @@ import { OnlineDialog, seatText } from "./online";
 import { hitOf, statsOf, tierOf, tierText, type HitBreakdown, type PlayerStats, type Tier } from "./impact";
 import { outcomeOf, type Outcome } from "./outcome";
 import { dirMark, endDetails, handText, hpText, kingPenaltyText, pieceLabel, ruleDetails, ruleLines, verb } from "./ruletext";
+import { Menu } from "./menu";
 import { drawSeat, fillSentences, SetupDialog, type PlaySettings } from "./setup";
 import { Sound } from "./sound";
 
@@ -134,6 +135,7 @@ export class App {
 
   private readonly cells: HTMLButtonElement[][] = [];
   private readonly setup: SetupDialog;
+  private readonly menu: Menu;
   private readonly sound = new Sound();
   private readonly fx = new Fx(byId("fx"));
   private readonly el = {
@@ -161,18 +163,36 @@ export class App {
 
   constructor() {
     this.buildBoard();
+    this.menu = new Menu({
+      cpu: (level) => this.start(this.setup.playSettings("cpu", level)),
+      pvp: () => this.start(this.setup.playSettings("pvp")),
+      online: () => this.start(this.setup.playSettings("online")),
+      settings: () => this.setup.open(),
+      rules: () => this.showRules(this.setup.current.rules),
+      resume: () => this.resume(),
+    });
     this.setup = new SetupDialog(
-      (s) => this.start(s),
+      this.local,
       (r) => this.showRules(r),
-      () => !!this.game,
+      (s) => {
+        this.menu.setRuleName(ruleName(s.rules));
+        // オンライン対戦の部屋にいる間は、アドレスを部屋の URL のままにする
+        if (!this.room) this.setup.reflectUrl(s.rules);
+      },
+      (text) => this.menu.showNote(text),
     );
+    this.menu.setRuleName(ruleName(this.setup.current.rules));
     this.bindControls();
-    // 招待リンク（?room=）から開いたら部屋へ、それ以外は設定画面から
+    // 招待リンク（?room=）から開いたら部屋へ、それ以外はメニューから
     const roomId = roomIdFromSearch(window.location.search);
-    if (roomId === undefined) this.setup.open();
+    if (roomId === undefined) this.showMenu();
     else void this.openRoom(roomId);
     // オンライン対戦の入口は、サーバーに届く公開先でだけ出す（GitHub Pages・vite preview では出さない）
-    void checkHealth().then((ok) => ok && this.setup.enableOnline());
+    void checkHealth().then((ok) => {
+      if (!ok) return;
+      this.menu.enableOnline();
+      this.setup.enableOnline();
+    });
   }
 
   // ---- 初期化 ----
@@ -256,7 +276,7 @@ export class App {
     const { result, rules } = this.el;
     this.bindTabs();
     byId("btn-rules").addEventListener("click", () => this.showRules(this.settings?.rules ?? null));
-    byId("btn-new").addEventListener("click", () => this.openSetup());
+    byId("btn-menu").addEventListener("click", () => this.showMenu());
     byId("rules-close").addEventListener("click", () => rules.close());
     const mute = byId("btn-mute");
     const showMute = () => {
@@ -270,9 +290,9 @@ export class App {
     });
     showMute();
     byId("result-view").addEventListener("click", () => result.close());
-    byId("result-setup").addEventListener("click", () => {
+    byId("result-menu").addEventListener("click", () => {
       result.close();
-      this.openSetup();
+      this.showMenu();
     });
     byId("result-rematch").addEventListener("click", () => {
       result.close();
@@ -308,6 +328,8 @@ export class App {
   // ---- 対局の進行 ----
 
   private start(settings: PlaySettings) {
+    this.menu.hide();
+    byId("btn-menu").hidden = false;
     if (settings.mode === "online") {
       void this.createOnline(settings);
       return;
@@ -440,9 +462,10 @@ export class App {
     const g = this.game;
     if (!g || g.result || this.online || this.isHuman(g.turn)) return;
     this.cpuTimer = window.setTimeout(() => {
-      if (this.game !== g) return;
+      // メニューを開いている間は打たない（「対局に戻る」で読み直す）
+      if (this.game !== g || this.menu.visible) return;
       // CPU には自分の視点（相手の王の正体を含まない）だけを渡す
-      const ch = chooseLookahead(viewFor(g, g.turn));
+      const ch = chooseMove(viewFor(g, g.turn), this.settings?.level ?? DEFAULT_CPU_LEVEL);
       if (ch) this.place(ch.r, ch.c, ch.kind, ch.king);
     }, delay);
   }
@@ -498,13 +521,37 @@ export class App {
 
   // ---- オンライン対戦 ----
 
-  /** 設定画面を開く。オンライン対戦中に開いて閉じたら、アドレスを部屋の URL に戻す */
-  private openSetup() {
-    const restore = this.room ? `${window.location.pathname}?room=${this.room.id}` : undefined;
-    this.setup.open(this.settings?.rules, restore);
+  /** 対局がある（終局後も盤と「結果を見る」に戻れる）・オンラインの部屋にいる間は、メニューから戻れる */
+  private canResume(): boolean {
+    return !!this.room || !!this.game;
   }
 
-  /** 部屋を作って入る（設定画面の「部屋を作る」・終局後の「新しい部屋で再戦」） */
+  /** メニューを出す。対局は止めて残し、「対局に戻る」で続ける（新しい対局を始めたら捨てる） */
+  private showMenu() {
+    window.clearTimeout(this.cpuTimer);
+    window.clearTimeout(this.resultTimer);
+    if (this.el.result.open) this.el.result.close();
+    this.lobby.close();
+    this.el.game.hidden = true;
+    byId("btn-menu").hidden = true;
+    this.menu.show(this.canResume());
+  }
+
+  /** メニューから対局へ戻る */
+  private resume() {
+    this.menu.hide();
+    byId("btn-menu").hidden = false;
+    if (this.game) {
+      this.el.game.hidden = false;
+      this.render();
+      this.scheduleCpu(CPU_DELAY_MS);
+    } else if (this.room) {
+      // 相手を待っている部屋（局面がまだない）は案内のダイアログに戻る
+      this.syncLobby();
+    }
+  }
+
+  /** 部屋を作って入る（メニューの「オンライン」・終局後の「新しい部屋で再戦」） */
   private async createOnline(settings: PlaySettings) {
     this.lobby.busy("部屋を作っています…");
     try {
@@ -515,7 +562,7 @@ export class App {
     } catch (e) {
       const why = e instanceof OnlineHttpError && e.code === "bad_rules" ? "この設定ではオンライン対戦の部屋を作れませんでした。" : "サーバーにつながりませんでした。";
       this.lobby.error("部屋を作れませんでした", `${why}時間をおいてもう一度試してください。`, [
-        { label: "設定画面へ", onClick: () => this.leaveToSetup(settings.rules) },
+        { label: "メニューへ", onClick: () => this.leaveToMenu() },
         { label: "もう一度試す", primary: true, onClick: () => void this.createOnline(settings) },
       ]);
     }
@@ -526,7 +573,7 @@ export class App {
     this.el.game.hidden = true;
     if (id === null) {
       this.lobby.error("部屋が見つかりません", "招待リンクの部屋 ID の形式が違います。リンクを最後までコピーできているか確かめてください。", [
-        { label: "設定画面へ", primary: true, onClick: () => this.leaveToSetup() },
+        { label: "メニューへ", primary: true, onClick: () => this.leaveToMenu() },
       ]);
       return;
     }
@@ -547,7 +594,7 @@ export class App {
         ruleName: name,
         createdHere: createdHere(this.local, id),
         onJoin: () => this.enterRoom(id, { mode: "online", human: 0, rules: info.rules }),
-        onCancel: () => this.leaveToSetup(info.rules),
+        onCancel: () => this.leaveToMenu(),
       });
     } catch (e) {
       if (e instanceof OnlineHttpError && e.code === "not_found") this.showEnded("room_not_found", "招待リンクの部屋が見つかりません。");
@@ -563,6 +610,8 @@ export class App {
     this.el.game.hidden = true;
     this.settings = settings ?? { mode: "online", human: 0, rules: defaultRules() };
     this.room = { id, phase: "waiting", opponent: { joined: false, online: false } };
+    // 招待リンクから入ったとき（メニューを通らない）もメニューへ出られるように
+    byId("btn-menu").hidden = false;
     this.sending = false;
     this.queued = null;
     // 再読み込みで同じ部屋に戻れるように、アドレスを部屋の URL にする
@@ -604,16 +653,14 @@ export class App {
     this.renderNet();
   }
 
-  /** オンライン対戦をやめて設定画面へ（アドレスから部屋を外す） */
-  private leaveToSetup(rules?: RuleSet) {
-    const keep = rules ?? this.settings?.rules;
+  /** オンライン対戦をやめてメニューへ（アドレスから部屋を外す） */
+  private leaveToMenu() {
     this.leaveOnline();
     this.resetPlay();
     this.game = null;
     this.settings = null;
-    this.el.game.hidden = true;
     window.history.replaceState(null, "", window.location.pathname);
-    this.setup.open(keep);
+    this.showMenu();
   }
 
   /** state が届いた。局面が進んだ（棋譜が伸びた）ときだけ演出し、それ以外（接続の変化・復帰）は描き直すだけ */
@@ -649,7 +696,8 @@ export class App {
     if (first) {
       // 接続・再読み込み直後: 過去の手は演出しない。終局済みなら結果をそのまま出す
       this.seenEvents = m.view.history.length;
-      this.el.game.hidden = false;
+      // メニューを開いている間は盤を出さない（「対局に戻る」で出す）
+      this.el.game.hidden = this.menu.visible;
       this.renderRuleCard(s.rules);
       this.renderLegend(s.rules);
       this.render();
@@ -664,7 +712,7 @@ export class App {
   /** 待機中は招待リンクの案内、それ以外は案内を閉じる */
   private syncLobby() {
     const room = this.room;
-    if (!room || !this.settings) return;
+    if (!room || !this.settings || this.menu.visible) return;
     if (room.phase === "waiting") {
       if (this.lobby.view !== "invite") {
         this.lobby.invite({
@@ -672,7 +720,7 @@ export class App {
           rules: this.settings.rules,
           ruleName: ruleName(this.settings.rules),
           you: this.settings.human,
-          onLeave: () => this.leaveToSetup(),
+          onLeave: () => this.leaveToMenu(),
         });
       }
     } else if (this.lobby.view === "invite" || this.lobby.view === "busy") {
@@ -721,7 +769,7 @@ export class App {
 
   /** つなげない・つながらなくなった理由を案内に出す。lead は理由の前に添える一文 */
   private showEnded(reason: EndReason, lead?: string) {
-    const back = { label: "設定画面へ", onClick: () => this.leaveToSetup() };
+    const back = { label: "メニューへ", onClick: () => this.leaveToMenu() };
     const titles: Record<EndReason, [string, string]> = {
       replaced: ["別のタブで開かれました", "この対局が別のタブ（または別の端末）で開かれたため、こちらの接続を閉じました。"],
       room_not_found: ["部屋が見つかりません", "招待リンクが古いか、部屋が片付けられました（放置した部屋は 24 時間、終局後は 1 時間で消えます）。"],
@@ -752,7 +800,7 @@ export class App {
       "オンライン対戦に接続できません",
       "サーバーにつながりませんでした。この公開先ではオンライン対戦を使えないか、通信が切れています。",
       [
-        { label: "設定画面へ", onClick: () => this.leaveToSetup() },
+        { label: "メニューへ", onClick: () => this.leaveToMenu() },
         { label: "もう一度試す", primary: true, onClick: () => void this.openRoom(roomIdFromSearch(window.location.search) ?? null) },
       ],
     );
@@ -912,6 +960,11 @@ export class App {
   }
 
   /** 相手の呼び方（CPU 対戦は「CPU」、オンライン対戦は「相手」） */
+  /** CPU 対戦の強さ（終局画面の下の行。CPU 対戦でなければ空） */
+  private levelText() {
+    return this.settings?.mode === "cpu" ? `・CPU ${CPU_LEVEL_NAME[this.settings.level ?? DEFAULT_CPU_LEVEL]}` : "";
+  }
+
   private foe() {
     return this.online ? "相手" : "CPU";
   }
@@ -1695,7 +1748,7 @@ export class App {
         h("thead", {}, [h("tr", {}, [h("td"), head(0), head(1)])]),
         h("tbody", {}, [row("体力", [String(g.hp[0]), String(g.hp[1])]), row("石数", [String(discs[0]), String(discs[1])]), king]),
       ]),
-      h("p", { class: "score-foot", text: `${g.ply} 手・ルール ${ruleName(g.rules)}` }),
+      h("p", { class: "score-foot", text: `${g.ply} 手・ルール ${ruleName(g.rules)}${this.levelText()}` }),
     );
   }
 

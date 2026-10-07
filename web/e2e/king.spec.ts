@@ -19,7 +19,7 @@ import {
 import { presetById, type HiddenKing, type PieceKind, type RuleSet } from "../src/engine/rules";
 import { encodeRules } from "../src/ui/query";
 import { ruleLines, sentenceText } from "../src/ui/ruletext";
-import { noHorizontalScroll, openRuleFields, readSetup, rng, startGame, waitHumanTurnOrEnd } from "./helpers";
+import { noHorizontalScroll, openRuleFields, openSettings, readSetup, rng, saveSettings, startGame, waitHumanTurnOrEnd } from "./helpers";
 
 const SHOT = "screenshots";
 const KING = presetById("king").rules;
@@ -70,7 +70,7 @@ const kingMarks = (page: Page) =>
 test.describe("PC 幅", () => {
   test.beforeEach(({}, info) => test.skip(info.project.name !== "desktop", "PC 幅のみ"));
 
-  test("設定画面: 隠し王の項目・連動・範囲外の補正・URL の復元", async ({ page }) => {
+  test("設定メニュー: 隠し王の項目・連動・範囲外の補正・URL の復元", async ({ page }) => {
     const errors: string[] = [];
     page.on("pageerror", (e) => errors.push(String(e)));
     await page.goto("/");
@@ -104,10 +104,12 @@ test.describe("PC 幅", () => {
     await expect(page.locator("#king-lose-label")).toHaveText("取られたら即負け");
     const custom = await readSetup(page);
     expect(custom.king).toEqual({ on: true, penalty: "lose", amount: 20, deadline: 1 });
-    // アドレスバーに反映され、再読み込みで復元される
+    // 保存するとアドレスバーに反映され、再読み込みで復元される
+    await saveSettings(page);
     expect(new URL(page.url()).search).toContain("king=1&kpen=lose&kdmg=20&kdue=1");
     await page.reload();
     expect(await readSetup(page)).toEqual(custom);
+    await openRuleFields(page);
     // なしに戻すと追加設定は隠れ、ルール文から王の行が消える
     await page.locator("input[name=king][value='0']").check({ force: true });
     await expect(page.locator("#king-sub")).toBeHidden();
@@ -115,7 +117,7 @@ test.describe("PC 幅", () => {
 
     // 不正な値は URL の基準（v1.0）の値（なし・体力−20・5 手）にして知らせる
     await page.goto("/?king=1&kpen=boom&kdmg=0&kdue=99");
-    await expect(page.locator("#setup-note")).toContainText("王の罰・王の罰の体力・王の指定期限はv1.0（取る）の値にしました");
+    await expect(page.locator("#menu-note")).toContainText("王の罰・王の罰の体力・王の指定期限はv1.0（取る）の値にしました");
     expect((await readSetup(page)).king).toEqual({ on: true, penalty: "hp", amount: 20, deadline: 5 });
     expect(errors).toEqual([]);
   });
@@ -338,14 +340,14 @@ test.describe("スマホ幅 375px", () => {
 
   test("隠し王: 設定画面と対局画面で横スクロールなし。タップで王を指定して置ける", async ({ page }) => {
     await page.goto("/");
+    await openSettings(page);
     await page.locator(".preset[data-preset=king]").tap();
     await openRuleFields(page);
     await page.locator("#king-sub").scrollIntoViewIfNeeded();
     await expect(page.locator("#king-sub")).toBeVisible();
     await noHorizontalScroll(page, 375);
     await page.screenshot({ path: `${SHOT}/sp-king-setup.png` });
-    await page.locator("#setup-start").tap();
-    await expect(page.locator("#setup")).toBeHidden();
+    await startGame(page);
     await expect(page.locator("#rules4 li")).toHaveText(ruleLines(KING).map(sentenceText));
     await expect(page.locator("#board")).toBeInViewport({ ratio: 1 });
     await noHorizontalScroll(page, 375);
