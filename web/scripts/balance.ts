@@ -1,8 +1,9 @@
 // 2 手読み CPU 同士で対局させ、先手勝率・王が返された割合・決着の手数・パス・駒種ごとの使用回数・
 // 端の駒の上乗せ（うち隅の駒の割合）・隅を取った側の勝率などを集計する（隠し王・方向駒・拠点プリセットのバランス確認用）。
 // 乱数は種付き（mulberry32）。局 i は種 i で、結果は毎回同じになる。
+// 第 1 引数が vs なら CPU の強さ同士を対戦させる（vs 局数 プリセット 強さA 強さB。先手・後手は 1 局ごとに入れ替える）。
 
-import { chooseLookahead } from "../src/engine/cpu";
+import { chooseLookahead, chooseMove, CPU_LEVEL_NAME, CPU_LEVELS, type CpuLevel } from "../src/engine/cpu";
 import { SIZE } from "../src/engine/board";
 import { createGame, kingInfo, playMove, viewFor, type EndReason } from "../src/engine/game";
 import { cloneRules, kindsInRules, PIECES, presetById, type PieceKind, type Player, type PresetId } from "../src/engine/rules";
@@ -22,7 +23,44 @@ const pct = (a: number, b: number) => (b === 0 ? "—" : `${((a / b) * 100).toFi
 const isCorner = (r: number, c: number) => (r === 0 || r === SIZE - 1) && (c === 0 || c === SIZE - 1);
 const avg = (xs: number[]) => (xs.length === 0 ? "—" : (xs.reduce((s, x) => s + x, 0) / xs.length).toFixed(1));
 
+/** 強さ a と b を games 局対戦させ、a の勝ち・負け・引き分けと平均の思考時間を出す */
+function versus(args: string[]) {
+  const games = Number(args[0] ?? 200);
+  const preset = (args[1] ?? "std") as PresetId;
+  const [a, b] = [args[2] ?? "easy", args[3] ?? "normal"] as CpuLevel[];
+  if (!CPU_LEVELS.includes(a) || !CPU_LEVELS.includes(b)) throw new Error(`強さは ${CPU_LEVELS.join(" / ")}`);
+  const rules = cloneRules(presetById(preset).rules);
+  const res = { win: 0, lose: 0, draw: 0 };
+  const ms: Record<string, number[]> = { [a]: [], [b]: [] };
+  const plies: number[] = [];
+  for (let i = 0; i < games; i++) {
+    const rand = rng(i + 1);
+    // 偶数局は a が先手、奇数局は b が先手
+    const levelOf = (p: Player): CpuLevel => ((p === 0) === (i % 2 === 0) ? a : b);
+    let s = createGame(rules);
+    while (!s.result) {
+      const lv = levelOf(s.turn);
+      const t = performance.now();
+      const ch = chooseMove(viewFor(s, s.turn), lv, rand)!;
+      ms[lv].push(performance.now() - t);
+      s = playMove(s, ch.r, ch.c, ch.kind, { king: ch.king });
+    }
+    const w = s.result.winner;
+    if (w === null) res.draw++;
+    else if (levelOf(w) === a && a !== b) res.win++;
+    else if (a === b) res[w === 0 ? "win" : "lose"]++;
+    else res.lose++;
+    plies.push(s.ply);
+  }
+  const t = (lv: CpuLevel) => avg(ms[lv]);
+  console.log(`## 強さの対戦: ${presetById(preset).name}・${games} 局（先手・後手を 1 局ごとに入れ替え）`);
+  console.log(`| ${CPU_LEVEL_NAME[a]} の勝ち | ${CPU_LEVEL_NAME[b]} の勝ち | 引き分け | ${CPU_LEVEL_NAME[a]} の勝率 | 平均手数 | 1 手の思考（ms） |`);
+  console.log("|---|---|---|---|---|---|");
+  console.log(`| ${res.win} | ${res.lose} | ${res.draw} | ${pct(res.win, games)} | ${avg(plies)} | ${CPU_LEVEL_NAME[a]} ${t(a)} / ${CPU_LEVEL_NAME[b]} ${t(b)} |`);
+}
+
 export function main(args: string[]) {
+  if (args[0] === "vs") return versus(args.slice(1));
   const games = Number(args[0] ?? 400);
   const preset = (args[1] ?? "king") as PresetId;
   const rules = cloneRules(presetById(preset).rules);
