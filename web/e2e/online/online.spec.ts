@@ -200,6 +200,15 @@ test("既定（標準）のまま部屋を作る: 部屋のルールが標準に
   await expect(host.page.locator("#rules4-name")).toHaveText(`ルール — ${presetById("std").name}`);
   await expect(guest.page.locator("#player-1 .hp-max")).toHaveText("/ 130");
 
+  // 招待リンクから入った側もメニューへ出られ、部屋の URL と接続を保ったまま「対局に戻る」で戻れる
+  await guest.page.locator("#btn-menu").click();
+  await expect(guest.page.locator("#menu")).toBeVisible();
+  await expect(guest.page.locator("#menu-resume")).toBeVisible();
+  expect(new URL(guest.page.url()).search).toMatch(/^\?room=/);
+  await guest.page.locator("#menu-resume").click();
+  await expect(guest.page.locator("#game")).toBeVisible();
+  await expect(guest.page.locator("#menu")).toBeHidden();
+
   await playToEnd(host, guest);
   await waitResult(host);
   await waitResult(guest);
@@ -249,9 +258,9 @@ test("エラー: 存在しない部屋・満員の部屋の招待リンク", asy
   // 形式の違う ID
   await p.page.goto("/?room=abc");
   await expect(p.page.locator("#online-title")).toHaveText("部屋が見つかりません");
-  // 設定画面へ戻ると、アドレスから部屋が外れ、ふつうに遊べる
+  // メニューへ戻ると、アドレスから部屋が外れ、ふつうに遊べる
   await p.page.locator("#online-actions .btn.primary").click();
-  await expect(p.page.locator("#setup")).toBeVisible();
+  await expect(p.page.locator("#menu")).toBeVisible();
   expect(new URL(p.page.url()).search).not.toContain("room=");
 
   // 満員: API で部屋を作り、2 つの WebSocket で両方の席を埋める

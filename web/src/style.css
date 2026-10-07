@@ -186,6 +186,95 @@ button {
   gap: 0.4rem;
 }
 
+/* ---- メニュー（起動時の画面）: 盤の石 2 つの印と、縦に並べた厚みのある鍵 ---- */
+.menu {
+  display: grid;
+  place-items: start center;
+  padding: clamp(1rem, 6vh, 3.5rem) 16px 2rem;
+}
+.menu-inner {
+  display: grid;
+  justify-items: center;
+  gap: 1.1rem;
+  width: min(100%, 20rem);
+}
+.menu-logo {
+  display: flex;
+  gap: 0.35rem;
+  margin-bottom: 0.4rem;
+}
+.menu-stone {
+  display: inline-grid;
+  place-items: center;
+  width: 4.6rem;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  font-family: var(--font-piece);
+  font-size: 2.3rem;
+  font-weight: 800;
+  line-height: 1;
+}
+/* 盤の石と同じ質感（.stone.p0 / .stone.p1） */
+.menu-stone.p0 {
+  background: radial-gradient(circle at 34% 26%, #66615a 0%, #2a2825 32%, var(--stone-0) 62%, #030303 100%);
+  color: var(--stone-0-ink);
+  box-shadow: inset 0 -0.12em 0.18em rgba(0, 0, 0, 0.7), inset 0 0.06em 0.06em rgba(255, 255, 255, 0.18), 0 0.12em 0.2em rgba(0, 0, 0, 0.55);
+}
+.menu-stone.p1 {
+  background: radial-gradient(circle at 34% 26%, #ffffff 0%, #f8f5ee 30%, var(--stone-1) 58%, #c4bcab 100%);
+  color: var(--stone-1-ink);
+  box-shadow: inset 0 -0.12em 0.18em rgba(90, 76, 54, 0.45), 0 0.12em 0.2em rgba(0, 0, 0, 0.5);
+}
+.menu-note {
+  width: 100%;
+  margin: 0;
+}
+.menu-panel {
+  display: grid;
+  gap: 0.6rem;
+  width: 100%;
+}
+.menu-head {
+  margin: 0 0 0.2rem;
+  font-family: var(--font-piece);
+  font-size: 1.15rem;
+  text-align: center;
+  color: var(--ink-muted);
+}
+.menu-btn {
+  width: 100%;
+  padding: 0.85rem 1rem;
+  font-size: 1.05rem;
+  letter-spacing: 0.06em;
+}
+.menu-back {
+  margin-top: 0.3rem;
+  padding: 0.55rem 1rem;
+  font-size: 0.9rem;
+  color: var(--ink-muted);
+}
+/* 次の対局のルール（押すとルール詳細） */
+.menu-rule {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  padding: 0.35rem 0.6rem;
+  border: 0;
+  border-bottom: 1px dashed var(--line);
+  background: none;
+  font-size: 0.85rem;
+  color: var(--ink-muted);
+  cursor: pointer;
+}
+.menu-rule strong {
+  font-family: var(--font-piece);
+  font-size: 1rem;
+  color: var(--ink);
+}
+.menu-rule:hover strong {
+  color: var(--amber);
+}
+
 /* ---- レイアウト（モバイル優先の 1 列。広い画面は盤の列＋引き出しの列） ---- */
 .layout {
   display: grid;
@@ -2376,7 +2465,7 @@ button {
   font-size: 0.8rem;
   color: var(--ink);
 }
-/* 長い設定画面でも「対局開始」が常に見えるよう、下端に固定する */
+/* 長い設定画面でも「保存」が常に見えるよう、下端に固定する */
 .setup .modal-actions {
   position: sticky;
   bottom: -1rem;
@@ -2848,7 +2937,4 @@ button {
   .spinner {
     animation: none;
   }
-}
-.online-help {
-  margin-top: 0.4rem;
 }

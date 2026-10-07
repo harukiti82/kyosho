@@ -4,9 +4,17 @@
 
 ## 現在の対象
 
-- 何を / どこを: 画面をボードゲームアプリ風に作り直す（ユーザーの依頼「AI感が強すぎる。もっとゲームって感じに」。見た目と配置まで。ルール・engine・サーバーは変えない）。段階 1（対局画面の試作）はユーザー承認済み、段階 2（全画面・e2e・スクリーンショット・AGENTS.md）をブランチ `style/boardgame-ui` で実施中
-- ステータス: 段階 2 まで実装済み・PR（ブランチ `style/boardgame-ui`、origin/main の #18 の上に rebase 済み）で CI 待ち・未マージ（マージは master が確認してから。マージで本番デプロイ）。`npm test` / build / server test / `npm run e2e` 76 件 / `e2e:online` 14 件は緑。スマホ幅の特大のダメージ数のはみ出しも直した（`App.fitPop`）
-- 最終更新: 2026-10-06（ボードゲームアプリ風の段階 2）
+- 何を / どこを: 画面の流れを「メニュー → 対局」に作り直し、CPU の強さを 3 段階にする（依頼元セッション経由のユーザー要望「メニューで CPU対戦かマルチ」「設定画面を出さず標準で」「設定は別メニュー」「CPU はイージー・ノーマル・ハード」）。ブランチ `feat/menu-cpu-level`
+- ステータス: 実装済み・e2e の確認中 → PR → CI → squash merge（マージで本番デプロイ）
+- 王の指定期限 7 手（標準）は依頼元の方針変更でこの PR から外した（revert 済み。2 手読み同士の先手勝率が 49.5% → 30.4% に下がるため、体力・回復の再調整と合わせて別ワーカーが担当）
+- 最終更新: 2026-10-08
+
+## メニューと CPU の強さの要点
+
+- メニュー（`ui/menu.ts`、`#menu`）: CPU対戦 → 強さ（`data-level`）でそのまま開始 / マルチ → この端末で 2 人・オンライン（`/api/health` が通るときだけ）/ 設定 / 下の「ルール 名前」でルール詳細。対局中は右上の `#btn-menu` でメニューへ、`#menu-resume`「対局に戻る」で続き（終局後・オンラインの部屋も）
+- 設定メニュー（`ui/setup.ts` の `SetupDialog`、`#setup`）: フォームは下書きで「保存」で `localStorage` `kyosho:settings`（`loadSaved` / `storeSaved`。読めなければ標準）。ルールの優先は URL のクエリ ＞ 保存 ＞ `DEFAULT_PRESET`。URL への反映は保存時と対局開始時だけ。手番（CPU 対戦の side・オンラインの host）もここ
+- CPU の強さ: `engine/cpu.ts` の `chooseMove(view, level, rng)`。normal = `chooseLookahead`（sim と一致）、easy = 1 手読み＋35% で適当な手、hard = 2 手読み上位 8 手 × 相手の応手上位 6 手 × 自分の最善手を 2 手読み＋決着の読み。勝率は `npm run balance -- vs 400 std normal hard`、下限は `test/level.test.ts`
+- e2e は `e2e/helpers.ts` の `openSettings` / `saveSettings` / `startGame({ mode, side, preset, level })`。メニューの流れは `e2e/menu.spec.ts`
 
 ## 新デザインの要点（デザイン規約は AGENTS.md）
 
@@ -15,7 +23,7 @@
 - 駒台（`.tray`）: 残り数は `.piece-count`、置けない駒は `.blocked` の斜線、隠し王は右端の王の駒（`#king-toggle`「あと N 手」、2 人対戦の `#king-peek`）。説明の文は sr-only の `#king-note`
 - 予測: マスのバッジ（`.dmg-badge` / `.heal-badge`）＋吹き出し（`App.bubble`。返す駒・端の駒がない側に出し、上下両方にあれば盤の外の縁 `.edge-top` / `.edge-bottom`）。文の詳細は引き出しの「予測」タブ（`#preview`、閉じても `.tab-off` で読み上げに残す）
 - 引き出し（`#drawer`、`setTab`）: 「ルール — 名前」「予測」「棋譜」「印」。PC は盤の横でルールを開いて始め、スマホは閉じて始める
-- 設定画面: 対戦 → ルール（名前だけのプリセットの札＋選んだ設定のルール文 `#setup-rules4`）→「ルールを細かく変える」（`#rule-details`、プリセットと違う設定なら開いて始める）。e2e は `openRuleFields` / `openTab`（`e2e/helpers.ts`）
+- 設定メニュー: ルール（名前だけのプリセットの札＋選んだ設定のルール文 `#setup-rules4`）→「ルールを細かく変える」（`#rule-details`、プリセットと違う設定なら開いて始める）→ 手番 → やめる／保存。e2e は `openRuleFields` / `openTab`（`e2e/helpers.ts`）
 - 終局画面: 見出し（明朝、勝ちは琥珀）・理由の 1 文・成績表（`#result-detail` の `.score`。対局者が列、体力・石数・王が行、下に「N 手・ルール 名前」）・成績（`.stats`）
 - オンラインのダイアログ: 対戦待ちのように 2 つの席を VS で並べる（`.lobby`、空いた席は脈打つ）。ルールは「ルール — 名前」の折りたたみ
 
@@ -44,12 +52,15 @@
 
 ## 未解決・次の一手
 
-- [ ] ボードゲームアプリ風の PR を master が確認してマージ（マージで本番デプロイ）。ユーザーの試遊で見た目・操作感の感想を聞く
-- [ ] 本番 https://kyosho.rukiharukichi.com/ で設定画面に「オンライン（招待リンク）」が出ること、スマホ 2 台で作成 → 参加 → 終局・再読み込みを確かめる。確かめたら別タスクで GitHub Pages（`pages.yml`）を止める
+- [ ] メニュー・CPU の強さの PR をマージ後、本番でメニュー → CPU対戦（各強さ）・マルチ・設定の流れを確かめる。ユーザーの試遊で強さの手応え（イージーで勝てるか・ハードが強すぎないか）を聞く
+- [ ] 標準の王の指定期限 7 手（別ワーカー。体力・回復の再調整と合わせて）
+- [ ] 本番 https://kyosho.rukiharukichi.com/ でメニューの「マルチ」に「オンライン（招待リンク）」が出ること、スマホ 2 台で作成 → 参加 → 終局・再読み込みを確かめる。確かめたら別タスクで GitHub Pages（`pages.yml`）を止める
 - [ ] 必要ならサーバーに「終局後の相手の王の公開」「同じ部屋での再戦」を足す（ユーザーの判断）
 - [ ] ユーザーの試遊で演出の手応え・方向駒・隠し王・拠点・オセロの枠の見やすさの感想を聞く。RULES.md 本文を標準で新版に改稿するかはユーザー判断
 
 ## 現フェーズで Read すべき設計書
+
+- メニュー・設定メニュー・CPU の強さ: `web/src/ui/menu.ts`, `web/src/ui/setup.ts`, `web/src/ui/app.ts`（`showMenu` / `resume` / `leaveToMenu`）, `web/src/engine/cpu.ts`（`chooseMove`）
 
 - 画面の見た目を直す: AGENTS.md の「デザイン規約」→ `web/src/style.css`（`:root` のトークン）, `web/index.html`, `web/src/ui/app.ts`（`placeSeats` / `renderPlayers` / `kingTag` / `bubble` / `setTab` / `renderScore`）
 
@@ -57,7 +68,7 @@
 - 設定項目・プリセットの変更: `RULES.md` の「Web 試遊版」節 → `web/src/engine/rules.ts` → AGENTS.md の「ルール・設定項目を変えるとき」
 - ダメージ・端の駒: `web/src/engine/board.ts`（`damageOf` / `anchorsOf`）, `web/test/anchor.test.ts`。方向駒: `board.ts`（`pieceLines`）, `test/direction.test.ts`。隠し王: `game.ts`（隠し王節）, `cpu.ts`, `test/king.test.ts`
 - 演出・効果音・成績: `web/src/ui/impact.ts`, `web/src/ui/fx.ts`, `web/src/ui/sound.ts`, `web/test/impact.test.ts`, `web/e2e/impact.spec.ts`。決着の演出: `web/src/ui/outcome.ts`, `web/test/outcome.test.ts`, `web/e2e/result.spec.ts`
-- 画面の修正: `web/src/ui/app.ts`（対局）, `web/src/ui/setup.ts`（設定）, `web/src/style.css`, `web/index.html`
+- 画面の修正: `web/src/ui/app.ts`（対局）, `web/src/ui/setup.ts`（設定メニュー）, `web/src/ui/menu.ts`（メニュー）, `web/src/style.css`, `web/index.html`
 
 ## 関連ファイル / リンク
 

@@ -226,12 +226,12 @@ test.describe("PC 幅（設定・音・2 人対戦）", () => {
     });
     const created = () => page.evaluate(() => (window as unknown as { __ac: number }).__ac);
     await page.goto(`/?${encodeRules(withHp([40, 10]))}`);
-    await expect(page.locator("#setup")).toBeVisible();
+    await expect(page.locator("#menu")).toBeVisible();
     await page.waitForTimeout(300);
     expect(await created()).toBe(0);
     await expect(page.locator("#btn-mute")).toHaveAttribute("aria-pressed", "false");
     await startGame(page);
-    // 「対局開始」の操作で初めて作る
+    // 対局を始める操作（メニューの CPU対戦 → 強さ）で初めて作る
     expect(await created()).toBe(1);
     await play(page, 2, 3, "fu", false);
     await expect(page.locator(".fx-banner")).toHaveText("会心！");

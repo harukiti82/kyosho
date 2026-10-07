@@ -1,9 +1,9 @@
-// CPU 対戦の手番「ランダム」: 抽選の結果どおりに先手・後手になること、「新しい対局」・再戦で引き直すこと、
+// CPU 対戦の手番「ランダム」: 抽選の結果どおりに先手・後手になること、メニューから始め直したとき・再戦で引き直すこと、
 // 先手・後手を選んだときは抽選しないこと。抽選の乱数（crypto.getRandomValues）は決めた列に差し替える。
 // スクリーンショットは web/screenshots/*-seat-*.png に保存する。
 
 import { expect, test, type Page } from "@playwright/test";
-import { noHorizontalScroll, seedPage, waitHumanTurnOrEnd } from "./helpers";
+import { noHorizontalScroll, openSettings, seedPage, startGame, waitHumanTurnOrEnd } from "./helpers";
 
 const SHOT = "screenshots";
 const moves = (page: Page) => page.locator("#log .log-item.move");
@@ -29,18 +29,16 @@ const draws = (page: Page) => page.evaluate(() => (window as unknown as { __seat
 
 const prefix = (page: Page) => ((page.viewportSize()?.width ?? 1280) < 600 ? "sp" : "pc");
 
-/** 設定画面で CPU 対戦・手番 side を選んで始める（ラベルを押す。スマホ幅では隠れた input への直接のクリックが効かない） */
+/** 設定メニューで CPU 対戦の手番 side を選んで保存し、メニューから CPU 対戦（ノーマル）を始める（ラベルを押す。スマホ幅では隠れた input への直接のクリックが効かない） */
 async function startCpu(page: Page, side: "random" | "0" | "1", shot?: string) {
-  await expect(page.locator("#setup")).toBeVisible();
-  await page.locator("label:has(> input[name=mode][value=cpu])").click();
+  await openSettings(page);
   await page.locator(`label:has(> input[name=side][value="${side}"])`).click();
   await expect(page.locator(`input[name=side][value="${side}"]`)).toBeChecked();
   if (shot) {
     await page.locator("#side-field").scrollIntoViewIfNeeded();
     await page.screenshot({ path: `${SHOT}/${shot}` });
   }
-  await page.locator("#setup-start").click();
-  await expect(page.locator("#setup")).toBeHidden();
+  await startGame(page);
 }
 
 /** 先手になった: 抽選の表示・手番の表示・まだ誰も打っていない・人間が打てる */
@@ -66,6 +64,7 @@ test("ランダム: 乱数が 0.5 未満なら先手になり、すぐに打て�
   await stubDraws(page, [0.1]);
   await page.goto("/");
   // 既定は従来どおり「自分が先手」
+  await openSettings(page);
   await expect(page.locator("input[name=side][value='0']")).toBeChecked();
   await startCpu(page, "random", `${prefix(page)}-seat-setup.png`);
   await isFirst(page);
@@ -86,15 +85,16 @@ test("ランダム: 乱数が 0.5 以上なら後手になり、CPU が初手を
   await page.screenshot({ path: `${SHOT}/${prefix(page)}-seat-second.png` });
 });
 
-test("ランダム: 「新しい対局」で設定画面から始め直すと引き直す", async ({ page }) => {
+test("ランダム: メニューから始め直すと引き直す", async ({ page }) => {
   await stubDraws(page, [0.1, 0.9]);
   await page.goto("/");
   await startCpu(page, "random");
   await isFirst(page);
-  await page.locator("#btn-new").click();
-  // 手番の選択は「ランダム」のまま残る
+  await page.locator("#btn-menu").click();
+  // 手番の設定は「ランダム」のまま残る
+  await openSettings(page);
   await expect(page.locator("input[name=side][value=random]")).toBeChecked();
-  await page.locator("#setup-start").click();
+  await startGame(page);
   await isSecond(page);
   expect(await draws(page)).toBe(2);
 });
@@ -135,7 +135,7 @@ test("先手・後手を選んだときは抽選せず、従来どおり", async
   await expect(moves(page)).toHaveCount(1, { timeout: 10_000 });
   await expect(page.locator("#player-1")).toContainText("あなた");
   await expect(page.locator("#toast")).not.toContainText("抽選");
-  await page.locator("#btn-new").click();
+  await page.locator("#btn-menu").click();
   await startCpu(page, "0");
   await expect(page.locator("#player-0")).toContainText("あなた");
   await expect(page.locator(".board.acting")).toBeVisible();

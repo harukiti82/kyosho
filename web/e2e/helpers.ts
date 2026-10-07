@@ -1,6 +1,7 @@
-// e2e の共通ヘルパー（設定画面の操作・着手・待ち合わせ・横スクロールの確認・種付き乱数・鏡の対局の手）
+// e2e の共通ヘルパー（メニュー・設定メニューの操作・着手・待ち合わせ・横スクロールの確認・種付き乱数・鏡の対局の手）
 
 import { expect, type Page } from "@playwright/test";
+import type { CpuLevel } from "../src/engine/cpu";
 import { lastMoveOf, legalCells, playableKinds, playMove, type GameState } from "../src/engine/game";
 import { KIND_ORDER, type PieceKind, type PresetId, type RuleSet } from "../src/engine/rules";
 
@@ -9,8 +10,23 @@ export async function noHorizontalScroll(page: Page, width: number) {
   expect(sw).toBeLessThanOrEqual(width);
 }
 
-/** 設定画面のフォームから読んだ設定 */
-export function readSetup(page: Page): Promise<RuleSet> {
+/** 設定メニューを開く（開いていれば何もしない）。メニューの「設定」から開く */
+export async function openSettings(page: Page) {
+  if (await page.locator("#setup").isVisible()) return;
+  await expect(page.locator("#menu")).toBeVisible();
+  await page.locator("#menu-settings").click();
+  await expect(page.locator("#setup")).toBeVisible();
+}
+
+/** 設定メニューの「保存」 */
+export async function saveSettings(page: Page) {
+  await page.locator("#setup-save").click();
+  await expect(page.locator("#setup")).toBeHidden();
+}
+
+/** 設定メニューのフォームから読んだ設定（閉じていれば開く） */
+export async function readSetup(page: Page): Promise<RuleSet> {
+  await openSettings(page);
   return page.locator("#setup-form").evaluate((form: HTMLFormElement, kinds) => {
     const f = new FormData(form);
     const n = (k: string) => Number((form.elements.namedItem(k) as HTMLInputElement).value);
@@ -30,19 +46,40 @@ export function readSetup(page: Page): Promise<RuleSet> {
   }, [...KIND_ORDER]);
 }
 
-export async function startGame(page: Page, opts: { mode?: "cpu" | "pvp"; side?: 0 | 1; preset?: PresetId } = {}) {
-  await expect(page.locator("#setup")).toBeVisible();
-  if (opts.preset) await page.locator(`.preset[data-preset=${opts.preset}]`).click();
-  // ラベルを押す（スマホ幅では隠れた input への直接のクリックが効かない）
-  await page.locator(`label:has(> input[name=mode][value=${opts.mode ?? "cpu"}])`).click();
-  await expect(page.locator(`input[name=mode][value=${opts.mode ?? "cpu"}]`)).toBeChecked();
-  if ((opts.mode ?? "cpu") === "cpu") await page.locator(`input[name=side][value="${opts.side ?? 0}"]`).check({ force: true });
-  await page.locator("#setup-start").click();
-  await expect(page.locator("#setup")).toBeHidden();
+/**
+ * 対局を始める。preset・side の指定があれば設定メニューで選んで保存し、設定メニューが開いていれば（フォームを変えた後なら）保存してから、
+ * メニューの CPU対戦 → 強さ（既定はノーマル）／マルチ → この端末で 2 人 で始める
+ */
+export async function startGame(
+  page: Page,
+  opts: { mode?: "cpu" | "pvp"; side?: 0 | 1 | "random"; preset?: PresetId; level?: CpuLevel } = {},
+) {
+  const mode = opts.mode ?? "cpu";
+  if (opts.preset || (mode === "cpu" && opts.side !== undefined)) {
+    await openSettings(page);
+    if (opts.preset) await page.locator(`.preset[data-preset=${opts.preset}]`).click();
+    if (mode === "cpu" && opts.side !== undefined) {
+      // ラベルを押す（スマホ幅では隠れた input への直接のクリックが効かない）
+      await page.locator(`label:has(> input[name=side][value="${opts.side}"])`).click();
+      await expect(page.locator(`input[name=side][value="${opts.side}"]`)).toBeChecked();
+    }
+  }
+  if (await page.locator("#setup").isVisible()) await saveSettings(page);
+  await expect(page.locator("#menu")).toBeVisible();
+  if (mode === "cpu") {
+    await page.locator("#menu-cpu").click();
+    await page.locator(`#menu-levels [data-level=${opts.level ?? "normal"}]`).click();
+  } else {
+    await page.locator("#menu-multi").click();
+    await page.locator("#menu-pvp").click();
+  }
+  await expect(page.locator("#menu")).toBeHidden();
+  await expect(page.locator("#game")).toBeVisible();
 }
 
-/** 設定画面の「ルールを細かく変える」を開く（開いていれば何もしない） */
+/** 設定メニューの「ルールを細かく変える」を開く（設定メニューが閉じていれば開く。開いていれば何もしない） */
 export async function openRuleFields(page: Page) {
+  await openSettings(page);
   const details = page.locator("#rule-details");
   if (!(await details.evaluate((d) => (d as HTMLDetailsElement).open))) await details.locator("summary").click();
   await expect(details).toHaveAttribute("open", "");

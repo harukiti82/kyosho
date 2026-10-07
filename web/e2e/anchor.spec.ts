@@ -8,7 +8,7 @@ import { createGame, lastMoveOf, playMove, previewMove, viewFor, type MoveEvent,
 import { presetById, type PieceKind, type RuleSet } from "../src/engine/rules";
 import { encodeRules } from "../src/ui/query";
 import { pieceLabel, ruleLines, sentenceText } from "../src/ui/ruletext";
-import { noHorizontalScroll, openRuleFields, openTab, readSetup, rng, startGame, waitHumanTurnOrEnd } from "./helpers";
+import { noHorizontalScroll, openRuleFields, openSettings, openTab, readSetup, rng, saveSettings, startGame, waitHumanTurnOrEnd } from "./helpers";
 
 const SHOT = "screenshots";
 const ANCHOR = presetById("anchor").rules;
@@ -73,18 +73,22 @@ async function previewMatches(page: Page, pv: Preview, at: { r: number; c: numbe
 test.describe("PC 幅", () => {
   test.beforeEach(({}, info) => test.skip(info.project.name !== "desktop", "PC 幅のみ"));
 
-  test("設定画面: 端の駒の力の切り替え・ルールカード・URL の復元・不正値・既存プリセットの URL", async ({ page }) => {
+  test("設定メニュー: 端の駒の力の切り替え・ルールカード・URL の復元・不正値・既存プリセットの URL", async ({ page }) => {
     const errors: string[] = [];
     page.on("pageerror", (e) => errors.push(String(e)));
     await page.goto("/");
+    await openSettings(page);
     await page.locator(".preset[data-preset=anchor]").click();
     expect(await readSetup(page)).toEqual(ANCHOR);
     await expect(page.locator("#custom-tag")).toHaveText("— 拠点");
     await openRuleFields(page);
     await expect(page.locator("#setup-rules4 li")).toHaveText(ruleLines(ANCHOR).map(sentenceText));
     await expect(page.locator("#setup-rules4")).toContainText("挟んだ端の自分の駒の数字もダメージに足す");
+    // 保存するとアドレスバーに載る
+    await saveSettings(page);
     expect(new URL(page.url()).search.slice(1)).toBe(encodeRules(ANCHOR));
     expect(new URL(page.url()).search).toMatch(/&anc=atk$/);
+    await openRuleFields(page);
     await page.locator("#opt-anchor").scrollIntoViewIfNeeded();
     await page.screenshot({ path: `${SHOT}/pc-anchor-setup.png` });
 
@@ -92,20 +96,25 @@ test.describe("PC 幅", () => {
     await page.locator("input[name=anchor][value=none]").check({ force: true });
     await expect(page.locator("#custom-tag")).toContainText("カスタム");
     await expect(page.locator("#setup-rules4")).not.toContainText("端の自分の駒");
+    await saveSettings(page);
     expect(new URL(page.url()).search).not.toContain("anc");
     // 方向駒に「攻撃に上乗せ」だけ足した設定も再読み込みで復元される
+    await openSettings(page);
     await page.locator(".preset[data-preset=dir]").click();
+    await saveSettings(page);
     expect(new URL(page.url()).search.slice(1)).toBe(encodeRules(presetById("dir").rules));
+    await openRuleFields(page);
     await page.locator("input[name=anchor][value=attack]").check({ force: true });
     await expect(page.locator("#custom-tag")).toContainText("カスタム");
     const custom = await readSetup(page);
     expect(custom).toEqual({ ...presetById("dir").rules, anchor: "attack" });
+    await saveSettings(page);
     await page.reload();
     expect(await readSetup(page)).toEqual(custom);
 
     // 不正な値は URL の基準（v1.0）の値（なし）にして知らせる
     await page.goto("/?anc=bogus&dir=piece");
-    await expect(page.locator("#setup-note")).toHaveText("URL の設定に読めない値があったため、端の駒の力はv1.0（取る）の値にしました。");
+    await expect(page.locator("#menu-note")).toHaveText("URL の設定に読めない値があったため、端の駒の力はv1.0（取る）の値にしました。");
     expect((await readSetup(page)).anchor).toBe("none");
     await expect(page.locator("input[name=anchor][value=none]")).toBeChecked();
     expect(errors).toEqual([]);
@@ -191,13 +200,13 @@ test.describe("スマホ幅 375px", () => {
     const seed = 11;
     await seedPage(page, seed);
     await page.goto("/");
+    await openSettings(page);
     await page.locator(".preset[data-preset=anchor]").tap();
     await openRuleFields(page);
     await page.locator("#opt-anchor").scrollIntoViewIfNeeded();
     await noHorizontalScroll(page, 375);
     await page.screenshot({ path: `${SHOT}/sp-anchor-setup.png` });
-    await page.locator("#setup-start").tap();
-    await expect(page.locator("#setup")).toBeHidden();
+    await startGame(page);
     await expect(page.locator("#rules4 li")).toHaveText(ruleLines(ANCHOR).map(sentenceText));
     await expect(page.locator("#board")).toBeInViewport({ ratio: 1 });
     await noHorizontalScroll(page, 375);

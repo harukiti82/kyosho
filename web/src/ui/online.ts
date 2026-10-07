@@ -97,7 +97,7 @@ export class OnlineDialog {
         h("div", { class: "share invite-actions" }, [...buttons, status]),
         roomRules(o.rules, o.ruleName),
       ],
-      [{ label: "やめて設定画面へ", id: "invite-leave", onClick: o.onLeave }],
+      [{ label: "やめてメニューへ", id: "invite-leave", onClick: o.onLeave }],
     );
   }
 
@@ -130,7 +130,7 @@ export class OnlineDialog {
         roomRules(o.rules, o.ruleName, true),
       ],
       [
-        { label: "参加しないで設定画面へ", onClick: o.onCancel },
+        { label: "参加しないでメニューへ", onClick: o.onCancel },
         { label: "参加する", primary: true, id: "join-room", onClick: o.onJoin },
       ],
     );

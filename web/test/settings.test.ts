@@ -5,7 +5,7 @@ import { defaultRules, matchPreset, NO_KING, PRESETS, presetById, sameRules, typ
 import { decodeRules, encodeRules, QUERY_BASE } from "../src/ui/query";
 import compat from "./fixtures/query-compat.json";
 import { endDetails, ruleDetails, ruleLines, sentenceText } from "../src/ui/ruletext";
-import { cryptoRandom, drawSeat, seatChoice } from "../src/ui/setup";
+import { cryptoRandom, defaultSaved, drawSeat, loadSaved, seatChoice, SETTINGS_KEY, storeSaved } from "../src/ui/setup";
 import { rulesOf } from "./helpers";
 
 describe("URL クエリ", () => {
@@ -214,5 +214,43 @@ describe("CPU 対戦の手番", () => {
   });
   it("手番は共有 URL に載らない（URL はルールだけ）", () => {
     expect(encodeRules(defaultRules())).not.toMatch(/side|seat/);
+  });
+});
+
+describe("設定メニューの保存（localStorage）", () => {
+  const memory = (init: Record<string, string> = {}) => {
+    const m = new Map(Object.entries(init));
+    return { getItem: (k: string) => m.get(k) ?? null, setItem: (k: string, v: string) => void m.set(k, v), removeItem: (k: string) => void m.delete(k) };
+  };
+  it("保存がなければ標準・CPU 対戦は先手・オンラインはランダム", () => {
+    expect(loadSaved(memory())).toEqual(defaultSaved());
+    expect(defaultSaved()).toEqual({ rules: defaultRules(), side: "0", host: "random" });
+  });
+  it("保存した設定をそのまま読める（全プリセット・手番）", () => {
+    for (const p of PRESETS) {
+      const store = memory();
+      storeSaved(store, { rules: p.rules, side: "random", host: "second" });
+      expect(loadSaved(store)).toEqual({ rules: p.rules, side: "random", host: "second" });
+    }
+  });
+  it("壊れた JSON・型の違う値・読めないルールは、その部分を既定に戻す（ルールは一部でも読めなければ全体を標準）", () => {
+    for (const raw of ["{broken", "null", "42", "[]", '"str"']) expect(loadSaved(memory({ [SETTINGS_KEY]: raw }))).toEqual(defaultSaved());
+    const bad = JSON.stringify({ rules: "take=zzz&hp1=-3", side: "2", host: "__proto__" });
+    expect(loadSaved(memory({ [SETTINGS_KEY]: bad }))).toEqual(defaultSaved());
+    // ルールのキーがない文字列も標準
+    expect(loadSaved(memory({ [SETTINGS_KEY]: JSON.stringify({ rules: "room=abc", side: "1" }) }))).toEqual({ ...defaultSaved(), side: "1" });
+    // ルールは読めて手番だけ壊れている
+    const v10 = presetById("v10").rules;
+    expect(loadSaved(memory({ [SETTINGS_KEY]: JSON.stringify({ rules: encodeRules(v10), side: 1, host: null }) }))).toEqual({ ...defaultSaved(), rules: v10 });
+  });
+  it("ストレージが例外を投げても標準（safeStore 越し）", async () => {
+    const { safeStore } = await import("../src/net/online");
+    const throwing = safeStore(() => ({
+      getItem: () => { throw new Error("denied"); },
+      setItem: () => { throw new Error("denied"); },
+      removeItem: () => { throw new Error("denied"); },
+    }));
+    expect(loadSaved(throwing)).toEqual(defaultSaved());
+    expect(() => storeSaved(throwing, defaultSaved())).not.toThrow();
   });
 });

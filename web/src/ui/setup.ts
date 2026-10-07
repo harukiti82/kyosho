@@ -1,8 +1,11 @@
-// 対局設定ダイアログ: プリセット・ルールの各項目・対戦相手・URL の共有。
+// 設定メニュー: プリセット・ルールの各項目・CPU 対戦とオンラインの手番・URL の共有。
+// フォームは下書きで、「保存」で次の対局の設定になる（この端末の localStorage に保存。読めなければ標準）。
 // フォームの値は検証してから RuleSet にする（範囲外は範囲内に丸める）。
 
+import type { CpuLevel } from "../engine/cpu";
 import {
   cloneRules,
+  defaultRules,
   KIND_ORDER,
   LIMITS,
   matchPreset,
@@ -13,6 +16,7 @@ import {
   type Player,
   type RuleSet,
 } from "../engine/rules";
+import type { KeyValueStore } from "../net/online";
 import type { HostSeat } from "../net/protocol";
 import { dirIcon } from "./diricon";
 import { byId, h } from "./dom";
@@ -29,8 +33,54 @@ export interface PlaySettings {
   rules: RuleSet;
   /** オンライン対戦で部屋を作るときの自分の席の希望 */
   hostSeat?: HostSeat;
-  /** CPU 対戦で人間の手番を対局ごとに抽選する（human は対局を始めるときに引き直す。「新しい対局」・再戦でも） */
+  /** CPU 対戦で人間の手番を対局ごとに抽選する（human は対局を始めるときに引き直す。メニューから始め直しても・再戦でも） */
   randomSeat?: boolean;
+  /** CPU 対戦の CPU の強さ（省略時はノーマル） */
+  level?: CpuLevel;
+}
+
+/** 設定メニューで保存する中身（ルール・CPU 対戦の手番・オンラインで部屋を作るときの手番） */
+export interface Saved {
+  rules: RuleSet;
+  side: Side;
+  host: HostSeat;
+}
+/** CPU 対戦の手番の設定（"0" 先手 / "1" 後手 / "random" 対局ごとに抽選） */
+export type Side = "0" | "1" | "random";
+
+/** localStorage のキー（中身は JSON。ルールは URL と同じクエリの文字列で、decodeRules で検証して読む） */
+export const SETTINGS_KEY = "kyosho:settings";
+
+export const defaultSaved = (): Saved => ({ rules: defaultRules(), side: "0", host: "random" });
+
+const isSide = (v: unknown): v is Side => v === "0" || v === "1" || v === "random";
+const isHost = (v: unknown): v is HostSeat => v === "random" || v === "first" || v === "second";
+
+/**
+ * 保存した設定を読む。保存がない・壊れている・読めない値がある（ストレージが使えない場合を含む）ときは、
+ * その部分を既定（標準・先手・ランダム）にする。ルールは一部でも読めなければ全体を標準にする
+ */
+export function loadSaved(store: KeyValueStore): Saved {
+  const out = defaultSaved();
+  let raw: unknown;
+  try {
+    raw = JSON.parse(store.getItem(SETTINGS_KEY) ?? "null");
+  } catch {
+    return out;
+  }
+  if (typeof raw !== "object" || raw === null) return out;
+  const o = raw as Record<string, unknown>;
+  if (typeof o.rules === "string") {
+    const d = decodeRules(`?${o.rules}`);
+    if (d.present && d.invalid.length === 0) out.rules = d.rules;
+  }
+  if (isSide(o.side)) out.side = o.side;
+  if (isHost(o.host)) out.host = o.host;
+  return out;
+}
+
+export function storeSaved(store: KeyValueStore, s: Saved) {
+  store.setItem(SETTINGS_KEY, JSON.stringify({ rules: encodeRules(s.rules), side: s.side, host: s.host }));
 }
 
 /** 0 以上 1 未満の乱数。Math.random は CPU の乱数と共有なので使わない（e2e は Math.random を種付きにして CPU の手を再現する） */
@@ -71,11 +121,10 @@ const KEY_LABEL: Record<string, string> = {
 };
 
 export class SetupDialog {
+  /** 保存済みの設定（次の対局で使う） */
+  private saved: Saved;
+  /** フォームの下書きのルール */
   private rules: RuleSet;
-  /** 開いたときの設定（対局中に開いて閉じたら、アドレスバーをこの設定に戻す） */
-  private openedWith: RuleSet | null = null;
-  /** 閉じたときに戻すアドレス（オンライン対戦中は部屋の URL。再読み込みで部屋に戻れるように） */
-  private restoreUrl: string | null = null;
   private readonly el = {
     dialog: byId<HTMLDialogElement>("setup"),
     form: byId<HTMLFormElement>("setup-form"),
@@ -89,65 +138,70 @@ export class SetupDialog {
     kingLose: byId("king-lose-label"),
     kingAmount: byId("king-amount-field"),
     preview: byId("setup-rules4"),
-    sideField: byId("side-field"),
     hostField: byId("host-field"),
-    onlineMode: byId("mode-online"),
-    onlineHelp: byId("online-help"),
-    start: byId("setup-start"),
-    note: byId("setup-note"),
     shareStatus: byId("share-status"),
     shareUrl: byId<HTMLInputElement>("share-url"),
   };
 
   constructor(
-    private readonly onStart: (s: PlaySettings) => void,
+    private readonly store: KeyValueStore,
     private readonly onShowRules: (r: RuleSet) => void,
-    /** 対局が始まっているか（始まる前は設定画面を閉じさせない） */
-    private readonly hasGame: () => boolean,
+    /** 保存した（メニューのルール名などを更新する） */
+    private readonly onSaved: (s: Saved) => void,
+    /** URL の設定を読んだ・読めない値があったことの知らせ */
+    showNote: (text: string) => void,
   ) {
-    // URL のクエリがあればその設定で始める。不正な項目は基準（v1.0）の値に戻して知らせる
+    this.saved = loadSaved(store);
+    // URL のクエリにルールがあればそのルールで遊ぶ（共有された URL。保存はしない）。不正な項目は基準（v1.0）の値に戻して知らせる
     const decoded = decodeRules(window.location.search);
-    this.rules = decoded.rules;
-    if (decoded.invalid.length > 0) {
-      this.showNote(
-        `URL の設定に読めない値があったため、${decoded.invalid.map((k) => KEY_LABEL[k] ?? k).join("・")}は${presetById(QUERY_BASE).name}の値にしました。`,
-      );
-    } else if (decoded.present) {
-      this.showNote("URL の設定を読み込みました。");
+    if (decoded.present) {
+      this.saved.rules = decoded.rules;
+      if (decoded.invalid.length > 0) {
+        showNote(
+          `URL の設定に読めない値があったため、${decoded.invalid.map((k) => KEY_LABEL[k] ?? k).join("・")}は${presetById(QUERY_BASE).name}の値にしました。`,
+        );
+      } else {
+        showNote("URL の設定を読み込みました。");
+      }
     }
+    this.rules = cloneRules(this.saved.rules);
     this.buildPresets();
     this.buildPieceTable();
     this.bind();
-    this.writeForm(this.rules);
+  }
+
+  /** 次の対局の設定 */
+  get current(): Saved {
+    return { ...this.saved, rules: cloneRules(this.saved.rules) };
+  }
+
+  /** 次の対局の設定で、mode の対局を始める設定にする */
+  playSettings(mode: Mode, level?: CpuLevel): PlaySettings {
+    const { rules, side, host } = this.current;
+    if (mode === "cpu") return { mode, ...seatChoice(side), rules, level };
+    if (mode === "online") return { mode, human: 0, rules, hostSeat: host };
+    return { mode, human: 0, rules };
+  }
+
+  /** 保存済みの設定をフォームに入れて開く */
+  open() {
+    this.writeForm(this.saved.rules);
+    this.radio("side", this.saved.side);
+    this.radio("host", this.saved.host);
     this.openDetailsIfCustom();
+    this.el.shareStatus.textContent = "";
+    this.el.shareUrl.hidden = true;
+    if (!this.el.dialog.open) this.el.dialog.showModal();
   }
 
   /** プリセットと違う設定なら、細かい項目を開いて見せる */
   private openDetailsIfCustom() {
-    if (!matchPreset(this.rules)) this.el.details.open = true;
+    this.el.details.open = !matchPreset(this.rules);
   }
 
-  /** restoreUrl: 閉じたときに戻すアドレス（省略時は開いたときの設定の URL） */
-  open(rules?: RuleSet, restoreUrl?: string) {
-    this.openedWith = rules ? cloneRules(rules) : null;
-    this.restoreUrl = restoreUrl ?? null;
-    if (rules) this.writeForm(rules);
-    this.openDetailsIfCustom();
-    this.el.shareStatus.textContent = "";
-    this.el.shareUrl.hidden = true;
-    this.syncMode();
-    if (!this.el.dialog.open) this.el.dialog.showModal();
-  }
-
-  /** オンライン対戦の入口を出す（サーバーに届く公開先だけ） */
+  /** オンライン対戦の手番の欄を出す（サーバーに届く公開先だけ） */
   enableOnline() {
-    this.el.onlineMode.hidden = false;
-    this.syncMode();
-  }
-
-  private showNote(text: string) {
-    this.el.note.textContent = text;
-    this.el.note.hidden = false;
+    this.el.hostField.hidden = false;
   }
 
   private buildPresets() {
@@ -158,14 +212,10 @@ export class SetupDialog {
         { class: "preset", attrs: { type: "button", "data-preset": p.id, "aria-pressed": "false", title: p.note } },
         [h("span", { class: "preset-name", text: p.name })],
       );
-      b.addEventListener("click", () => {
-        this.writeForm(p.rules);
-        this.reflectUrl();
-      });
+      b.addEventListener("click", () => this.writeForm(p.rules));
       this.el.presets.append(b);
     }
   }
-
   /** 駒種ごとの 数・数字 の欄（方向は種類で固定なので表示だけ） */
   private buildPieceTable() {
     const num = (name: string, label: string, range: { min: number; max: number }, aria: string) =>
@@ -196,30 +246,19 @@ export class SetupDialog {
 
   private bind() {
     const { dialog, form } = this.el;
-    dialog.addEventListener("cancel", (e) => {
-      if (!this.hasGame()) e.preventDefault();
-      else if (this.restoreUrl) window.history.replaceState(null, "", this.restoreUrl);
-      else if (this.openedWith) this.reflectUrl(this.openedWith);
-    });
     // 数値は入力し終えたとき（change）に範囲内へ直す。入力中（input）は表示だけ更新する
     form.addEventListener("input", () => this.refresh(false));
-    form.addEventListener("change", () => {
-      this.refresh(true);
-      this.reflectUrl();
-    });
+    form.addEventListener("change", () => this.refresh(true));
     form.addEventListener("submit", () => {
       const f = new FormData(form);
       this.refresh(true);
-      this.reflectUrl();
-      const mode = f.get("mode");
+      const side = f.get("side");
       const host = f.get("host");
-      this.onStart({
-        mode: mode === "pvp" ? "pvp" : mode === "online" && !this.el.onlineMode.hidden ? "online" : "cpu",
-        ...seatChoice(f.get("side")),
-        rules: cloneRules(this.rules),
-        hostSeat: host === "first" ? "first" : host === "second" ? "second" : "random",
-      });
+      this.saved = { rules: cloneRules(this.rules), side: isSide(side) ? side : "0", host: isHost(host) ? host : "random" };
+      storeSaved(this.store, this.saved);
+      this.onSaved(this.current);
     });
+    byId("setup-cancel").addEventListener("click", () => dialog.close());
     byId("setup-rules").addEventListener("click", () => {
       this.refresh(true);
       this.onShowRules(this.rules);
@@ -311,16 +350,6 @@ export class SetupDialog {
     this.el.kingHp.textContent = `${v.hitIf}体力が減る`;
     this.el.kingLose.textContent = `${v.hitIf}即負け`;
     fillSentences(this.el.preview, ruleLines(this.rules));
-    this.syncMode();
-  }
-
-  private syncMode() {
-    const mode = new FormData(this.el.form).get("mode");
-    const online = mode === "online" && !this.el.onlineMode.hidden;
-    this.el.sideField.hidden = mode === "pvp" || online;
-    this.el.hostField.hidden = !online;
-    this.el.onlineHelp.hidden = !online;
-    this.el.start.textContent = online ? "部屋を作る" : "対局開始";
   }
 
   shareUrl(r: RuleSet = this.rules): string {
@@ -328,14 +357,13 @@ export class SetupDialog {
     return `${origin}${pathname}?${encodeRules(r)}`;
   }
 
-  /** 今の設定をアドレスバーに反映する（再読み込みしても同じ設定になる） */
+  /** 設定をアドレスバーに反映する（再読み込みしても同じ設定になる） */
   reflectUrl(r: RuleSet = this.rules) {
     window.history.replaceState(null, "", `${window.location.pathname}?${encodeRules(r)}`);
   }
 
   private async copyUrl() {
     this.refresh(true);
-    this.reflectUrl();
     const url = this.shareUrl();
     const { shareStatus, shareUrl } = this.el;
     shareUrl.value = url;
