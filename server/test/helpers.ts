@@ -22,8 +22,8 @@ export const site = (path: string, init?: RequestInit) => worker.fetch(`${BASE}$
 /** API のパス（/rooms など）。/api を前に付ける */
 export const call = (path: string, init?: RequestInit) => site(`/api${path}`, init);
 
-export async function createRoom(rules: RuleSet | PresetId = "v10", hostSeat?: HostSeat): Promise<CreateRoomResponse> {
-  const body = { rules: typeof rules === "string" ? presetById(rules).rules : rules, hostSeat };
+export async function createRoom(rules: RuleSet | PresetId = "v10", hostSeat?: HostSeat, turnSeconds?: number): Promise<CreateRoomResponse> {
+  const body = { rules: typeof rules === "string" ? presetById(rules).rules : rules, hostSeat, turnSeconds };
   const res = await call("/rooms", { method: "POST", body: JSON.stringify(body), headers: { "Content-Type": "application/json" } });
   if (res.status !== 201) throw new Error(`部屋を作れない: ${res.status} ${await res.text()}`);
   return res.json();
@@ -130,9 +130,9 @@ export class Client {
   }
 }
 
-/** 部屋を作り、作成者（先手）と参加者（後手）が join した状態にする */
-export async function startedRoom(rules: RuleSet | PresetId = "v10") {
-  const created = await createRoom(rules, "first");
+/** 部屋を作り、作成者（先手）と参加者（後手）が join した状態にする。turnSeconds は 1 手の制限時間（省略は制限なし） */
+export async function startedRoom(rules: RuleSet | PresetId = "v10", turnSeconds?: number) {
+  const created = await createRoom(rules, "first", turnSeconds);
   const host = await Client.join(created.roomId, created.token);
   const guest = await Client.join(created.roomId);
   // 参加者の join で、作成者にも state（相手が参加）が届く

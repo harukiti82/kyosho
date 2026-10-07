@@ -17,6 +17,7 @@ import {
   type HttpErrorBody,
   type HttpErrorCode,
   type JoinedMessage,
+  type MoveMessage,
   type RoomInfoResponse,
   type ServerMessage,
   type StateMessage,
@@ -268,10 +269,15 @@ export class OnlineSession {
     return this.state === "open" && this.ws?.readyState === OPEN;
   }
 
-  /** 手を送る。つながっていなければ false */
-  sendMove(r: number, c: number, kind: PieceKind, king = false): boolean {
+  /**
+   * 手を送る。つながっていなければ false。
+   * seq は手を考えた局面の棋譜の長さ（制限時間切れの自動の手と入れ違ったら、サーバーが stale_move で拒否する）
+   */
+  sendMove(r: number, c: number, kind: PieceKind, king = false, seq?: number): boolean {
     if (!this.ready) return false;
-    this.ws!.send(JSON.stringify(king ? { type: "move", r, c, kind, king: true } : { type: "move", r, c, kind }));
+    const msg: MoveMessage = king ? { type: "move", r, c, kind, king: true } : { type: "move", r, c, kind };
+    if (seq !== undefined) msg.seq = seq;
+    this.ws!.send(JSON.stringify(msg));
     return true;
   }
 

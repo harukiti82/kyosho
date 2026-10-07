@@ -65,6 +65,8 @@ export interface MoveEvent {
   anchors?: Target[];
   /** 相手の隠し王を返した（取った）。王はこの手で公開される。返していなければキー自体がない */
   king?: KingHit;
+  /** 制限時間を過ぎて自動で打った手（playTimeout）。手番の人が打った手ならキー自体がない */
+  timeout?: true;
 }
 
 /** 相手の王を返した（取った）ときの記録（公開情報） */
@@ -323,8 +325,17 @@ export function threatenedPieces(state: GameState, victim: Player): Cell[] {
   return attackable(state.rules, state.board, state.hands[attacker], attacker);
 }
 
-/** 手番のプレイヤーが (r, c) に kind を置く。opts.king なら置いた駒を自分の王にする（隠し王）。不正な手は例外 */
-export function playMove(state: GameState, r: number, c: number, kind: PieceKind, opts: { king?: boolean } = {}): GameState {
+/**
+ * 手番のプレイヤーが (r, c) に kind を置く。opts.king なら置いた駒を自分の王にする（隠し王）。
+ * opts.timeout は制限時間切れの自動の手として棋譜に印を付ける（playTimeout が使う）。不正な手は例外
+ */
+export function playMove(
+  state: GameState,
+  r: number,
+  c: number,
+  kind: PieceKind,
+  opts: { king?: boolean; timeout?: boolean } = {},
+): GameState {
   if (state.result) throw new Error("対局は終了しています");
   const { rules } = state;
   const p = state.turn;
@@ -365,6 +376,7 @@ export function playMove(state: GameState, r: number, c: number, kind: PieceKind
   const anchors = anchorTargets(state.board, lines, rules);
   if (anchors.length > 0) move.anchors = anchors;
   if (hit) move.king = hit;
+  if (opts.timeout) move.timeout = true;
   const history: GameEvent[] = [...state.history, move];
   const next: GameState = { ...state, board, hands, hp, ply, history, kings };
 
@@ -374,6 +386,36 @@ export function playMove(state: GameState, r: number, c: number, kind: PieceKind
   if (rules.maxPlies > 0 && ply >= rules.maxPlies) return { ...next, result: judge(board, hp, "limit") };
   // 相手が打てれば相手番。打てなければ相手はパスし、自分が続けて打つ。両者打てなければ終局
   return settleTurn(next, q);
+}
+
+// ---- 制限時間切れ ----
+
+/**
+ * 手番のプレイヤーが置ける手（マスと駒種の組）から、rng で一様に 1 つ選ぶ。打てる手がない（終局）なら null。
+ * 王は指定しない（期限の手なら playMove がルールどおり置いた駒を自動で王にする）。
+ * 手番の人の持ち駒と盤だけを見るので、PlayerView（相手の王の場所を含まない）にも使える
+ */
+export function randomMove(
+  state: Pick<GameState, "rules" | "board" | "hands" | "turn" | "result">,
+  rng: () => number,
+): { r: number; c: number; kind: PieceKind } | null {
+  if (state.result) return null;
+  const p = state.turn;
+  const moves: { r: number; c: number; kind: PieceKind }[] = [];
+  for (const [r, c] of emptyCells(state.board)) {
+    for (const kind of availableKinds(state.hands[p])) {
+      if (legalLines(state.rules, state.board, state.hands[p], p, r, c, kind)) moves.push({ r, c, kind });
+    }
+  }
+  if (moves.length === 0) return null;
+  return moves[Math.min(moves.length - 1, Math.floor(rng() * moves.length))];
+}
+
+/** 制限時間切れ: 手番のプレイヤーの手を randomMove で選んで打つ（棋譜の手に timeout の印）。終局後は例外 */
+export function playTimeout(state: GameState, rng: () => number): GameState {
+  const m = randomMove(state, rng);
+  if (!m) throw new Error("対局は終了しています");
+  return playMove(state, m.r, m.c, m.kind, { timeout: true });
 }
 
 // ---- 隠し王 ----

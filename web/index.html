@@ -238,6 +238,30 @@
           </div>
         </fieldset>
 
+        <!-- 1 手ごとの制限時間。切れたら置ける手から 1 手を自動で打つ（ui/clock.ts） -->
+        <fieldset class="field">
+          <legend class="label">1 手の制限時間</legend>
+          <div class="opt">
+            <span class="opt-name" id="opt-time-cpu">CPU対戦（あなたの手番）</span>
+            <div class="seg time-seg" role="radiogroup" aria-labelledby="opt-time-cpu">
+              <label title="イージー なし・ノーマル 45 秒・ハード 20 秒"><input type="radio" name="timeCpu" value="auto" checked /><span>強さに合わせる</span></label>
+              <label><input type="radio" name="timeCpu" value="0" /><span>なし</span></label>
+              <label><input type="radio" name="timeCpu" value="20" /><span>20 秒</span></label>
+              <label><input type="radio" name="timeCpu" value="45" /><span>45 秒</span></label>
+              <label><input type="radio" name="timeCpu" value="90" /><span>90 秒</span></label>
+            </div>
+          </div>
+          <div class="opt">
+            <span class="opt-name" id="opt-time-multi">マルチ</span>
+            <div class="seg time-seg" role="radiogroup" aria-labelledby="opt-time-multi">
+              <label><input type="radio" name="timeMulti" value="0" /><span>なし</span></label>
+              <label><input type="radio" name="timeMulti" value="20" /><span>20 秒</span></label>
+              <label><input type="radio" name="timeMulti" value="45" checked /><span>45 秒</span></label>
+              <label><input type="radio" name="timeMulti" value="90" /><span>90 秒</span></label>
+            </div>
+          </div>
+        </fieldset>
+
         <div class="modal-actions">
           <button type="button" class="icon-btn" id="setup-rules" aria-label="ルール詳細" title="ルール詳細">?</button>
           <button type="button" class="btn ghost" id="setup-copy">URL をコピー</button>

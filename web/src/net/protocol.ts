@@ -29,6 +29,18 @@ export const FINISHED_TTL_MS = 60 * 60 * 1000;
 export const PING_TEXT = '{"type":"ping"}';
 export const PONG_TEXT = '{"type":"pong"}';
 
+/**
+ * 1 手ごとの制限時間の選択肢（秒。0 は制限なし）。手番が来るたびに戻り、切れたら置ける手から 1 手を自動で打つ。
+ * オンラインでは部屋を作るときに決め（CreateRoomRequest.turnSeconds）、サーバーが計る
+ */
+export const TURN_SECONDS = [0, 20, 45, 90] as const;
+export type TurnSeconds = (typeof TURN_SECONDS)[number];
+/**
+ * サーバーが制限時間に足す猶予（ミリ秒）。画面は着手の演出（最大 1.5 秒）の間は時計を止めて見せ、
+ * 通信の遅れもあるので、サーバーの締め切りは「手番が来た時刻 + 制限時間 + 猶予」にする
+ */
+export const TURN_GRACE_MS = 1500;
+
 // ---- HTTP ----
 
 /** 作成者の席。first: 先手 / second: 後手 / random: 部屋を作るときにランダム（既定） */
@@ -40,11 +52,14 @@ export type CreateRoomRequest =
       /** 対局のルール。範囲・型は ui/query.ts の decodeRules と同じ基準で検証する */
       rules: RuleSet;
       hostSeat?: HostSeat;
+      /** 1 手ごとの制限時間（TURN_SECONDS のどれか）。省略は 0（制限なし） */
+      turnSeconds?: TurnSeconds;
     }
   | {
       /** プリセットの ID（rules.ts の PRESETS） */
       preset: PresetId;
       hostSeat?: HostSeat;
+      turnSeconds?: TurnSeconds;
     };
 
 /** POST /api/rooms の応答（201） */
@@ -64,6 +79,8 @@ export interface RoomInfoResponse {
   roomId: string;
   phase: RoomPhase;
   rules: RuleSet;
+  /** 1 手ごとの制限時間（秒。0 は制限なし） */
+  turnSeconds: number;
   /** 参加できる席が残っている（トークンなしの join が通る） */
   open: boolean;
 }
@@ -101,6 +118,11 @@ export interface MoveMessage {
   kind: PieceKind;
   /** 置いた駒を自分の王にする（隠し王）。省略は false */
   king?: boolean;
+  /**
+   * 手を考えた局面の棋譜の長さ（view.history.length）。サーバーの局面と違えば stale_move で拒否する
+   * （制限時間切れの自動の手と入れ違いになった手を、次の局面に打たない）。省略すると調べない
+   */
+  seq?: number;
 }
 
 export type ClientMessage = JoinMessage | MoveMessage;
@@ -130,6 +152,16 @@ export interface StateMessage {
     /** 相手が今つながっている */
     online: boolean;
   };
+  /** 手番の制限時間。制限なし・対局中でない（待機中・終局）なら null */
+  clock: TurnClockInfo | null;
+}
+
+/** 手番の人の残り時間（送った時点の値。画面は受け取った時刻から数える） */
+export interface TurnClockInfo {
+  /** 1 手の制限時間（ミリ秒。猶予を含まない） */
+  limitMs: number;
+  /** サーバーが自動で打つまでの残り（ミリ秒。猶予 TURN_GRACE_MS を含む） */
+  remainingMs: number;
 }
 
 export interface ErrorMessage {
@@ -151,6 +183,7 @@ export type WsErrorCode =
   | "not_your_turn"
   | "illegal_move" // engine が拒否した手（置けない・持ち駒がない・王を指定できない など）
   | "game_over" // 終局後に手を送った
+  | "stale_move" // 手を考えた局面がもう進んでいる（制限時間切れの自動の手と入れ違い）
   | "internal";
 
 export type ServerMessage = JoinedMessage | StateMessage | ErrorMessage;

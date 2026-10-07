@@ -12,6 +12,7 @@ import {
   movesBy,
   playableKinds,
   playMove,
+  playTimeout,
   previewMove,
   targetsAt,
   threatenedPieces,
@@ -56,8 +57,9 @@ import {
   wsUrl,
   type EndReason,
 } from "../net/online";
-import type { ErrorMessage, RoomPhase, StateMessage } from "../net/protocol";
+import { TURN_SECONDS, type ErrorMessage, type RoomPhase, type StateMessage } from "../net/protocol";
 import { dirIcon } from "./diricon";
+import { clockLevel, clockText, cpuTurnSeconds, turnSecondsText, TurnClock } from "./clock";
 import { byId, h } from "./dom";
 import { finaleMs, Fx, fxTiming, speakerIcon, type FxTiming } from "./fx";
 import { OnlineDialog, seatText } from "./online";
@@ -65,7 +67,7 @@ import { hitOf, statsOf, tierOf, tierText, type HitBreakdown, type PlayerStats, 
 import { outcomeOf, type Outcome } from "./outcome";
 import { dirMark, endDetails, handText, hpText, kingPenaltyText, pieceLabel, ruleDetails, ruleLines, verb } from "./ruletext";
 import { Menu } from "./menu";
-import { drawSeat, fillSentences, SetupDialog, type PlaySettings } from "./setup";
+import { cryptoRandom, drawSeat, fillSentences, SetupDialog, type PlaySettings } from "./setup";
 import { Sound } from "./sound";
 
 /** CPU が打つまでの待ち時間（盤面の変化を目で追えるように） */
@@ -75,6 +77,8 @@ const RESULT_DELAY_MS = 900;
 const TOAST_MS = 2800;
 /** 取った駒が持ち駒へ飛んでいくアニメーションの長さ */
 const FLY_MS = 650;
+/** 制限時間の時計を描き直す間隔（時間切れの判定もこの間隔。残りは時刻の差で数えるので、間隔が延びてもずれない） */
+const CLOCK_TICK_MS = 200;
 
 /** 新しい手の演出の計画（段階・攻めた側か受けた側か・文言・長さ） */
 interface ImpactPlan extends FxTiming {
@@ -117,6 +121,19 @@ export class App {
   private peek = false;
   /** タッチで「同じマスをもう一度タップで置く」を覚えたか（吹き出しの案内は覚えるまで） */
   private tapLearned = false;
+  /**
+   * 1 手ごとの制限時間の時計（手番の人の分）。CPU 対戦・2 人対戦は画面で計って時間切れの手も打つ。
+   * オンライン対戦はサーバーの締め切りに合わせて見せるだけ（時間切れの手はサーバーが打つ）
+   */
+  private readonly clock = new TurnClock();
+  private clockTimer: number | undefined;
+  /** 対局の通し番号（再戦で棋譜の長さが 0 に戻っても、時計を新しい手番として数え直す） */
+  private gameNo = 0;
+  /** 名札の時計（手番の人の名札に移す） */
+  private readonly clockEl = h("span", { class: "turn-clock", attrs: { id: "turn-clock", role: "timer" } }, [
+    h("span", { class: "clock-dial", attrs: { "aria-hidden": "true" } }),
+    h("span", { class: "clock-num", attrs: { "aria-hidden": "true" } }),
+  ]);
 
   // ---- オンライン対戦 ----
   /** 部屋への接続（オンライン対戦中だけ） */
@@ -127,6 +144,8 @@ export class App {
   private sending = false;
   /** 演出の間に届いた state（演出が終わってから反映する） */
   private queued: StateMessage | null = null;
+  /** 最後に届いたサーバーの時計（seq はその局面の棋譜の長さ、deadline はこの端末の時刻で数えたサーバーの締め切り） */
+  private netClock: { seq: number; limitMs: number; deadline: number } | null = null;
   private readonly lobby = new OnlineDialog();
   /** トークン（部屋ごと）。再読み込みでは残り、別のタブとは共有しない */
   private readonly tokens = safeStore(() => window.sessionStorage);
@@ -176,12 +195,14 @@ export class App {
       (r) => this.showRules(r),
       (s) => {
         this.menu.setRuleName(ruleName(s.rules));
+        this.showLevelTimes();
         // オンライン対戦の部屋にいる間は、アドレスを部屋の URL のままにする
         if (!this.room) this.setup.reflectUrl(s.rules);
       },
       (text) => this.menu.showNote(text),
     );
     this.menu.setRuleName(ruleName(this.setup.current.rules));
+    this.showLevelTimes();
     this.bindControls();
     // 招待リンク（?room=）から開いたら部屋へ、それ以外はメニューから
     const roomId = roomIdFromSearch(window.location.search);
@@ -196,6 +217,15 @@ export class App {
   }
 
   // ---- 初期化 ----
+
+  /** メニューの強さのボタンに、保存した設定での制限時間を出す */
+  private showLevelTimes() {
+    const { timeCpu } = this.setup.current;
+    this.menu.setLevelTimes((level) => {
+      const t = cpuTurnSeconds(timeCpu, level);
+      return t > 0 ? `${t}秒` : "時間なし";
+    });
+  }
 
   private buildBoard() {
     for (let r = 0; r < SIZE; r++) {
@@ -275,7 +305,7 @@ export class App {
   private bindControls() {
     const { result, rules } = this.el;
     this.bindTabs();
-    byId("btn-rules").addEventListener("click", () => this.showRules(this.settings?.rules ?? null));
+    byId("btn-rules").addEventListener("click", () => this.showRules(this.settings?.rules ?? null, this.settings ?? undefined));
     byId("btn-menu").addEventListener("click", () => this.showMenu());
     byId("rules-close").addEventListener("click", () => rules.close());
     const mute = byId("btn-mute");
@@ -299,7 +329,12 @@ export class App {
       this.rematch();
     });
     // オンライン対戦: 画面に戻った・ネットにつながったら、つなぎ直しの待ち時間を飛ばす
-    document.addEventListener("visibilitychange", () => document.visibilityState === "visible" && this.net?.wake());
+    // 制限時間: 裏に回したタブではタイマーが間引かれるので、戻ったらすぐ時計を見直す（経過した分は時刻の差で減っている）
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState !== "visible") return;
+      this.net?.wake();
+      this.tickClock();
+    });
     window.addEventListener("online", () => this.net?.wake());
     // 決着の演出は Enter / Esc（押した時）・スペース（離した時。ボタンの起動と同じ）で飛ばす。
     // 下のボタンが一緒に反応しないよう、演出中のこれらのキーは既定の動作を止める
@@ -341,6 +376,7 @@ export class App {
     if (drawn) settings = { ...settings, human: drawSeat() };
     this.settings = settings;
     this.setup.reflectUrl(settings.rules);
+    this.gameNo++;
     this.game = createGame(settings.rules);
     this.el.game.hidden = false;
     this.renderRuleCard(settings.rules);
@@ -358,6 +394,8 @@ export class App {
     window.clearTimeout(this.resultTimer);
     window.clearTimeout(this.fxTimer);
     window.clearTimeout(this.finaleTimer);
+    window.clearTimeout(this.clockTimer);
+    this.clock.clear();
     this.fxLock = false;
     this.finale = null;
     this.fx.clear();
@@ -407,8 +445,9 @@ export class App {
   private place(r: number, c: number, kind: PieceKind, king = false) {
     if (!this.game) return;
     if (this.online) {
-      // 手を送るだけ。盤はサーバーから state が届いたときに描き直す（拒否されたら error が届く）
-      if (!this.net?.sendMove(r, c, kind, king)) {
+      // 手を送るだけ。盤はサーバーから state が届いたときに描き直す（拒否されたら error が届く）。
+      // 考えた局面の棋譜の長さを添え、時間切れの自動の手と入れ違ったらサーバーに拒否させる
+      if (!this.net?.sendMove(r, c, kind, king, this.game.history.length)) {
         this.showToast("接続が切れています。つながり直したら、もう一度打ってください");
         return;
       }
@@ -418,12 +457,88 @@ export class App {
       this.render();
       return;
     }
-    this.game = playMove(this.game, r, c, kind, { king });
+    this.advance(playMove(this.game, r, c, kind, { king }));
+  }
+
+  /** 画面で打った手（人間・CPU・時間切れの自動の手）を反映する */
+  private advance(next: GameState) {
+    this.game = next;
     this.focus = null;
     this.pinned = false;
     this.kingOn = false;
     this.peek = false;
     this.afterChange();
+  }
+
+  // ---- 制限時間 ----
+
+  /** 画面で時計を進めてよいか（CPU 対戦・2 人対戦）。操作できる手番で、演出中・決着の演出中・メニューを開いている間は止める */
+  private clockShouldRun(): boolean {
+    return this.canAct() && !this.finale && !this.menu.visible && !this.el.game.hidden;
+  }
+
+  /** 時計を局面に合わせる（描き直すたび。手番が変わったら数え直し、止める条件に合わせて動かす・止める） */
+  private syncClock() {
+    const g = this.game;
+    const s = this.settings;
+    window.clearTimeout(this.clockTimer);
+    if (!g || !s || g.result) {
+      this.clock.clear();
+    } else if (this.online) {
+      const nc = this.netClock;
+      if (nc && nc.seq === g.history.length && this.room?.phase === "playing") this.clock.follow(`net:${nc.seq}`, nc.limitMs, nc.deadline);
+      else this.clock.clear();
+    } else if (s.turnSeconds > 0 && this.isHuman(g.turn)) {
+      // CPU 対戦は人間の手番だけ（CPU が考えている間は人間の時計は進まない）
+      this.clock.reset(`${this.gameNo}:${g.history.length}`, s.turnSeconds * 1000);
+      this.clock.setRunning(this.clockShouldRun());
+    } else {
+      this.clock.clear();
+    }
+    this.renderClock();
+    if (this.clock.current !== null && (this.clock.running || this.online)) {
+      this.clockTimer = window.setTimeout(() => this.tickClock(), CLOCK_TICK_MS);
+    }
+  }
+
+  /** 時計を進める。画面で計る対局で時間切れなら自動で打つ */
+  private tickClock() {
+    if (this.checkTimeout()) return;
+    this.syncClock();
+  }
+
+  /**
+   * 画面で計る対局の時間切れなら、手番の人の手を置ける手から自動で 1 手打って true。
+   * 人の入力の前にも呼び、締め切りを過ぎた入力では打たない（自動の手と二重に打たない）
+   */
+  private checkTimeout(): boolean {
+    const g = this.game;
+    if (!g || g.result || this.online || !this.clock.running || !this.clock.expired) return false;
+    if (this.clock.current !== `${this.gameNo}:${g.history.length}`) return false;
+    window.clearTimeout(this.clockTimer);
+    this.clock.clear();
+    // 乱数は crypto（Math.random は CPU の乱数と共有。e2e は Math.random を種付きにして CPU の手を再現する）
+    this.advance(playTimeout(g, cryptoRandom));
+    return true;
+  }
+
+  /** 手番の人の名札（名前の右）の時計（色は残りで ok / warn / danger、止めている間は paused）。名札を作り直したら付け直す */
+  private renderClock() {
+    const el = this.clockEl;
+    const g = this.game;
+    const name = g ? this.el.players[g.turn].querySelector(".player-name") : null;
+    if (this.clock.current === null || !name) {
+      el.remove();
+      return;
+    }
+    if (name.nextElementSibling !== el) name.after(el);
+    const ms = this.clock.remaining();
+    const limit = this.clock.limitMs;
+    el.className = `turn-clock ${clockLevel(ms)}${this.clock.running || this.online ? "" : " paused"}`;
+    el.style.setProperty("--left", String(limit > 0 ? ms / limit : 0));
+    el.querySelector(".clock-num")!.textContent = clockText(ms);
+    el.setAttribute("aria-label", `残り ${Math.ceil(ms / 1000)} 秒`);
+    el.title = `1 手 ${turnSecondsText(limit / 1000)}。切れたら置ける手から自動で 1 手打つ`;
   }
 
   private afterChange() {
@@ -491,6 +606,9 @@ export class App {
         msgs.push(`${this.name(e.player)}はパス（${why}）。${this.name(other(e.player))}が続けて打ちます`);
         continue;
       }
+      if (e.timeout) {
+        msgs.push(`時間切れ！ ${this.name(e.player)}の手を自動で打ちました（${cellName(e.r, e.c)} に${pieceLabel(g.rules, e.kind)}）`);
+      }
       if (e.king) {
         const k = e.king;
         const v = verb(g.rules);
@@ -535,6 +653,8 @@ export class App {
     this.el.game.hidden = true;
     byId("btn-menu").hidden = true;
     this.menu.show(this.canResume());
+    // メニューを開いている間は時計を止める（オンラインはサーバーが計るので止まらない）
+    this.syncClock();
   }
 
   /** メニューから対局へ戻る */
@@ -555,7 +675,8 @@ export class App {
   private async createOnline(settings: PlaySettings) {
     this.lobby.busy("部屋を作っています…");
     try {
-      const res = await createRoom({ rules: settings.rules, hostSeat: settings.hostSeat ?? "random" });
+      const turnSeconds = TURN_SECONDS.find((t) => t === settings.turnSeconds) ?? 0;
+      const res = await createRoom({ rules: settings.rules, hostSeat: settings.hostSeat ?? "random", turnSeconds });
       saveToken(this.tokens, res.roomId, res.token);
       rememberCreated(this.local, res.roomId);
       this.enterRoom(res.roomId, { ...settings, human: res.you });
@@ -592,8 +713,9 @@ export class App {
       this.lobby.join({
         rules: info.rules,
         ruleName: name,
+        turnSeconds: info.turnSeconds ?? 0,
         createdHere: createdHere(this.local, id),
-        onJoin: () => this.enterRoom(id, { mode: "online", human: 0, rules: info.rules }),
+        onJoin: () => this.enterRoom(id, { mode: "online", human: 0, rules: info.rules, turnSeconds: info.turnSeconds ?? 0 }),
         onCancel: () => this.leaveToMenu(),
       });
     } catch (e) {
@@ -608,12 +730,14 @@ export class App {
     this.resetPlay();
     this.game = null;
     this.el.game.hidden = true;
-    this.settings = settings ?? { mode: "online", human: 0, rules: defaultRules() };
+    // 再読み込みで戻ったときの制限時間は、届いた state の時計で分かる
+    this.settings = settings ?? { mode: "online", human: 0, rules: defaultRules(), turnSeconds: 0 };
     this.room = { id, phase: "waiting", opponent: { joined: false, online: false } };
     // 招待リンクから入ったとき（メニューを通らない）もメニューへ出られるように
     byId("btn-menu").hidden = false;
     this.sending = false;
     this.queued = null;
+    this.netClock = null;
     // 再読み込みで同じ部屋に戻れるように、アドレスを部屋の URL にする
     window.history.replaceState(null, "", `${window.location.pathname}?room=${id}`);
     this.lobby.busy("部屋に接続しています…");
@@ -649,6 +773,7 @@ export class App {
     this.room = null;
     this.sending = false;
     this.queued = null;
+    this.netClock = null;
     this.lobby.close();
     this.renderNet();
   }
@@ -670,6 +795,9 @@ export class App {
     const prev = this.game;
     const first = !prev;
     const grew = !!prev && m.view.history.length > prev.history.length;
+    // サーバーの時計は届いた時刻から数える（端末とサーバーの時計のずれを持ち込まない）。演出の後に反映する局面でも、ここで受け取る
+    this.netClock = m.clock ? { seq: m.view.history.length, limitMs: m.clock.limitMs, deadline: Date.now() + m.clock.remainingMs } : null;
+    if (m.clock) s.turnSeconds = m.clock.limitMs / 1000;
     // 大・特大の演出中に届いた手は、演出が終わってから反映する（接続の変化は先に反映してよい）
     if (grew && this.fxLock) {
       this.queued = m;
@@ -719,6 +847,7 @@ export class App {
           url: inviteUrl(room.id, window.location),
           rules: this.settings.rules,
           ruleName: ruleName(this.settings.rules),
+          turnSeconds: this.settings.turnSeconds,
           you: this.settings.human,
           onLeave: () => this.leaveToMenu(),
         });
@@ -745,6 +874,11 @@ export class App {
   /** 送った手が拒否された（盤は変わらない） */
   private onNetError(m: ErrorMessage) {
     this.sending = false;
+    // 時間切れの自動の手と入れ違った手。自動の手の知らせ（棋譜の timeout）が先に届いているので、重ねて出さない
+    if (m.code === "stale_move") {
+      if (this.game) this.render();
+      return;
+    }
     const text: Partial<Record<ErrorMessage["code"], string>> = {
       not_your_turn: "相手の手番です",
       waiting_opponent: "相手の参加を待っています",
@@ -837,6 +971,8 @@ export class App {
   // ---- 入力 ----
 
   private onCellClick(r: number, c: number) {
+    // 締め切りを過ぎてから届いた入力では打たない（先に時間切れの自動の手を打つ）
+    if (this.checkTimeout()) return;
     const g = this.game;
     if (!g || !this.canAct()) return;
     const kind = this.kindFor(g);
@@ -948,6 +1084,7 @@ export class App {
     const pv = this.currentPreview(g);
     this.renderBoard(g, pv);
     this.renderPlayers(g);
+    this.renderClock();
     this.renderPreview(g, pv);
     this.el.kingBox.querySelector("#king-peek")?.setAttribute("aria-pressed", String(on));
   }
@@ -963,6 +1100,12 @@ export class App {
   /** CPU 対戦の強さ（終局画面の下の行。CPU 対戦でなければ空） */
   private levelText() {
     return this.settings?.mode === "cpu" ? `・CPU ${CPU_LEVEL_NAME[this.settings.level ?? DEFAULT_CPU_LEVEL]}` : "";
+  }
+
+  /** 制限時間（終局画面の下の行。制限なしなら空） */
+  private timeText() {
+    const t = this.settings?.turnSeconds ?? 0;
+    return t > 0 ? `・1 手 ${turnSecondsText(t)}` : "";
   }
 
   private foe() {
@@ -1032,6 +1175,7 @@ export class App {
     this.renderKingBox(g);
     this.renderLog(g);
     this.renderNet();
+    this.syncClock();
   }
 
   /** 自分の欄を盤の下、相手の欄を盤の上に置く（2 人対戦は先手が下で固定。同じ端末を挟んで座る） */
@@ -1522,7 +1666,7 @@ export class App {
   private moveText(e: GameEvent): string {
     if (e.type === "pass") return `${PLAYER_NAME[e.player]} パス（${e.reason === "noPieces" ? "持ち駒切れ" : "置ける所なし"}）`;
     const r = this.game!.rules;
-    const head = `${PLAYER_NAME[e.player]} ${pieceLabel(r, e.kind)}→${cellName(e.r, e.c)}`;
+    const head = `${PLAYER_NAME[e.player]} ${pieceLabel(r, e.kind)}→${cellName(e.r, e.c)}${e.timeout ? "（時間切れ・自動）" : ""}`;
     if (e.targets.length === 0) return head;
     const v = verb(r);
     const heal = e.heal > 0 ? ` +${e.heal}回復` : "";
@@ -1532,7 +1676,7 @@ export class App {
 
   private renderLog(g: GameState) {
     const items = [...g.history].reverse().map((e) =>
-      h("li", { class: `log-item ${e.type} p${e.player}${e.type === "move" && e.damage > 0 ? " hit" : ""}${e.type === "move" && e.king ? " king" : ""}` }, [
+      h("li", { class: `log-item ${e.type} p${e.player}${e.type === "move" && e.damage > 0 ? " hit" : ""}${e.type === "move" && e.king ? " king" : ""}${e.type === "move" && e.timeout ? " timeout" : ""}` }, [
         h("span", { class: "log-ply", text: e.type === "move" ? String(e.ply) : "—" }),
         h("span", { text: this.moveText(e) }),
       ]),
@@ -1748,7 +1892,7 @@ export class App {
         h("thead", {}, [h("tr", {}, [h("td"), head(0), head(1)])]),
         h("tbody", {}, [row("体力", [String(g.hp[0]), String(g.hp[1])]), row("石数", [String(discs[0]), String(discs[1])]), king]),
       ]),
-      h("p", { class: "score-foot", text: `${g.ply} 手・ルール ${ruleName(g.rules)}${this.levelText()}` }),
+      h("p", { class: "score-foot", text: `${g.ply} 手・ルール ${ruleName(g.rules)}${this.levelText()}${this.timeText()}` }),
     );
   }
 
@@ -1798,8 +1942,8 @@ export class App {
     return "なし（決める前に終局）";
   }
 
-  /** ルール詳細ダイアログを設定から作って開く */
-  private showRules(rules: RuleSet | null) {
+  /** ルール詳細ダイアログを設定から作って開く。play（対局中）なら制限時間も載せる */
+  private showRules(rules: RuleSet | null, play?: PlaySettings) {
     const r = rules ?? defaultRules();
     const content = byId("rules-content");
     byId("rules-title").textContent = `ルール — ${ruleName(r)}`;
@@ -1821,6 +1965,16 @@ export class App {
         ]),
         h("h3", { text: "決着" }),
         list("ul", endDetails(r)),
+        ...(play && play.turnSeconds > 0
+          ? [
+              h("h3", { text: "制限時間" }),
+              list("ul", [
+                `1 手 ${turnSecondsText(play.turnSeconds)}${play.mode === "cpu" ? "（あなたの手番だけ）" : ""}。手番が来るたびに戻る`,
+                "切れると、置ける手（駒の種類も含む）から 1 手が自動で打たれる。王を決める期限の手なら、置いた駒が自動で王になる",
+                "残りは手番の人の名札の時計。少なくなると琥珀、わずかになると赤に変わる。着手の演出の間は止まる",
+              ]),
+            ]
+          : []),
         h("h3", { text: "画面の見方" }),
         list("ul", [
           "置く駒を持ち駒から選ぶ（最初は数字の小さい駒が選ばれている）",

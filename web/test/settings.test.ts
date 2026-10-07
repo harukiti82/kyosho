@@ -236,14 +236,30 @@ describe("設定メニューの保存（localStorage）", () => {
   };
   it("保存がなければ標準・CPU 対戦は先手・オンラインはランダム", () => {
     expect(loadSaved(memory())).toEqual(defaultSaved());
-    expect(defaultSaved()).toEqual({ rules: defaultRules(), side: "0", host: "random" });
+    expect(defaultSaved()).toEqual({ rules: defaultRules(), side: "0", host: "random", timeCpu: "auto", timeMulti: "45" });
   });
   it("保存した設定をそのまま読める（全プリセット・手番）", () => {
     for (const p of PRESETS) {
       const store = memory();
-      storeSaved(store, { rules: p.rules, side: "random", host: "second" });
-      expect(loadSaved(store)).toEqual({ rules: p.rules, side: "random", host: "second" });
+      storeSaved(store, { rules: p.rules, side: "random", host: "second", timeCpu: "90", timeMulti: "0" });
+      expect(loadSaved(store)).toEqual({ rules: p.rules, side: "random", host: "second", timeCpu: "90", timeMulti: "0" });
     }
+  });
+  it("制限時間は選択肢（CPU 対戦は強さに合わせる・なし・20・45・90 秒、マルチはなし・20・45・90 秒）だけを読む", () => {
+    for (const t of ["auto", "0", "20", "45", "90"]) {
+      expect(loadSaved(memory({ [SETTINGS_KEY]: JSON.stringify({ timeCpu: t }) })).timeCpu).toBe(t);
+    }
+    for (const t of ["0", "20", "45", "90"]) {
+      expect(loadSaved(memory({ [SETTINGS_KEY]: JSON.stringify({ timeMulti: t }) })).timeMulti).toBe(t);
+    }
+    // 選択肢にない値・数値・"auto"（マルチ）は既定に戻す
+    for (const bad of [{ timeCpu: "30", timeMulti: "auto" }, { timeCpu: 45, timeMulti: 20 }, { timeCpu: "", timeMulti: "-1" }, { timeCpu: null, timeMulti: "45.0" }]) {
+      const got = loadSaved(memory({ [SETTINGS_KEY]: JSON.stringify(bad) }));
+      expect([got.timeCpu, got.timeMulti]).toEqual(["auto", "45"]);
+    }
+    // 制限時間の入る前の保存（キーがない）も既定
+    const old = loadSaved(memory({ [SETTINGS_KEY]: JSON.stringify({ rules: encodeRules(presetById("v10").rules), side: "1", host: "first" }) }));
+    expect([old.side, old.host, old.timeCpu, old.timeMulti]).toEqual(["1", "first", "auto", "45"]);
   });
   it("壊れた JSON・型の違う値・読めないルールは、その部分を既定に戻す（ルールは一部でも読めなければ全体を標準）", () => {
     for (const raw of ["{broken", "null", "42", "[]", '"str"']) expect(loadSaved(memory({ [SETTINGS_KEY]: raw }))).toEqual(defaultSaved());

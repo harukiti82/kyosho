@@ -1,8 +1,8 @@
-// 設定メニュー: プリセット・ルールの各項目・CPU 対戦とオンラインの手番・URL の共有。
+// 設定メニュー: プリセット・ルールの各項目・CPU 対戦とオンラインの手番・1 手の制限時間・URL の共有。
 // フォームは下書きで、「保存」で次の対局の設定になる（この端末の localStorage に保存。読めなければ標準）。
 // フォームの値は検証してから RuleSet にする（範囲外は範囲内に丸める）。
 
-import type { CpuLevel } from "../engine/cpu";
+import { DEFAULT_CPU_LEVEL, type CpuLevel } from "../engine/cpu";
 import {
   cloneRules,
   defaultRules,
@@ -20,6 +20,7 @@ import type { KeyValueStore } from "../net/online";
 import type { HostSeat } from "../net/protocol";
 import { dirIcon } from "./diricon";
 import { byId, h } from "./dom";
+import { cpuTurnSeconds, DEFAULT_MULTI_SECONDS, isCpuTime, isMultiTime, type CpuTime, type MultiTime } from "./clock";
 import { decodeRules, encodeRules, QUERY_BASE } from "./query";
 import { ruleLines, verb, type Sentence } from "./ruletext";
 
@@ -37,13 +38,22 @@ export interface PlaySettings {
   randomSeat?: boolean;
   /** CPU 対戦の CPU の強さ（省略時はノーマル） */
   level?: CpuLevel;
+  /**
+   * 1 手ごとの制限時間（秒。0 は制限なし）。CPU 対戦は人間の手番だけに付く。
+   * オンライン対戦は部屋を作るときにサーバーへ渡し、参加した側はサーバーの値（RoomInfoResponse.turnSeconds）
+   */
+  turnSeconds: number;
 }
 
-/** 設定メニューで保存する中身（ルール・CPU 対戦の手番・オンラインで部屋を作るときの手番） */
+/** 設定メニューで保存する中身（ルール・CPU 対戦の手番・オンラインで部屋を作るときの手番・制限時間） */
 export interface Saved {
   rules: RuleSet;
   side: Side;
   host: HostSeat;
+  /** CPU 対戦の制限時間（"auto" は強さに合わせる） */
+  timeCpu: CpuTime;
+  /** マルチ（同じ端末の 2 人・オンラインで部屋を作るとき）の制限時間 */
+  timeMulti: MultiTime;
 }
 /** CPU 対戦の手番の設定（"0" 先手 / "1" 後手 / "random" 対局ごとに抽選） */
 export type Side = "0" | "1" | "random";
@@ -51,14 +61,20 @@ export type Side = "0" | "1" | "random";
 /** localStorage のキー（中身は JSON。ルールは URL と同じクエリの文字列で、decodeRules で検証して読む） */
 export const SETTINGS_KEY = "kyosho:settings";
 
-export const defaultSaved = (): Saved => ({ rules: defaultRules(), side: "0", host: "random" });
+export const defaultSaved = (): Saved => ({
+  rules: defaultRules(),
+  side: "0",
+  host: "random",
+  timeCpu: "auto",
+  timeMulti: `${DEFAULT_MULTI_SECONDS}`,
+});
 
 const isSide = (v: unknown): v is Side => v === "0" || v === "1" || v === "random";
 const isHost = (v: unknown): v is HostSeat => v === "random" || v === "first" || v === "second";
 
 /**
  * 保存した設定を読む。保存がない・壊れている・読めない値がある（ストレージが使えない場合を含む）ときは、
- * その部分を既定（標準・先手・ランダム）にする。ルールは一部でも読めなければ全体を標準にする
+ * その部分を既定（標準・先手・ランダム・強さに合わせる・45 秒）にする。ルールは一部でも読めなければ全体を標準にする
  */
 export function loadSaved(store: KeyValueStore): Saved {
   const out = defaultSaved();
@@ -76,11 +92,16 @@ export function loadSaved(store: KeyValueStore): Saved {
   }
   if (isSide(o.side)) out.side = o.side;
   if (isHost(o.host)) out.host = o.host;
+  if (isCpuTime(o.timeCpu)) out.timeCpu = o.timeCpu;
+  if (isMultiTime(o.timeMulti)) out.timeMulti = o.timeMulti;
   return out;
 }
 
 export function storeSaved(store: KeyValueStore, s: Saved) {
-  store.setItem(SETTINGS_KEY, JSON.stringify({ rules: encodeRules(s.rules), side: s.side, host: s.host }));
+  store.setItem(
+    SETTINGS_KEY,
+    JSON.stringify({ rules: encodeRules(s.rules), side: s.side, host: s.host, timeCpu: s.timeCpu, timeMulti: s.timeMulti }),
+  );
 }
 
 /** 0 以上 1 未満の乱数。Math.random は CPU の乱数と共有なので使わない（e2e は Math.random を種付きにして CPU の手を再現する） */
@@ -177,10 +198,11 @@ export class SetupDialog {
 
   /** 次の対局の設定で、mode の対局を始める設定にする */
   playSettings(mode: Mode, level?: CpuLevel): PlaySettings {
-    const { rules, side, host } = this.current;
-    if (mode === "cpu") return { mode, ...seatChoice(side), rules, level };
-    if (mode === "online") return { mode, human: 0, rules, hostSeat: host };
-    return { mode, human: 0, rules };
+    const { rules, side, host, timeCpu, timeMulti } = this.current;
+    if (mode === "cpu") return { mode, ...seatChoice(side), rules, level, turnSeconds: cpuTurnSeconds(timeCpu, level ?? DEFAULT_CPU_LEVEL) };
+    const turnSeconds = Number(timeMulti);
+    if (mode === "online") return { mode, human: 0, rules, hostSeat: host, turnSeconds };
+    return { mode, human: 0, rules, turnSeconds };
   }
 
   /** 保存済みの設定をフォームに入れて開く */
@@ -188,6 +210,8 @@ export class SetupDialog {
     this.writeForm(this.saved.rules);
     this.radio("side", this.saved.side);
     this.radio("host", this.saved.host);
+    this.radio("timeCpu", this.saved.timeCpu);
+    this.radio("timeMulti", this.saved.timeMulti);
     this.openDetailsIfCustom();
     this.el.shareStatus.textContent = "";
     this.el.shareUrl.hidden = true;
@@ -254,7 +278,16 @@ export class SetupDialog {
       this.refresh(true);
       const side = f.get("side");
       const host = f.get("host");
-      this.saved = { rules: cloneRules(this.rules), side: isSide(side) ? side : "0", host: isHost(host) ? host : "random" };
+      const timeCpu = f.get("timeCpu");
+      const timeMulti = f.get("timeMulti");
+      const d = defaultSaved();
+      this.saved = {
+        rules: cloneRules(this.rules),
+        side: isSide(side) ? side : d.side,
+        host: isHost(host) ? host : d.host,
+        timeCpu: isCpuTime(timeCpu) ? timeCpu : d.timeCpu,
+        timeMulti: isMultiTime(timeMulti) ? timeMulti : d.timeMulti,
+      };
       storeSaved(this.store, this.saved);
       this.onSaved(this.current);
     });
