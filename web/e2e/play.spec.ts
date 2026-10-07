@@ -10,9 +10,9 @@ import { ruleLines, sentenceText } from "../src/ui/ruletext";
 import { noHorizontalScroll, openRuleFields, openSettings, openTab, readSetup, rng, saveSettings, seedPage, startGame, waitHumanTurnOrEnd } from "./helpers";
 
 const SHOT = "screenshots";
-/** ユーザーが既定に指定した URL のクエリ（プリセット「標準」。先手の体力は 125 から 110 に下げた） */
+/** プリセット「標準」の URL のクエリ（ユーザーが既定に指定した URL から、回復を低い方−1・王の期限を 7 手に変え、先手の体力を測り直した） */
 const STD_QUERY =
-  "take=flip&gate=0&dmg=sum&heal=avg&hp1=110&hp2=130&fu=10&gin=0&kin=2&hi=3&limit=0&king=1&kpen=hp&kdmg=30&kdue=5&dir=piece&yoko=10&kaku=4&vkin=5&vhi=3&anc=atk";
+  "take=flip&gate=0&dmg=sum&heal=low&hp1=129&hp2=130&fu=10&gin=0&kin=2&hi=3&limit=0&king=1&kpen=hp&kdmg=30&kdue=7&dir=piece&yoko=10&kaku=4&vkin=5&vhi=3&anc=atk";
 
 /** 盤の 64 マスがすべて同じ大きさ（中身の印やバッジで行の高さが変わらない） */
 async function cellsUniform(page: Page) {
@@ -231,8 +231,8 @@ test.describe("PC 幅", () => {
     await startGame(page);
     await ruleCardIs(page, std);
     await expect(page.locator("#rules4-name")).toHaveText("ルール — 標準");
-    await expect(page.locator("#player-0 .hp-num")).toHaveText("110");
-    await expect(page.locator("#player-0 .hp-max")).toHaveText("/ 110");
+    await expect(page.locator("#player-0 .hp-num")).toHaveText("129");
+    await expect(page.locator("#player-0 .hp-max")).toHaveText("/ 129");
     await expect(page.locator("#player-1 .hp-num")).toHaveText("130");
     await expect(page.locator("#player-1 .hp-max")).toHaveText("/ 130");
     await expect(page.locator("#ply")).toHaveText("0 手");
@@ -245,7 +245,8 @@ test.describe("PC 幅", () => {
     await page.locator("#btn-rules").click();
     await expect(page.locator("#rules-title")).toHaveText("ルール — 標準");
     await expect(page.locator("#rules")).toContainText("王を返されたら通常のダメージに加えて体力 −30");
-    await expect(page.locator("#rules")).toContainText("回復 = 挟んだ両端（置いた駒と反対端の自分の駒）の数字の平均（切り捨て）");
+    await expect(page.locator("#rules")).toContainText("回復 = 挟んだ両端（置いた駒と反対端の自分の駒）の低い方 − 1（0 未満は 0）");
+    await expect(page.locator("#rules")).toContainText("7 手目までに選ばなかったら、7 手目に置いた駒が自動で王になる");
     await expect(page.locator("#rules")).toContainText("端の駒の力:");
     await page.screenshot({ path: `${SHOT}/pc-default-rules.png` });
     expect(errors).toEqual([]);
