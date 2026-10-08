@@ -18,12 +18,14 @@ import {
 import { kindsByValue, presetById, sameRules, type PieceKind } from "../src/engine/rules";
 import type { KeyValueStore } from "../src/net/online";
 import {
+  FINISHED_TEXT,
   illegalHint,
   judgeMove,
   KING_HINT,
   LESSONS,
   loadProgress,
   nextNeed,
+  PLUS,
   progressAt,
   progressLabel,
   resumeStep,
@@ -34,6 +36,8 @@ import {
 } from "../src/ui/lessons";
 
 const lesson = (id: LessonId) => LESSONS.find((l) => l.id === id)!;
+/** 文の数（「。」で区切る） */
+const sentences = (s: string) => s.split("。").filter((x) => x.trim()).length;
 const steps = LESSONS.filter((l) => !l.match);
 
 /** 正解の手を打った後の局面と棋譜の手 */
@@ -107,12 +111,31 @@ describe("チュートリアルの各ステップ", () => {
     expect(lesson("anchor").rules.anchor).toBe("attack");
     expect(lesson("heal").rules.heal).toBe("lowMinus1");
     expect(lesson("king").rules.king).toEqual(std.king);
-    // 覚えるルールは 1 文、課題は短い命令形（2 文まで）。括弧の補足・感嘆符は使わない
+    // 覚えるルールは 2 文まで、課題と合わせて 3 文まで（1 文に 1 つのこと）。括弧の補足・感嘆符は使わない
     for (const l of LESSONS) {
       expect(l.lead.length, l.id).toBeGreaterThan(0);
-      expect(l.lead, l.id).not.toContain("。");
-      expect(l.task.split("。").filter(Boolean).length, l.id).toBeLessThanOrEqual(2);
+      expect(sentences(l.lead), l.id).toBeLessThanOrEqual(2);
+      expect(sentences(l.lead) + sentences(l.task), l.id).toBeLessThanOrEqual(3);
       expect(`${l.lead}${l.task}`, l.id).not.toMatch(/[（）！]/);
+    }
+  });
+
+  it("初めての人に通じない内部の用語・式のような書き方を使わない（覚えるルール・課題・ヒント・できたの文）", () => {
+    const texts = [FINISHED_TEXT, KING_HINT];
+    for (const l of steps) {
+      const { g, m } = solve(l);
+      texts.push(l.title, l.lead, l.task, l.done(m, g));
+      for (const [r, c] of l.guide) texts.push(l.hint(g, { r, c, kind: firstKind(g), king: false }));
+    }
+    for (const t of texts) {
+      // 「端の駒」「上乗せ」「期限」「低い方−1」「返す」（裏返す以外）、数字だけの「+2」「−30」
+      expect(t).not.toMatch(/端|上乗せ|期限|低い方|(?<!裏)返|(?<![0-9]\u2060?)[+＋−]\u2060?[0-9]/);
+      expect(t).not.toMatch(/[（）！]/);
+    }
+    // できたの文は 3 文まで
+    for (const l of steps) {
+      const { g, m } = solve(l);
+      expect(sentences(l.done(m, g)), l.id).toBeLessThanOrEqual(3);
     }
   });
 
@@ -139,7 +162,7 @@ describe("チュートリアルの各ステップ", () => {
     const { g, m } = solve(lesson("flank"));
     expect(legalCells(g, "fu").map(([r, c]) => cellName(r, c))).toEqual(["d5"]);
     expect(m.targets).toHaveLength(2);
-    expect(lesson("flank").done(m, g)).toBe("相手の歩を 2 つ裏返した");
+    expect(lesson("flank").done(m, g)).toBe("白い歩を 2 つ挟んで、黒に裏返した。");
   });
 
   it("ダメージ: 正解は 6 ダメージで相手の体力が 0 になって勝ち。もう一方は 2 ダメージでヒント", () => {
@@ -148,8 +171,8 @@ describe("チュートリアルの各ステップ", () => {
     expect(g.hp[1]).toBe(6);
     expect(m.damage).toBe(6);
     expect(next.result).toEqual({ winner: 0, reason: "ko", byDiscs: false });
-    expect(l.done(m, g)).toBe("歩1＋金5で 6 ダメージを与えて勝ち");
-    expect(judgeMove(l, g, { r: 4, c: 1, kind: "fu", king: false })).toBe("そこは 2 ダメージ。マスに触れると置く前に数字が出る");
+    expect(l.done(m, g)).toBe(`歩1と金5を裏返して、1${PLUS}5 で 6 のダメージ。相手の体力が 0 になったので、あなたの勝ち。`);
+    expect(judgeMove(l, g, { r: 4, c: 1, kind: "fu", king: false })).toBe("そこで裏返せるのは歩1と歩1で、ダメージは 2 しかない。金も挟めるマスに置く");
   });
 
   it("駒の向き: 正解のマスは点線の枠（オセロなら置ける）で、最初に選ばれる歩では置けず、飛なら置ける", () => {
@@ -160,8 +183,8 @@ describe("チュートリアルの各ステップ", () => {
     expect(isLegal(g, e4[0], e4[1], "fu")).toBe(false);
     expect(othelloCells(g.board, 0)).toContainEqual(e4);
     // 歩のまま押した・飛で違うマスに置いた
-    expect(illegalHint(l, g, { r: e4[0], c: e4[1], kind: "fu", king: false })).toBe("歩は↕縦にしか挟めない。駒台で飛を選ぼう");
-    expect(judgeMove(l, g, { r: 5, c: 6, kind: "hi", king: false })).toBe("光るマスに、飛で横に挟もう");
+    expect(illegalHint(l, g, { r: e4[0], c: e4[1], kind: "fu", king: false })).toBe("歩は縦にしか挟めない。駒台の飛をタップしてから置く");
+    expect(judgeMove(l, g, { r: 5, c: 6, kind: "hi", king: false })).toBe("光っているマスに飛を置いて、横に並んだ白い歩を挟む");
     expect(nextNeed(l, "fu", false)).toEqual({ kind: "hi" });
     expect(nextNeed(l, "hi", false)).toEqual({});
     expect(solve(l).m.targets).toHaveLength(2);
@@ -175,26 +198,33 @@ describe("チュートリアルの各ステップ", () => {
     expect(next.hands[0].kin).toBe(0);
     // 同じマスに歩でも置けるが、正解は金
     expect(isLegal(g, 2, 2, "fu")).toBe(true);
-    expect(judgeMove(l, g, { r: 2, c: 2, kind: "fu", king: false })).toBe("歩は↕縦にしか挟めない。駒台で金を選ぼう");
+    // 歩でも置けるマスなので、向きではなく裏返せる数の違いを言う
+    expect(judgeMove(l, g, { r: 2, c: 2, kind: "fu", king: false })).toBe("歩だと 1 つしか裏返せない。駒台の金をタップしてから置く");
+    expect(l.done(m, g)).toBe("金は全部の向きに挟めるので、3 つまとめて裏返した。金の残りが 0 になったので、この対局ではもう金を置けない。");
   });
 
-  it("端の駒: 正解は 返した歩1 ＋ 端の金5 ＝ 6。もう一方は端が歩で 2", () => {
+  it("反対側の駒: 正解は 裏返した歩1 ＋ 反対側の金5 ＝ 6。もう一方は反対側が歩で 2", () => {
     const l = lesson("anchor");
     const { g, m } = solve(l);
     expect(m.damage).toBe(6);
     expect(m.anchors).toEqual([{ r: 7, c: 3, kind: "kin" }]);
-    expect(l.done(m, g)).toBe("返した歩1に端の金5が足されて 6 ダメージ");
-    expect(judgeMove(l, g, { r: 5, c: 6, kind: "fu", king: false })).toBe("そこは端が歩1で 2 ダメージ。金を端にできるマスへ");
+    expect(l.done(m, g)).toBe(`裏返した歩1に、反対側の金5が足された。1${PLUS}5 で 6 ダメージ。`);
+    expect(judgeMove(l, g, { r: 5, c: 6, kind: "fu", king: false })).toBe("そこだと反対側の自分の駒は歩1で、ダメージは 2。反対側が金になるマスに置く");
   });
 
-  it("回復: 飛3 と端の金5 で挟むと 2 回復。歩で金を挟むと回復 0 でヒント", () => {
+  it("回復: 飛3 と反対側の金5 で挟むと 2 回復（光る 2 マスのどちらでも）。歩で金を挟むと回復 0 でヒント", () => {
     const l = lesson("heal");
     const { g, next, m } = solve(l);
     expect(m.heal).toBe(2);
     expect(next.hp[0]).toBe(g.hp[0] + 2);
-    expect(l.done(m, g)).toBe("飛3と端の金5で挟んで 2 回復");
+    expect(l.done(m, g)).toBe("飛3と金5で挟んだ。小さいほうの 3 から 1 を引いた 2 だけ、体力が回復した。");
     expect(previewMove(g, 5, 6, "fu")?.heal).toBe(0);
-    expect(judgeMove(l, g, { r: 5, c: 6, kind: "fu", king: false })).toContain("回復 0");
+    expect(judgeMove(l, g, { r: 5, c: 6, kind: "fu", king: false })).toBe("歩1と金5で挟むと、小さいほうの 1 から 1 を引いて、回復は 0。駒台の飛をタップしてから置く");
+    expect(judgeMove(l, g, { r: 2, c: 2, kind: "fu", king: false })).toBe("歩は縦にしか挟めない。駒台の飛をタップしてから置く");
+    // もう一方の光るマスでも飛なら正解で、同じ文になる
+    expect(judgeMove(l, g, { r: 5, c: 6, kind: "hi", king: false })).toBeNull();
+    const g6 = playMove(g, 5, 6, "hi");
+    expect(l.done(lastMoveOf(g6)!, g)).toBe(l.done(m, g));
     expect(firstKind(g)).toBe("fu");
     expect(nextNeed(l, "fu", false)).toEqual({ kind: "hi" });
   });
@@ -208,19 +238,19 @@ describe("チュートリアルの各ステップ", () => {
     expect(nextNeed(l, "fu", true)).toEqual({});
     const { next, m } = solve(l);
     expect(kingInfo(next, 0)).toMatchObject({ status: "hidden", cell: [5, 4], auto: false });
-    expect(l.done(m, g)).toBe("この歩1が王になった。返されると体力−30");
+    expect(l.done(m, g)).toBe("この歩1があなたの王になった。王を相手に裏返されると、ダメージとは別に体力が 30 減る。");
     expect(l.lead).toContain("最初の 7 手");
   });
 
-  it("王を返す: 「?」の金が相手の王で、返すと 6 ダメージ＋体力−30", () => {
+  it("王を裏返す: 「?」の金が相手の王で、裏返すと 6 ダメージ＋体力−30", () => {
     const l = lesson("kingHit");
     const { g, next, m } = solve(l);
     expect(l.marks?.map((x) => cellName(...x.at))).toEqual(["c7"]);
     expect(kingInfo(g, 0).status).toBe("hidden");
     expect(m.king).toMatchObject({ r: 6, c: 2, kind: "kin", penalty: 30, lose: false });
     expect(next.hp[1]).toBe(g.hp[1] - m.damage - 30);
-    expect(l.done(m, g)).toBe("王を返した。6 ダメージに −30 が上乗せ");
-    expect(l.lead).toContain("体力−30");
+    expect(l.done(m, g)).toBe("相手の王を裏返した。ダメージ 6 に王の分の 30 が加わり、相手の体力が 36 減った。");
+    expect(l.lead).toContain("体力が 30 減る");
   });
 
   it("予測を読む: 大きいダメージのマスは置いた駒が次に返され、正解のマスは返されない。点線だけのマスもある", () => {
@@ -232,9 +262,9 @@ describe("チュートリアルの各ステップ", () => {
     expect(pb.damage).toBeGreaterThan(pg.damage);
     expect(pb.exposed).toContainEqual(bad);
     expect(pg.exposed).not.toContainEqual(good);
-    expect(judgeMove(l, g, { r: bad[0], c: bad[1], kind: "fu", king: false })).toContain("返される");
+    expect(judgeMove(l, g, { r: bad[0], c: bad[1], kind: "fu", king: false })).toBe("そこに置くと、置いた歩が次の相手の手で裏返される。! が付かないマスに置く");
     expect(m.damage).toBe(pg.damage);
-    expect(l.done(m, g)).toBe(`返されない手で ${pg.damage} ダメージ`);
+    expect(l.done(m, g)).toBe(`このマスはダメージ ${pg.damage} で、置いた歩は次の相手の手で裏返されない。もう一方はダメージ ${pb.damage} だが、置いた歩をすぐ裏返されていた。`);
     // 王は決まっている（王の駒の操作を出さない）
     expect(kingInfo(g, 0).canDesignate).toBe(false);
     // 普通のオセロなら置けるが、持ち駒では置けないマス

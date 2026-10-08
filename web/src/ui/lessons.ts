@@ -3,7 +3,7 @@
 // DOM に依存しない（盤の誘導・コーチの表示は ui/app.ts と ui/coach.ts）。
 
 import { parseCell, type Cell } from "../engine/board";
-import { createGame, gameFrom, previewMove, type GameState, type MoveEvent } from "../engine/game";
+import { createGame, gameFrom, isLegal, previewMove, type GameState, type MoveEvent } from "../engine/game";
 import {
   cloneRules,
   KIND_ORDER,
@@ -17,7 +17,7 @@ import {
   type RuleSet,
 } from "../engine/rules";
 import type { KeyValueStore } from "../net/online";
-import { kingPenaltyText, pieceLabel } from "./ruletext";
+import { pieceLabel } from "./ruletext";
 
 export type LessonId = "flank" | "damage" | "dirs" | "hand" | "anchor" | "heal" | "king" | "kingHit" | "read" | "match";
 
@@ -85,17 +85,30 @@ const stones = (list: StoneSpec[]) => list.map(([name, owner, kind]) => ({ at: p
 const cells = (...names: string[]) => names.map(parseCell);
 const sameCell = (a: Cell, r: number, c: number) => a[0] === r && a[1] === c;
 
-/** 返した（取った）駒の名前と数字（例: 「金5＋歩1」） */
-const targetsText = (g: GameState, m: MoveEvent) => m.targets.map((t) => pieceLabel(g.rules, t.kind)).join("＋");
+// ---- 文の部品 ----
+// 文は初めて遊ぶ人が一度読めば分かる言葉で書く。内部の用語（端の駒・上乗せ・期限など）は使わず、盤の上の物を指して言い、
+// 結果はいま盤で起きた数字で言う。1 文に 1 つのことだけ。チュートリアルは標準（裏返すルール）だけを教える
 
-const pickHint = "光るマスのどちらかに置こう";
+/** 駒の名前と数字（例: 「金5」。盤の駒の字と同じ書き方） */
+const label = (g: GameState, k: PieceKind) => pieceLabel(g.rules, k);
+/** 駒の並び（例: 「歩1と金5」） */
+const labels = (g: GameState, kinds: readonly PieceKind[]) => kinds.map((k) => label(g, k)).join("と");
+/** 数字の足し算（例: 「1＋5」）。式の途中で行を折り返さないよう、＋の前後に WORD JOINER（U+2060）を挟む */
+export const PLUS = "\u2060＋\u2060";
+const sumText = (g: GameState, kinds: readonly PieceKind[]) => kinds.map((k) => g.rules.values[k]).join(PLUS);
+/** プレビューで裏返す駒の種類 */
+const previewKinds = (g: GameState, cellsOf: readonly Cell[]) => cellsOf.map(([y, x]) => g.board[y][x]!.kind);
+/** 王を裏返されたときに起きること（例: 「体力が 30 減る」） */
+const kingLoss = (r: RuleSet) => (r.king.penalty === "lose" ? "その場で負けになる" : `体力が ${r.king.amount} 減る`);
+
+const pickHint = "光っているマスのどちらかに置く";
 
 export const LESSONS: readonly Lesson[] = [
   {
     id: "flank",
     title: "挟む",
-    lead: "挟んだ相手の駒は、裏返って自分の駒になる",
-    task: "光るマスに歩を置こう",
+    lead: "あなたは黒。オセロと同じように、白い駒を黒で挟むと、裏返して黒にできる。",
+    task: "光っているマスをタップして、歩を置く",
     rules: rulesWith({}),
     start() {
       return gameFrom(this.rules, {
@@ -105,14 +118,14 @@ export const LESSONS: readonly Lesson[] = [
     },
     answers: [{ at: parseCell("d5"), kind: "fu" }],
     guide: cells("d5"),
-    hint: () => "そこでは挟めない。光るマスに置こう",
-    done: (m) => `相手の歩を ${m.targets.length} つ裏返した`,
+    hint: () => "そこでは白い駒を挟めない。光っているマスに置く",
+    done: (m) => `白い歩を ${m.targets.length} つ挟んで、黒に裏返した。`,
   },
   {
     id: "damage",
     title: "ダメージ",
-    lead: "挟んだ駒の数字の合計が、相手へのダメージになる",
-    task: "相手の残り体力 6 を削り切ろう",
+    lead: "駒の漢字の右下にある小さな数字が、その駒の強さ。裏返した駒の数字を足した分が、相手へのダメージになる。",
+    task: "光っているマスのうち、金と歩を両方挟めるほうに歩を置く",
     rules: rulesWith({}),
     start() {
       return gameFrom(this.rules, {
@@ -125,15 +138,20 @@ export const LESSONS: readonly Lesson[] = [
     guide: cells("b5", "f5"),
     hint(g, m) {
       const pv = previewMove(g, m.r, m.c, m.kind);
-      return pv ? `そこは ${pv.damage} ダメージ。マスに触れると置く前に数字が出る` : pickHint;
+      if (!pv) return pickHint;
+      return `そこで裏返せるのは${labels(g, previewKinds(g, pv.targets))}で、ダメージは ${pv.damage} しかない。金も挟めるマスに置く`;
     },
-    done: (m, g) => `${targetsText(g, m)}で ${m.damage} ダメージを与えて勝ち`,
+    done(m, g) {
+      const kinds = m.targets.map((t) => t.kind);
+      const left = g.hp[1] - m.damage;
+      return `${labels(g, kinds)}を裏返して、${sumText(g, kinds)} で ${m.damage} のダメージ。${left <= 0 ? "相手の体力が 0 になったので、あなたの勝ち。" : `相手の体力は残り ${left}。`}`;
+    },
   },
   {
     id: "dirs",
     title: "駒の向き",
-    lead: "駒は、石の上の矢印の向きにしか挟めない",
-    task: "駒台で飛を選び、横に挟もう",
+    lead: "駒の上の矢印は、その駒で挟める向き。歩は縦だけ、飛は縦と横に挟める。",
+    task: "駒台の飛をタップしてから、光っているマスに置く",
     rules: rulesWith({ dirs: true }),
     start() {
       return gameFrom(this.rules, {
@@ -143,14 +161,15 @@ export const LESSONS: readonly Lesson[] = [
     },
     answers: [{ at: parseCell("e4"), kind: "hi" }],
     guide: cells("e4"),
-    hint: () => "光るマスに、飛で横に挟もう",
-    done: () => "点線の枠はオセロなら置けるマスで、縦の歩では置けず縦横の飛なら置けた",
+    hint: () => "光っているマスに飛を置いて、横に並んだ白い歩を挟む",
+    done: (m) =>
+      `${PIECES[m.kind].name}で、横に並んだ白い歩を ${m.targets.length} つ裏返した。盤に出る点線の枠は、ふつうのオセロなら置けるマスの目印。駒の向きが合わないと、そこにも置けない。`,
   },
   {
     id: "hand",
     title: "持ち駒",
-    lead: "持ち駒は、駒の右下の数字の分しか置けない",
-    task: "最後の金で、3 方向まとめて挟もう",
+    lead: "駒台にある駒を持ち駒と呼ぶ。丸の中の数字が残りの数で、0 になるとその駒はもう置けない。",
+    task: "残り 1 つの金をタップしてから、光っているマスに置く",
     rules: rulesWith({ dirs: true }),
     start() {
       const r = this.rules;
@@ -162,14 +181,22 @@ export const LESSONS: readonly Lesson[] = [
     },
     answers: [{ at: parseCell("c3"), kind: "kin" }],
     guide: cells("c3"),
-    hint: () => "光るマスに金を置こう",
-    done: () => "金を使い切ったので、この対局ではもう金を置けない",
+    hint(g, m) {
+      const pv = previewMove(g, m.r, m.c, m.kind);
+      if (pv && m.kind !== "kin") return `${PIECES[m.kind].name}だと ${pv.targets.length} つしか裏返せない。駒台の金をタップしてから置く`;
+      return "光っているマスに金を置く";
+    },
+    done: (m, g) => {
+      const left = g.hands[0][m.kind] - 1;
+      const name = PIECES[m.kind].name;
+      return `${name}は全部の向きに挟めるので、${m.targets.length} つまとめて裏返した。${left > 0 ? `${name}の残りは ${left}。` : `${name}の残りが 0 になったので、この対局ではもう${name}を置けない。`}`;
+    },
   },
   {
     id: "anchor",
-    title: "端の駒",
-    lead: "挟んだ端にある自分の駒の数字も、ダメージに足される",
-    task: "金5 を端にして挟もう",
+    title: "反対側の駒",
+    lead: "相手の駒を挟んだとき、置いた駒の反対側にある自分の駒の数字も、ダメージに足される。置く前にマスをタップすると、その駒が青い枠で光る。",
+    task: "光っているマスのうち、反対側が自分の金になるほうに歩を置く",
     rules: rulesWith({ dirs: true, anchor: true }),
     start() {
       return gameFrom(this.rules, {
@@ -182,16 +209,19 @@ export const LESSONS: readonly Lesson[] = [
     hint(g, m) {
       const pv = previewMove(g, m.r, m.c, m.kind);
       if (!pv) return pickHint;
-      const ends = pv.anchors.map((a) => pieceLabel(g.rules, a.kind)).join("・");
-      return `そこは端が${ends}で ${pv.damage} ダメージ。金を端にできるマスへ`;
+      return `そこだと反対側の自分の駒は${labels(g, pv.anchors.map((a) => a.kind))}で、ダメージは ${pv.damage}。反対側が金になるマスに置く`;
     },
-    done: (m, g) => `返した${targetsText(g, m)}に端の${(m.anchors ?? []).map((a) => pieceLabel(g.rules, a.kind)).join("・")}が足されて ${m.damage} ダメージ`,
+    done(m, g) {
+      const flipped = m.targets.map((t) => t.kind);
+      const ends = (m.anchors ?? []).map((a) => a.kind);
+      return `裏返した${labels(g, flipped)}に、反対側の${labels(g, ends)}が足された。${sumText(g, [...flipped, ...ends])} で ${m.damage} ダメージ。`;
+    },
   },
   {
     id: "heal",
     title: "回復",
-    lead: "置いた駒と端の駒のうち、低い方の数字−1 だけ回復する",
-    task: "飛を置き、金を端にして挟もう",
+    lead: "挟むと、自分の体力も回復する。置いた駒と反対側の駒のうち、小さいほうの数字から 1 を引いた分だけ回復する。",
+    task: "駒台の飛をタップしてから、光っているマスに置く",
     rules: rulesWith({ dirs: true, anchor: true, heal: true }),
     start() {
       return gameFrom(this.rules, {
@@ -200,20 +230,31 @@ export const LESSONS: readonly Lesson[] = [
         hp: [100, this.rules.hp[1]],
       });
     },
-    answers: [{ at: parseCell("c3"), kind: "hi" }],
+    // 光る 2 マスはどちらも反対側が金。飛ならどちらでも同じだけ回復する
+    answers: [{ at: parseCell("c3"), kind: "hi" }, { at: parseCell("g6"), kind: "hi" }],
     guide: cells("c3", "g6"),
     hint(g, m) {
       const pv = previewMove(g, m.r, m.c, m.kind);
-      if (pv && pv.heal === 0) return "そこは回復 0。数字 1 の歩・横では回復しない";
-      return pickHint;
+      if (!pv || pv.heal > 0) return pickHint;
+      const end = pv.anchors[0]?.kind;
+      const low = Math.min(g.rules.values[m.kind], end ? g.rules.values[end] : 0);
+      const pair = end ? `${label(g, m.kind)}と${label(g, end)}で挟むと、` : "";
+      return `${pair}小さいほうの ${low} から 1 を引いて、回復は 0。駒台の飛をタップしてから置く`;
     },
-    done: (m, g) => `${pieceLabel(g.rules, m.kind)}と端の${(m.anchors ?? []).map((a) => pieceLabel(g.rules, a.kind)).join("・")}で挟んで ${m.heal} 回復`,
+    done(m, g) {
+      const v = g.rules.values;
+      // 回復は挟んだ向きのうちいちばん多いもの。その向きの反対側の駒で説明する
+      const end = (m.anchors ?? []).map((a) => a.kind).find((k) => Math.max(0, Math.min(v[m.kind], v[k]) - 1) === m.heal);
+      if (!end) return `体力が ${m.heal} 回復した。`;
+      const low = Math.min(v[m.kind], v[end]);
+      return `${label(g, m.kind)}と${label(g, end)}で挟んだ。小さいほうの ${low} から 1 を引いた ${m.heal} だけ、体力が回復した。`;
+    },
   },
   {
     id: "king",
     title: "王を決める",
-    lead: `最初の ${STD.king.deadline} 手のうち 1 手で、置く駒を相手に見えない王にする`,
-    task: "駒台の王を押してから置こう",
+    lead: `最初の ${STD.king.deadline} 手のうちどれか 1 手で、置く駒を王にする。どの駒が王かは、相手には見えない。`,
+    task: "駒台の右にある王をタップしてから、光っているマスに歩を置く",
     rules: rulesWith({ dirs: true, anchor: true, heal: true, king: true }),
     start() {
       return gameFrom(this.rules, {
@@ -223,14 +264,14 @@ export const LESSONS: readonly Lesson[] = [
     },
     answers: [{ at: parseCell("e6"), kind: "fu", king: true }],
     guide: cells("e6"),
-    hint: () => "光るマスに置こう",
-    done: (m, g) => `この${pieceLabel(g.rules, m.kind)}が王になった。返されると${kingPenaltyText(g.rules)}`,
+    hint: () => "光っているマスに歩を置く",
+    done: (m, g) => `この${label(g, m.kind)}があなたの王になった。王を相手に裏返されると、ダメージとは別に${kingLoss(g.rules)}。`,
   },
   {
     id: "kingHit",
-    title: "王を返す",
-    lead: `相手の王を返すと、ダメージに加えて${kingPenaltyText(STD)}`,
-    task: "「?」の駒が相手の王。挟んで返そう",
+    title: "王を裏返す",
+    lead: `相手の王を裏返すと、ダメージとは別に相手の${kingLoss(STD)}。`,
+    task: "この練習では「?」の駒が相手の王。光っているマスに歩を置いて挟む",
     rules: std(),
     start() {
       return gameFrom(this.rules, {
@@ -242,14 +283,18 @@ export const LESSONS: readonly Lesson[] = [
     answers: [{ at: parseCell("c6"), kind: "fu" }],
     guide: cells("c6"),
     marks: [{ at: parseCell("c7"), text: "?", label: "相手の王" }],
-    hint: () => "光るマスに置いて、「?」の駒を挟もう",
-    done: (m) => `王を返した。${m.damage} ダメージに −${m.king?.penalty ?? 0} が上乗せ`,
+    hint: () => "光っているマスに歩を置いて、「?」の駒を挟む",
+    done(m) {
+      const extra = m.king?.penalty ?? 0;
+      if (m.king?.lose) return "相手の王を裏返したので、あなたの勝ち。";
+      return `相手の王を裏返した。ダメージ ${m.damage} に王の分の ${extra} が加わり、相手の体力が ${m.damage + extra} 減った。`;
+    },
   },
   {
     id: "read",
     title: "予測を読む",
-    lead: "マスに触れると、赤い数字がダメージ、! が次に返されうる駒",
-    task: "置いた駒に ! が付かないマスを選ぼう",
+    lead: "置く前にマスをタップすると、結果が先に出る。! の付いた駒は、次の相手の手で裏返されるかもしれない。",
+    task: "光っている 2 マスを見比べて、置いた歩に ! が付かないほうに置く",
     rules: std(),
     start() {
       return gameFrom(this.rules, {
@@ -267,16 +312,25 @@ export const LESSONS: readonly Lesson[] = [
     guide: cells("d6", "g6"),
     hint(g, m) {
       const pv = previewMove(g, m.r, m.c, m.kind);
-      if (pv?.exposed.some(([y, x]) => y === m.r && x === m.c)) return "そこだと置いた駒が次に返される。! の出ないマスへ";
+      if (pv?.exposed.some(([y, x]) => y === m.r && x === m.c)) {
+        return `そこに置くと、置いた${PIECES[m.kind].name}が次の相手の手で裏返される。! が付かないマスに置く`;
+      }
       return pickHint;
     },
-    done: (m) => `返されない手で ${m.damage} ダメージ`,
+    done(m, g) {
+      // 光っているもう一方（置いた駒が裏返されるマス）と比べる
+      const other = this.guide.find(([y, x]) => y !== m.r || x !== m.c);
+      const pv = other ? previewMove(g, other[0], other[1], m.kind) : null;
+      const name = PIECES[m.kind].name;
+      const head = `このマスはダメージ ${m.damage} で、置いた${name}は次の相手の手で裏返されない。`;
+      return pv && pv.damage > m.damage ? `${head}もう一方はダメージ ${pv.damage} だが、置いた${name}をすぐ裏返されていた。` : head;
+    },
   },
   {
     id: "match",
     title: "実戦",
-    lead: "ここまでのルールが全部入った標準ルールで、制限時間はなし",
-    task: "イージーの CPU と対局しよう",
+    lead: "ここまで覚えたルールを全部使う、ふつうの対局。この対局には時間の制限がない。",
+    task: "強さイージーの CPU と、最後まで対局する",
     rules: std(),
     match: true,
     start() {
@@ -290,28 +344,29 @@ export const LESSONS: readonly Lesson[] = [
 ];
 
 /** 実戦を終えたときのコーチの 1 文 */
-export const FINISHED_TEXT = "遊び方クリア。メニューから標準ルールで対局できる";
+export const FINISHED_TEXT = "遊び方はこれで終わり。メニューから、同じルールで CPU や人と対局できる。";
 
 /** 王にしないで置こうとしたときのヒント */
-export const KING_HINT = "先に駒台の右の王を押そう";
+export const KING_HINT = "王にするには、先に駒台の右にある王をタップする";
 
 /** 選んでいる駒（have）では正解の駒（need）の向きに挟めない・違う駒のときのヒント */
 export function kindHint(r: RuleSet, have: PieceKind, need: PieceKind): string {
   const reach = PIECES[have].reach;
   const limited = r.dirs === "piece" && reach !== "all" && reach !== PIECES[need].reach;
-  const why = limited ? `${PIECES[have].name}は${REACH_MARK[reach].mark}${REACH_MARK[reach].short}にしか挟めない。` : "";
-  return `${why}駒台で${PIECES[need].name}を選ぼう`;
+  const why = limited ? `${PIECES[have].name}は${REACH_MARK[reach].short}にしか挟めない。` : "";
+  return `${why}駒台の${PIECES[need].name}をタップしてから置く`;
 }
 
 /**
  * 打とうとした手の判定。正解なら null、違えばヒント（盤は変えない）。
- * 正解のマスに違う駒・王にしないで置こうとしたときは、そのことを知らせる
+ * 正解のマスに違う駒・王にしないで置こうとしたときは、そのことを知らせる。
+ * 違う駒でもそのマスに置ける（向きは合う）なら、なぜその駒ではだめかはステップのヒントが言う
  */
 export function judgeMove(l: Lesson, g: GameState, m: LessonMove): string | null {
   const here = l.answers.filter((a) => sameCell(a.at, m.r, m.c));
   if (here.length === 0) return l.hint(g, m);
   const a = here.find((x) => x.kind === m.kind);
-  if (!a) return kindHint(l.rules, m.kind, here[0].kind);
+  if (!a) return isLegal(g, m.r, m.c, m.kind) ? l.hint(g, m) : kindHint(l.rules, m.kind, here[0].kind);
   if (a.king && !m.king) return KING_HINT;
   return null;
 }

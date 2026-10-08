@@ -15,15 +15,15 @@ const prefix = (page: Page) => (narrow(page) ? "sp" : "pc");
 
 /** 各ステップで試す違う手（置けないマス・正解でないマス・違う駒・王にしない）と、出るヒントの一部 */
 const WRONG: Record<Exclude<LessonId, "match">, { cell: string; kind: PieceKind; hint: string }> = {
-  flank: { cell: "c5", kind: "fu", hint: "そこでは挟めない" },
-  damage: { cell: "b5", kind: "fu", hint: "そこは 2 ダメージ" },
-  dirs: { cell: "e4", kind: "fu", hint: "歩は↕縦にしか挟めない" },
-  hand: { cell: "c3", kind: "fu", hint: "駒台で金を選ぼう" },
-  anchor: { cell: "g6", kind: "fu", hint: "端が歩1で 2 ダメージ" },
-  heal: { cell: "g6", kind: "fu", hint: "回復 0" },
-  king: { cell: "e6", kind: "fu", hint: "王を押そう" },
-  kingHit: { cell: "b6", kind: "fu", hint: "「?」の駒を挟もう" },
-  read: { cell: "d6", kind: "fu", hint: "置いた駒が次に返される" },
+  flank: { cell: "c5", kind: "fu", hint: "そこでは白い駒を挟めない" },
+  damage: { cell: "b5", kind: "fu", hint: "ダメージは 2 しかない" },
+  dirs: { cell: "e4", kind: "fu", hint: "歩は縦にしか挟めない" },
+  hand: { cell: "c3", kind: "fu", hint: "駒台の金をタップしてから置く" },
+  anchor: { cell: "g6", kind: "fu", hint: "反対側の自分の駒は歩1" },
+  heal: { cell: "g6", kind: "fu", hint: "回復は 0" },
+  king: { cell: "e6", kind: "fu", hint: "王をタップする" },
+  kingHit: { cell: "b6", kind: "fu", hint: "「?」の駒を挟む" },
+  read: { cell: "d6", kind: "fu", hint: "置いた歩が次の相手の手で裏返される" },
 };
 
 /** 正解の手を打った後の、コーチの 1 文（エンジンで同じ手を打って作る） */
