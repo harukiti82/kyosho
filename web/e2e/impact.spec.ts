@@ -179,7 +179,7 @@ for (const project of ["desktop", "mobile"] as const) {
       await expect(stats.locator(".stats-title")).toHaveText("あなたの成績");
       const mine = statsOf(s)[0];
       const best = mine.best!;
-      await expect(stats).toContainText(`最大ダメージ${best.hit.total}（${best.move.ply} 手目`);
+      await expect(stats).toContainText(`最大ダメージ${best.hit.total} ${best.move.ply} 手目`);
       await expect(stats).toContainText(`返した駒 ${best.move.targets.length} 個で ${best.hit.base}`);
       await expect(stats).toContainText(`会心以上${mine.bigHits} 回`);
       // 端の駒の力・隠し王がない設定では、その行を出さない
@@ -295,7 +295,7 @@ test.describe("PC 幅（設定・音・2 人対戦）", () => {
     const all = statsOf(s);
     for (const p of [0, 1] as const) {
       const b = all[p].best!;
-      await expect(stats.nth(p)).toContainText(`最大ダメージ${hitOf(rules, b.move).total}（${b.move.ply} 手目`);
+      await expect(stats.nth(p)).toContainText(`最大ダメージ${hitOf(rules, b.move).total} ${b.move.ply} 手目`);
       await expect(stats.nth(p)).toContainText(`会心以上${all[p].bigHits} 回`);
     }
     await page.screenshot({ path: `${SHOT}/pc-impact-pvp-stats.png` });

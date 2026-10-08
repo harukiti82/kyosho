@@ -3,7 +3,8 @@
 
 import { kindsByValue, kindsInRules, KIND_ORDER, PIECES, REACH_MARK, type PieceKind, type RuleSet } from "../engine/rules";
 
-export type Segment = string | { strong: string };
+/** 地の文 / 強調（strong）/ 行末に添える控えめな補足（note。括弧で囲まず、薄い字で区切る） */
+export type Segment = string | { strong: string } | { note: string };
 export type Sentence = Segment[];
 
 /** 返す／取る の活用（返した・返せる・返せない ／ 取った・取れる・取れない） */
@@ -29,20 +30,20 @@ export function handText(r: RuleSet): string {
   return parts.length > 0 ? parts.join("・") : "なし";
 }
 
-/** 挟める方向が「駒ごと」のときのルールカードの 1 行（例: 挟めるのは駒の矢印の方向だけ（歩↕ 横↔ 角✕ 飛✚ 金✱）） */
+/** 挟める方向が「駒ごと」のときのルールカードの 1 行（例: 駒の矢印の方向だけ挟める 歩↕ 横↔ 角✕ 飛✚ 金✱） */
 export function dirLine(r: RuleSet): Sentence {
   const marks = kindsInRules(r).map((k) => `${PIECES[k].name}${dirMark(r, k)}`).join(" ");
-  return ["挟めるのは駒の", { strong: "矢印の方向だけ" }, `（${marks}）`];
+  return ["駒の", { strong: "矢印の方向だけ" }, "挟める", { note: marks }];
 }
 
 /** 王を返された（取られた）ときの罰（例: 「体力−20」「即負け」） */
 export const kingPenaltyText = (r: RuleSet) => (r.king.penalty === "lose" ? "即負け" : `体力−${r.king.amount}`);
 
-/** 隠し王のルールカードの 1 行（例: 最初の5手のうち1つを王に（相手に見えない）。王を返されたら体力−20） */
+/** 隠し王のルールカードの 1 行（例: 最初の5手のうち1つを王にする。相手に見えず、返されたら体力−20） */
 export function kingLine(r: RuleSet): Sentence {
   const head: Sentence =
-    r.king.deadline === 1 ? ["最初に置く駒が", { strong: "王" }] : [`最初の${r.king.deadline}手のうち1つを`, { strong: "王" }, "に"];
-  return [...head, `（相手に見えない）。王を${verb(r).hitIf}`, { strong: kingPenaltyText(r) }];
+    r.king.deadline === 1 ? ["最初に置く駒が", { strong: "王" }] : [`最初の${r.king.deadline}手のうち1つを`, { strong: "王" }, "にする"];
+  return [...head, `。相手に見えず、${verb(r).hitIf}`, { strong: kingPenaltyText(r) }];
 }
 
 /** 端の駒の力（攻撃に上乗せ）のルールカードの 1 行 */
@@ -53,7 +54,7 @@ export function ruleLines(r: RuleSet): Sentence[] {
   const v = verb(r);
   const lines: Sentence[] = [];
   if (r.action === "flip") {
-    lines.push(["挟んだ相手の駒を", { strong: "裏返す" }, "（挟めるマスにしか置けない）"]);
+    lines.push(["挟めるマスに置き、相手の駒を", { strong: "裏返す" }]);
   } else {
     lines.push(["空きマスなら", { strong: "どこにでも置け" }, "、挟んだ相手の駒を", { strong: "取って自分の持ち駒にする" }]);
   }
@@ -66,8 +67,8 @@ export function ruleLines(r: RuleSet): Sentence[] {
   else if (r.heal === "avg") lines.push(["挟んだ両端の駒の", { strong: "平均" }, "だけ回復"]);
   else lines.push(["挟んだ両端の駒の", { strong: "低い方−1" }, "だけ回復"]);
   if (r.king.on) lines.push(kingLine(r));
-  const limit = r.maxPlies > 0 ? `（${r.maxPlies} 手で終われば体力の多い方が勝ち）` : "";
-  lines.push([`${hpText(r)} が `, { strong: "0 で負け" }, limit]);
+  const limit = r.maxPlies > 0 ? [{ note: `${r.maxPlies} 手で終われば体力の多い方が勝ち` }] : [];
+  lines.push([`${hpText(r)} が `, { strong: "0 で負け" }, ...limit]);
   return lines;
 }
 
@@ -162,4 +163,5 @@ export function endDetails(r: RuleSet): string[] {
   ];
 }
 
-export const sentenceText = (s: Sentence) => s.map((x) => (typeof x === "string" ? x : x.strong)).join("");
+/** 平文にする（補足は空白で区切る。画面の textContent と同じ） */
+export const sentenceText = (s: Sentence) => s.map((x) => (typeof x === "string" ? x : "strong" in x ? x.strong : ` ${x.note}`)).join("");

@@ -15,13 +15,13 @@ const prefix = (page: Page) => (narrow(page) ? "sp" : "pc");
 
 /** 各ステップで試す違う手（置けないマス・正解でないマス・違う駒・王にしない）と、出るヒントの一部 */
 const WRONG: Record<Exclude<LessonId, "match">, { cell: string; kind: PieceKind; hint: string }> = {
-  flank: { cell: "c5", kind: "fu", hint: "そのマスでは挟めない" },
+  flank: { cell: "c5", kind: "fu", hint: "そこでは挟めない" },
   damage: { cell: "b5", kind: "fu", hint: "そこは 2 ダメージ" },
-  dirs: { cell: "e4", kind: "fu", hint: "歩は↕ 縦（上下）にしか挟めない" },
-  hand: { cell: "c3", kind: "fu", hint: "駒台で金を選んで" },
+  dirs: { cell: "e4", kind: "fu", hint: "歩は↕縦にしか挟めない" },
+  hand: { cell: "c3", kind: "fu", hint: "駒台で金を選ぼう" },
   anchor: { cell: "g6", kind: "fu", hint: "端が歩1で 2 ダメージ" },
   heal: { cell: "g6", kind: "fu", hint: "回復 0" },
-  king: { cell: "e6", kind: "fu", hint: "王を押して" },
+  king: { cell: "e6", kind: "fu", hint: "王を押そう" },
   kingHit: { cell: "b6", kind: "fu", hint: "「?」の駒を挟もう" },
   read: { cell: "d6", kind: "fu", hint: "置いた駒が次に返される" },
 };
@@ -43,7 +43,8 @@ async function openTutorial(page: Page) {
 async function expectStep(page: Page, i: number) {
   await expect(page.locator("#coach-title")).toHaveText(LESSONS[i].title);
   await expect(page.locator("#coach-num")).toHaveText(`${i + 1}/${LESSONS.length}`);
-  await expect(page.locator("#coach-goal")).toHaveText(LESSONS[i].goal);
+  await expect(page.locator("#coach-lead")).toHaveText(LESSONS[i].lead);
+  await expect(page.locator("#coach-task")).toHaveText(LESSONS[i].task);
 }
 
 /** 盤のマスを押す（タッチは同じマスを 2 回タップで確定） */
@@ -107,7 +108,7 @@ test("遊び方: メニューから始め、全ステップを違う手と正解
   await seedPage(page, 11);
   await page.goto("/");
   // はじめて: メニューの「遊び方」に控えめなおすすめ（押し付けない。ほかの入口はそのまま）
-  await expect(page.locator("#menu-learn")).toHaveText("遊び方 はじめての方に");
+  await expect(page.locator("#menu-learn")).toHaveText("遊び方 おすすめ");
   await expect(page.locator("#menu-learn")).toHaveClass(/\bfresh\b/);
   await page.screenshot({ path: `${SHOT}/${prefix(page)}-tutorial-menu.png` });
   await openTutorial(page);
@@ -125,7 +126,7 @@ test("遊び方: メニューから始め、全ステップを違う手と正解
   // 実戦: 標準・CPU イージー・制限時間なし
   const last = LESSONS.length - 1;
   await expectStep(page, last);
-  await expect(page.locator("#rules4-name")).toHaveText("ルール — 標準");
+  await expect(page.locator("#rules4-name")).toHaveText("ルール 標準");
   await expect(page.locator("#player-1")).toContainText("CPU");
   await expect(page.locator("#coach-actions")).toBeHidden();
   await page.screenshot({ path: `${SHOT}/${prefix(page)}-tutorial-${last + 1}-match.png` });
@@ -173,7 +174,7 @@ test("遊び方: 途中でメニューに戻って続き・再読み込みで前
 
   // 「?」は習っている標準ルールの詳細（ステップの途中のルールではなく）
   await page.locator("#btn-rules").click();
-  await expect(page.locator("#rules-title")).toHaveText("ルール — 標準");
+  await expect(page.locator("#rules-title")).toHaveText("標準のルール");
   await page.locator("#rules-close").click();
 
   // 再読み込みしても前回の位置から
@@ -197,7 +198,7 @@ test("遊び方: 途中でメニューに戻って続き・再読み込みで前
   await page.locator("#menu-cpu").click();
   await page.locator("#menu-levels [data-level=easy]").click();
   await expect(page.locator("#coach")).toBeHidden();
-  await expect(page.locator("#rules4-name")).toHaveText("ルール — 標準");
+  await expect(page.locator("#rules4-name")).toHaveText("ルール 標準");
   await expect(page.locator(".cell.guide")).toHaveCount(0);
 });
 
@@ -213,7 +214,7 @@ test("遊び方: localStorage が使えなくても最初から動く（進み�
     });
   });
   await page.goto("/");
-  await expect(page.locator("#menu-learn")).toHaveText("遊び方 はじめての方に");
+  await expect(page.locator("#menu-learn")).toHaveText("遊び方 おすすめ");
   await openTutorial(page);
   await solveStep(page, LESSONS[0], 0);
   await page.locator("#coach-next").click();
@@ -242,7 +243,7 @@ test("遊び方のステップでは制限時間も CPU も割り込まない（
   // 正解の後も CPU は打たない（「次へ」を待つ）
   await page.clock.fastForward(60_000);
   await expect(page.locator("#ply")).toHaveText("1 手");
-  await expect(page.locator("#status")).toHaveText("できた");
+  await expect(page.locator("#status")).toHaveText("クリア");
 });
 
 test("遊び方の実戦は制限時間なしで、CPU（イージー）が打ち返す", async ({ page }) => {

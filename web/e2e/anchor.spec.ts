@@ -80,7 +80,7 @@ test.describe("PC 幅", () => {
     await openSettings(page);
     await page.locator(".preset[data-preset=anchor]").click();
     expect(await readSetup(page)).toEqual(ANCHOR);
-    await expect(page.locator("#custom-tag")).toHaveText("— 拠点");
+    await expect(page.locator("#custom-tag")).toHaveText("拠点");
     await openRuleFields(page);
     await expect(page.locator("#setup-rules4 li")).toHaveText(ruleLines(ANCHOR).map(sentenceText));
     await expect(page.locator("#setup-rules4")).toContainText("挟んだ端の自分の駒の数字もダメージに足す");
@@ -114,7 +114,7 @@ test.describe("PC 幅", () => {
 
     // 不正な値は URL の基準（v1.0）の値（なし）にして知らせる
     await page.goto("/?anc=bogus&dir=piece");
-    await expect(page.locator("#menu-note")).toHaveText("URL の設定に読めない値があったため、端の駒の力はv1.0（取る）の値にしました。");
+    await expect(page.locator("#menu-note")).toHaveText("URL の端の駒の力が読めないので、v1.0（取る）の値にしました");
     expect((await readSetup(page)).anchor).toBe("none");
     await expect(page.locator("input[name=anchor][value=none]")).toBeChecked();
     expect(errors).toEqual([]);
@@ -127,7 +127,7 @@ test.describe("PC 幅", () => {
     await seedPage(page, seed);
     await page.goto("/");
     await startGame(page, { preset: "anchor" });
-    await expect(page.locator("#rules4-name")).toHaveText("ルール — 拠点");
+    await expect(page.locator("#rules4-name")).toHaveText("ルール 拠点");
     await expect(page.locator("#rules4 li")).toHaveText(ruleLines(ANCHOR).map(sentenceText));
     await expect(page.locator("#legend")).toContainText("ダメージに上乗せする端の自分の駒");
     // 端の駒の見本（青枠）は「印」のタブ

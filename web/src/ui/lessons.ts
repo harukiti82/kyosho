@@ -41,8 +41,10 @@ export interface Lesson {
   id: LessonId;
   /** 短い見出し */
   title: string;
-  /** 目標（1〜2 文） */
-  goal: string;
+  /** このステップで覚えるルール（1 文） */
+  lead: string;
+  /** 盤ですること（命令形の 1 文） */
+  task: string;
   rules: RuleSet;
   /** 実戦（CPU イージー・標準・制限時間なし）。局面・正解・誘導はない */
   match?: true;
@@ -86,13 +88,14 @@ const sameCell = (a: Cell, r: number, c: number) => a[0] === r && a[1] === c;
 /** 返した（取った）駒の名前と数字（例: 「金5＋歩1」） */
 const targetsText = (g: GameState, m: MoveEvent) => m.targets.map((t) => pieceLabel(g.rules, t.kind)).join("＋");
 
-const pickHint = "光っているマスのどちらかに置こう。";
+const pickHint = "光るマスのどちらかに置こう";
 
 export const LESSONS: readonly Lesson[] = [
   {
     id: "flank",
     title: "挟む",
-    goal: "自分の駒で相手の駒を挟むと、裏返して自分の駒にできる。光っているマスに歩を置こう。",
+    lead: "挟んだ相手の駒は、裏返って自分の駒になる",
+    task: "光るマスに歩を置こう",
     rules: rulesWith({}),
     start() {
       return gameFrom(this.rules, {
@@ -102,13 +105,14 @@ export const LESSONS: readonly Lesson[] = [
     },
     answers: [{ at: parseCell("d5"), kind: "fu" }],
     guide: cells("d5"),
-    hint: () => "そのマスでは挟めない。光っているマスに置こう。",
-    done: (m) => `相手の歩 ${m.targets.length} つを挟んで、自分の駒に裏返した。`,
+    hint: () => "そこでは挟めない。光るマスに置こう",
+    done: (m) => `相手の歩を ${m.targets.length} つ裏返した`,
   },
   {
     id: "damage",
     title: "ダメージ",
-    goal: "挟んだ駒の数字の合計が、相手へのダメージになる。相手の残り体力 6 を削り切れるマスに置こう。",
+    lead: "挟んだ駒の数字の合計が、相手へのダメージになる",
+    task: "相手の残り体力 6 を削り切ろう",
     rules: rulesWith({}),
     start() {
       return gameFrom(this.rules, {
@@ -121,14 +125,15 @@ export const LESSONS: readonly Lesson[] = [
     guide: cells("b5", "f5"),
     hint(g, m) {
       const pv = previewMove(g, m.r, m.c, m.kind);
-      return pv ? `そこは ${pv.damage} ダメージ。マスに触れると、置く前に数字が出る。` : pickHint;
+      return pv ? `そこは ${pv.damage} ダメージ。マスに触れると置く前に数字が出る` : pickHint;
     },
-    done: (m, g) => `${targetsText(g, m)}で ${m.damage} ダメージ。相手の体力が 0 になって勝ち。`,
+    done: (m, g) => `${targetsText(g, m)}で ${m.damage} ダメージを与えて勝ち`,
   },
   {
     id: "dirs",
     title: "駒の向き",
-    goal: "駒ごとに挟める向きが違う（石の上の矢印）。駒台で飛を選んで、横に挟もう。",
+    lead: "駒は、石の上の矢印の向きにしか挟めない",
+    task: "駒台で飛を選び、横に挟もう",
     rules: rulesWith({ dirs: true }),
     start() {
       return gameFrom(this.rules, {
@@ -138,13 +143,14 @@ export const LESSONS: readonly Lesson[] = [
     },
     answers: [{ at: parseCell("e4"), kind: "hi" }],
     guide: cells("e4"),
-    hint: () => "光っているマスに、飛で横に挟もう。",
-    done: () => "点線の枠（普通のオセロなら置けるマス）に、縦だけの歩では置けず、縦横の飛なら置けた。",
+    hint: () => "光るマスに、飛で横に挟もう",
+    done: () => "点線の枠はオセロなら置けるマスで、縦の歩では置けず縦横の飛なら置けた",
   },
   {
     id: "hand",
     title: "持ち駒",
-    goal: "持ち駒は数に限りがある（駒の右下の数字）。残り 1 つの金で、3 方向まとめて挟もう。",
+    lead: "持ち駒は、駒の右下の数字の分しか置けない",
+    task: "最後の金で、3 方向まとめて挟もう",
     rules: rulesWith({ dirs: true }),
     start() {
       const r = this.rules;
@@ -156,13 +162,14 @@ export const LESSONS: readonly Lesson[] = [
     },
     answers: [{ at: parseCell("c3"), kind: "kin" }],
     guide: cells("c3"),
-    hint: () => "光っているマスに、金で置こう。",
-    done: () => "最後の金を使ったので、この対局ではもう金を置けない。",
+    hint: () => "光るマスに金を置こう",
+    done: () => "金を使い切ったので、この対局ではもう金を置けない",
   },
   {
     id: "anchor",
     title: "端の駒",
-    goal: "挟んだ端にある自分の駒の数字も、ダメージに足される。金（5）を端にして挟もう。",
+    lead: "挟んだ端にある自分の駒の数字も、ダメージに足される",
+    task: "金5 を端にして挟もう",
     rules: rulesWith({ dirs: true, anchor: true }),
     start() {
       return gameFrom(this.rules, {
@@ -176,14 +183,15 @@ export const LESSONS: readonly Lesson[] = [
       const pv = previewMove(g, m.r, m.c, m.kind);
       if (!pv) return pickHint;
       const ends = pv.anchors.map((a) => pieceLabel(g.rules, a.kind)).join("・");
-      return `そこは端が${ends}で ${pv.damage} ダメージ。金を端にできるマスへ。`;
+      return `そこは端が${ends}で ${pv.damage} ダメージ。金を端にできるマスへ`;
     },
-    done: (m, g) => `返した${targetsText(g, m)}に端の${(m.anchors ?? []).map((a) => pieceLabel(g.rules, a.kind)).join("・")}が足されて、${m.damage} ダメージ。`,
+    done: (m, g) => `返した${targetsText(g, m)}に端の${(m.anchors ?? []).map((a) => pieceLabel(g.rules, a.kind)).join("・")}が足されて ${m.damage} ダメージ`,
   },
   {
     id: "heal",
     title: "回復",
-    goal: "挟んだ両端（置いた駒と端の駒）の、低い方の数字−1 だけ回復する。飛で、金を端にして挟もう。",
+    lead: "置いた駒と端の駒のうち、低い方の数字−1 だけ回復する",
+    task: "飛を置き、金を端にして挟もう",
     rules: rulesWith({ dirs: true, anchor: true, heal: true }),
     start() {
       return gameFrom(this.rules, {
@@ -196,15 +204,16 @@ export const LESSONS: readonly Lesson[] = [
     guide: cells("c3", "g6"),
     hint(g, m) {
       const pv = previewMove(g, m.r, m.c, m.kind);
-      if (pv && pv.heal === 0) return `そこは回復 0。数字が 1 の歩・横を置くと回復しない。飛に持ち替えよう。`;
+      if (pv && pv.heal === 0) return "そこは回復 0。数字 1 の歩・横では回復しない";
       return pickHint;
     },
-    done: (m, g) => `${pieceLabel(g.rules, m.kind)}と端の${(m.anchors ?? []).map((a) => pieceLabel(g.rules, a.kind)).join("・")}で挟んで、体力が ${m.heal} 回復した。`,
+    done: (m, g) => `${pieceLabel(g.rules, m.kind)}と端の${(m.anchors ?? []).map((a) => pieceLabel(g.rules, a.kind)).join("・")}で挟んで ${m.heal} 回復`,
   },
   {
     id: "king",
     title: "王を決める",
-    goal: `最初の ${STD.king.deadline} 手のうち 1 手で、置く駒を自分の王にする。駒台の王を押してから置こう。`,
+    lead: `最初の ${STD.king.deadline} 手のうち 1 手で、置く駒を相手に見えない王にする`,
+    task: "駒台の王を押してから置こう",
     rules: rulesWith({ dirs: true, anchor: true, heal: true, king: true }),
     start() {
       return gameFrom(this.rules, {
@@ -214,13 +223,14 @@ export const LESSONS: readonly Lesson[] = [
     },
     answers: [{ at: parseCell("e6"), kind: "fu", king: true }],
     guide: cells("e6"),
-    hint: () => "光っているマスに置こう。",
-    done: (m, g) => `この${pieceLabel(g.rules, m.kind)}があなたの王になった（相手には見えず、返されると${kingPenaltyText(g.rules)}）。`,
+    hint: () => "光るマスに置こう",
+    done: (m, g) => `この${pieceLabel(g.rules, m.kind)}が王になった。返されると${kingPenaltyText(g.rules)}`,
   },
   {
     id: "kingHit",
     title: "王を返す",
-    goal: `相手の王はふつう見えないが、ここでは「?」の駒が相手の王。挟んで返すと、ダメージに加えて${kingPenaltyText(STD)}。`,
+    lead: `相手の王を返すと、ダメージに加えて${kingPenaltyText(STD)}`,
+    task: "「?」の駒が相手の王。挟んで返そう",
     rules: std(),
     start() {
       return gameFrom(this.rules, {
@@ -232,13 +242,14 @@ export const LESSONS: readonly Lesson[] = [
     answers: [{ at: parseCell("c6"), kind: "fu" }],
     guide: cells("c6"),
     marks: [{ at: parseCell("c7"), text: "?", label: "相手の王" }],
-    hint: () => "光っているマスに置いて、「?」の駒を挟もう。",
-    done: (m) => `相手の王を返して、${m.damage} ダメージに −${m.king?.penalty ?? 0} が上乗せされた。`,
+    hint: () => "光るマスに置いて、「?」の駒を挟もう",
+    done: (m) => `王を返した。${m.damage} ダメージに −${m.king?.penalty ?? 0} が上乗せ`,
   },
   {
     id: "read",
     title: "予測を読む",
-    goal: "マスに触れると、赤い数字がダメージ、! が次に相手に返されうる駒。置いた駒に ! が付かないマスを選ぼう。",
+    lead: "マスに触れると、赤い数字がダメージ、! が次に返されうる駒",
+    task: "置いた駒に ! が付かないマスを選ぼう",
     rules: std(),
     start() {
       return gameFrom(this.rules, {
@@ -256,15 +267,16 @@ export const LESSONS: readonly Lesson[] = [
     guide: cells("d6", "g6"),
     hint(g, m) {
       const pv = previewMove(g, m.r, m.c, m.kind);
-      if (pv?.exposed.some(([y, x]) => y === m.r && x === m.c)) return "そこだと置いた駒が次に返される（吹き出しの !）。もう一方のマスへ。";
+      if (pv?.exposed.some(([y, x]) => y === m.r && x === m.c)) return "そこだと置いた駒が次に返される。! の出ないマスへ";
       return pickHint;
     },
-    done: (m) => `置いた駒を返されない手で、${m.damage} ダメージ。`,
+    done: (m) => `返されない手で ${m.damage} ダメージ`,
   },
   {
     id: "match",
     title: "実戦",
-    goal: "最後は CPU（イージー）と 1 局。ここまでのルールがすべて入った標準ルールで、制限時間はなし。",
+    lead: "ここまでのルールが全部入った標準ルールで、制限時間はなし",
+    task: "イージーの CPU と対局しよう",
     rules: std(),
     match: true,
     start() {
@@ -278,17 +290,17 @@ export const LESSONS: readonly Lesson[] = [
 ];
 
 /** 実戦を終えたときのコーチの 1 文 */
-export const FINISHED_TEXT = "おつかれさま。これで標準ルールの対局ができる。";
+export const FINISHED_TEXT = "遊び方クリア。メニューから標準ルールで対局できる";
 
 /** 王にしないで置こうとしたときのヒント */
-export const KING_HINT = "先に駒台の右の王を押して、王にしてから置こう。";
+export const KING_HINT = "先に駒台の右の王を押そう";
 
 /** 選んでいる駒（have）では正解の駒（need）の向きに挟めない・違う駒のときのヒント */
 export function kindHint(r: RuleSet, have: PieceKind, need: PieceKind): string {
   const reach = PIECES[have].reach;
   const limited = r.dirs === "piece" && reach !== "all" && reach !== PIECES[need].reach;
-  const why = limited ? `${PIECES[have].name}は${REACH_MARK[reach].mark} ${REACH_MARK[reach].name}にしか挟めない。` : "";
-  return `${why}駒台で${PIECES[need].name}を選んでから置こう。`;
+  const why = limited ? `${PIECES[have].name}は${REACH_MARK[reach].mark}${REACH_MARK[reach].short}にしか挟めない。` : "";
+  return `${why}駒台で${PIECES[need].name}を選ぼう`;
 }
 
 /**
@@ -364,7 +376,7 @@ export const resumeStep = (p: Progress | null) => (!p || p.done ? 0 : p.step);
 
 /** メニューの「遊び方」に添える短い状態 */
 export function progressLabel(p: Progress | null): string {
-  if (!p) return "はじめての方に";
+  if (!p) return "おすすめ";
   if (p.done) return "クリア済み";
   return `つづき ${p.step + 1}/${LESSONS.length}`;
 }

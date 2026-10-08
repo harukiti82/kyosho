@@ -45,7 +45,7 @@ test("作成 → 招待リンクで参加 → 終局。途中の再読み込み�
   const url = await createRoomFromSetup(host, "v10", "first", `${SHOT}/${pre}-online-setup.png`);
   // 待機中: 招待リンク・自分の席・相手を待つ表示
   await expect(host.page.locator("#invite-waiting")).toBeVisible();
-  await expect(host.page.locator(".online-seat")).toContainText("先手（黒）");
+  await expect(host.page.locator(".online-seat")).toHaveText("先手");
   await expect.poll(() => host.last?.phase).toBe("waiting");
   await host.page.screenshot({ path: `${SHOT}/${pre}-online-invite.png` });
   await noHorizontalScroll(host.page, width);
@@ -131,7 +131,7 @@ test("作成 → 招待リンクで参加 → 終局。途中の再読み込み�
   await expect(host.page.locator("#online")).toHaveAttribute("data-view", "invite");
   const url2 = await host.page.locator("#invite-url").inputValue();
   expect(url2).not.toBe(url);
-  await expect(host.page.locator(".online-seat")).toContainText("先手（黒）");
+  await expect(host.page.locator(".online-seat")).toHaveText("先手");
 });
 
 test("隠し王: 自分の王の指定と相手の王の候補。相手に届くメッセージに王の場所が入らない", async ({ browser }, info) => {
@@ -197,7 +197,7 @@ test("既定（標準）のまま部屋を作る: 部屋のルールが標準に
   await waitPlaying(host, guest);
   // サーバーが持つ部屋のルール（両者に届く view.rules）が既定と同じ
   for (const p of [host, guest]) expect(p.last!.view.rules).toEqual(defaultRules());
-  await expect(host.page.locator("#rules4-name")).toHaveText(`ルール — ${presetById("std").name}`);
+  await expect(host.page.locator("#rules4-name")).toHaveText(`ルール ${presetById("std").name}`);
   await expect(guest.page.locator("#player-1 .hp-max")).toHaveText("/ 130");
 
   // 招待リンクから入った側もメニューへ出られ、部屋の URL と接続を保ったまま「対局に戻る」で戻れる
@@ -312,7 +312,7 @@ test("対局中のサーバー切断: 再接続中の表示 → 復帰。相手�
     await page.close({ code: 1011, reason: "down" });
   }
   await expect(host.page.locator("#net")).toHaveText("再接続中…");
-  await expect(host.page.locator("#status")).toContainText("接続が切れました");
+  await expect(host.page.locator("#status")).toContainText("再接続中");
   await expect(host.page.locator(".board.acting")).toHaveCount(0);
   // 直前の手の演出が消えてから撮る
   await host.page.waitForTimeout(1800);

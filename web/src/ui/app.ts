@@ -62,7 +62,7 @@ import { dirIcon } from "./diricon";
 import { clockLevel, clockText, cpuTurnSeconds, turnSecondsText, TurnClock } from "./clock";
 import { byId, h } from "./dom";
 import { finaleMs, Fx, fxTiming, speakerIcon, type FxTiming } from "./fx";
-import { OnlineDialog, seatText } from "./online";
+import { OnlineDialog } from "./online";
 import { hitOf, statsOf, tierOf, tierText, type HitBreakdown, type PlayerStats, type Tier } from "./impact";
 import { outcomeOf, type Outcome } from "./outcome";
 import { dirMark, endDetails, handText, hpText, kingPenaltyText, pieceLabel, ruleDetails, ruleLines, verb } from "./ruletext";
@@ -262,7 +262,7 @@ export class App {
     const { timeCpu } = this.setup.current;
     this.menu.setLevelTimes((level) => {
       const t = cpuTurnSeconds(timeCpu, level);
-      return t > 0 ? `${t}秒` : "時間なし";
+      return t > 0 ? `${t}秒` : "制限なし";
     });
   }
 
@@ -427,10 +427,7 @@ export class App {
     this.renderLegend(settings.rules);
     this.showCoach();
     this.afterChange();
-    if (drawn) {
-      const first = settings.human === 0 ? "あなたから" : "CPU から";
-      this.showToast(`対局開始！ 抽選の結果、あなたは${seatText(settings.human)}です（${first}打ちます）`);
-    }
+    if (drawn) this.showToast(`抽選で${PLAYER_NAME[settings.human]}になりました`);
   }
 
   /** 対局の途中の状態（タイマー・演出・選択）を捨てる */
@@ -498,7 +495,7 @@ export class App {
       // 手を送るだけ。盤はサーバーから state が届いたときに描き直す（拒否されたら error が届く）。
       // 考えた局面の棋譜の長さを添え、時間切れの自動の手と入れ違ったらサーバーに拒否させる
       if (!this.net?.sendMove(r, c, kind, king, this.game.history.length)) {
-        this.showToast("接続が切れています。つながり直したら、もう一度打ってください");
+        this.showToast("接続が切れています。つながったら打ち直してください");
         return;
       }
       this.sending = true;
@@ -656,18 +653,21 @@ export class App {
     const msgs: string[] = [];
     for (const e of fresh) {
       if (e.type === "pass") {
-        const why = e.reason === "noPieces" ? "持ち駒が尽きました" : "置けるマスがありません";
-        msgs.push(`${this.name(e.player)}はパス（${why}）。${this.name(other(e.player))}が続けて打ちます`);
+        const why = e.reason === "noPieces" ? "持ち駒切れ" : "置けるマスなし";
+        msgs.push(`${this.shortName(e.player)}は${why}でパス`);
         continue;
       }
       if (e.timeout) {
-        msgs.push(`時間切れ！ ${this.name(e.player)}の手を自動で打ちました（${cellName(e.r, e.c)} に${pieceLabel(g.rules, e.kind)}）`);
+        msgs.push(`時間切れ。${this.shortName(e.player)}の手を ${cellName(e.r, e.c)} に${pieceLabel(g.rules, e.kind)}で自動で打ちました`);
       }
       if (e.king) {
         const k = e.king;
         const v = verb(g.rules);
         const what = k.lose ? "即負け" : `体力−${k.penalty}`;
-        msgs.push(`王を${v.past}！ ${this.name(other(e.player))}の王は ${cellName(k.r, k.c)} の${pieceLabel(g.rules, k.kind)}（${what}）`);
+        // 自分の王なら「返された」（2 人対戦は me() が null なので「返した」）
+        const owner = other(e.player);
+        const head = owner === this.me() ? `王を${v.hit}` : `王を${v.past}`;
+        msgs.push(`${head}。${this.shortName(owner)}の王は ${cellName(k.r, k.c)} の${pieceLabel(g.rules, k.kind)}、${what}`);
       }
       // CPU 対戦・オンライン対戦では、自分の王が決まったことを本人に知らせる（2 人対戦は相手に見えるので出さない）
       if (e.player === this.me()) {
@@ -675,8 +675,8 @@ export class App {
         if (ki.cell && ki.cell[0] === e.r && ki.cell[1] === e.c) {
           msgs.push(
             ki.auto
-              ? `期限の ${g.rules.king.deadline} 手目なので、置いた${pieceLabel(g.rules, e.kind)}（${cellName(e.r, e.c)}）が自動であなたの王になりました`
-              : `${cellName(e.r, e.c)} の${pieceLabel(g.rules, e.kind)}をあなたの王にしました（${this.foe()}には見えません）`,
+              ? `期限の ${g.rules.king.deadline} 手目なので、${cellName(e.r, e.c)} の${pieceLabel(g.rules, e.kind)}が自動で王になりました`
+              : `${cellName(e.r, e.c)} の${pieceLabel(g.rules, e.kind)}を王にしました。${this.foe()}には見えません`,
           );
         }
       }
@@ -719,7 +719,7 @@ export class App {
     }
     // 一度でも開いたステップと、終えた後は全部へ移れる
     const open = this.progress?.done ? LESSONS.length - 1 : (this.progress?.reached ?? run.index);
-    this.coach.show(run.index, LESSONS.map((l) => l.title), open, run.lesson.goal);
+    this.coach.show(run.index, LESSONS.map((l) => l.title), open, run.lesson.lead, run.lesson.task);
   }
 
   /** 正解を打った: 何が起きたかの 1 文と「次へ」 */
@@ -793,10 +793,10 @@ export class App {
       rememberCreated(this.local, res.roomId);
       this.enterRoom(res.roomId, { ...settings, human: res.you });
     } catch (e) {
-      const why = e instanceof OnlineHttpError && e.code === "bad_rules" ? "この設定ではオンライン対戦の部屋を作れませんでした。" : "サーバーにつながりませんでした。";
-      this.lobby.error("部屋を作れませんでした", `${why}時間をおいてもう一度試してください。`, [
+      const why = e instanceof OnlineHttpError && e.code === "bad_rules" ? "この設定ではオンラインの部屋を作れません。" : "サーバーにつながりません。";
+      this.lobby.error("部屋を作れませんでした", `${why}時間をおいて試してください。`, [
         { label: "メニューへ", onClick: () => this.leaveToMenu() },
-        { label: "もう一度試す", primary: true, onClick: () => void this.createOnline(settings) },
+        { label: "再試行", primary: true, onClick: () => void this.createOnline(settings) },
       ]);
     }
   }
@@ -805,7 +805,7 @@ export class App {
   private async openRoom(id: string | null) {
     this.el.game.hidden = true;
     if (id === null) {
-      this.lobby.error("部屋が見つかりません", "招待リンクの部屋 ID の形式が違います。リンクを最後までコピーできているか確かめてください。", [
+      this.lobby.error("部屋が見つかりません", "招待リンクが途中で切れていないか確かめてください。", [
         { label: "メニューへ", primary: true, onClick: () => this.leaveToMenu() },
       ]);
       return;
@@ -814,11 +814,11 @@ export class App {
       this.enterRoom(id);
       return;
     }
-    this.lobby.busy("部屋を確かめています…");
+    this.lobby.busy("部屋を確認中…");
     try {
       const info = await getRoomInfo(id);
       if (!info.open) {
-        this.showEnded("room_full", info.phase === "finished" ? "この部屋の対局はもう終わっています。" : "この部屋には 2 人がもう参加しています。");
+        this.showEnded("room_full", info.phase === "finished" ? "この部屋の対局は終わっています。" : "この部屋には 2 人そろっています。");
         return;
       }
       const name = ruleName(info.rules);
@@ -831,7 +831,7 @@ export class App {
         onCancel: () => this.leaveToMenu(),
       });
     } catch (e) {
-      if (e instanceof OnlineHttpError && e.code === "not_found") this.showEnded("room_not_found", "招待リンクの部屋が見つかりません。");
+      if (e instanceof OnlineHttpError && e.code === "not_found") this.showEnded("room_not_found");
       else this.showUnavailable();
     }
   }
@@ -852,7 +852,7 @@ export class App {
     this.netClock = null;
     // 再読み込みで同じ部屋に戻れるように、アドレスを部屋の URL にする
     window.history.replaceState(null, "", `${window.location.pathname}?room=${id}`);
-    this.lobby.busy("部屋に接続しています…");
+    this.lobby.busy("接続中…");
     const net = new OnlineSession(
       id,
       wsUrl(id, window.location),
@@ -866,7 +866,7 @@ export class App {
           if (this.net !== net) return;
           // 最初の接続ができないまま（局面が届く前）は、案内の画面でつなぎ直しを知らせる
           if (st === "reconnecting" && !this.game) {
-            this.lobby.busy("部屋に接続しています…", `サーバーにつながりません。つなぎ直しています（${attempt} 回目）`);
+            this.lobby.busy("接続中…", `サーバーにつながりません。再接続 ${attempt} 回目`);
           }
           if (this.game) this.render();
         },
@@ -972,14 +972,14 @@ export class App {
   /** 相手の参加・切断・復帰を知らせる */
   private notifyRoom(prev: App["room"], first: boolean) {
     const now = this.room!;
-    const me = seatText(this.settings!.human);
+    const me = PLAYER_NAME[this.settings!.human];
     if (first || !prev) {
       // 招待リンクから参加した人
-      if (now.phase === "playing" && this.game?.ply === 0) this.showToast(`対局開始！ あなたは${me}です`);
+      if (now.phase === "playing" && this.game?.ply === 0) this.showToast(`対局開始　あなたは${me}`);
       return;
     }
-    if (prev.phase === "waiting" && now.phase === "playing") this.showToast(`相手が参加しました。対局開始！ あなたは${me}です`);
-    else if (now.phase === "playing" && prev.opponent.online && !now.opponent.online) this.showToast("相手の接続が切れました。戻るのを待っています");
+    if (prev.phase === "waiting" && now.phase === "playing") this.showToast(`相手が参加しました　あなたは${me}`);
+    else if (now.phase === "playing" && prev.opponent.online && !now.opponent.online) this.showToast("相手の接続が切れました");
     else if (now.phase === "playing" && !prev.opponent.online && now.opponent.online) this.showToast("相手が戻りました");
   }
 
@@ -995,7 +995,7 @@ export class App {
       not_your_turn: "相手の手番です",
       waiting_opponent: "相手の参加を待っています",
       game_over: "対局はもう終わっています",
-      illegal_move: `その手は打てません（${m.message}）`,
+      illegal_move: `その手は打てません。${m.message}`,
     };
     this.showToast(text[m.code] ?? m.message);
     if (this.game) this.render();
@@ -1017,11 +1017,11 @@ export class App {
   private showEnded(reason: EndReason, lead?: string) {
     const back = { label: "メニューへ", onClick: () => this.leaveToMenu() };
     const titles: Record<EndReason, [string, string]> = {
-      replaced: ["別のタブで開かれました", "この対局が別のタブ（または別の端末）で開かれたため、こちらの接続を閉じました。"],
-      room_not_found: ["部屋が見つかりません", "招待リンクが古いか、部屋が片付けられました（放置した部屋は 24 時間、終局後は 1 時間で消えます）。"],
-      expired: ["部屋の期限が切れました", "しばらく操作がなかったため、部屋が片付けられました。"],
-      room_full: ["この部屋は満員です", "対局できるのは 2 人までです（観戦はできません）。"],
-      invalid_token: ["席に戻れませんでした", "保存していた参加の情報がこの部屋と合いません。"],
+      replaced: ["別のタブで開かれました", "別のタブか端末で開いたので、こちらの接続を閉じました。"],
+      room_not_found: ["部屋が見つかりません", "部屋は終局から 1 時間、放置すると 24 時間で閉じます。"],
+      expired: ["部屋の期限が切れました", "しばらく操作がなかったので、部屋を閉じました。"],
+      room_full: ["この部屋は満員です", "対局は 2 人まで。観戦はできません。"],
+      invalid_token: ["席に戻れませんでした", "この端末の参加の記録が、この部屋と合いません。"],
       rejected: ["部屋に入れませんでした", ""],
     };
     const [title, detail] = titles[reason];
@@ -1036,7 +1036,7 @@ export class App {
 
   /** 別のタブに取られた席を、このタブに戻す（もう一方のタブが閉じられる） */
   private resumeHere() {
-    this.lobby.busy("部屋に接続しています…");
+    this.lobby.busy("接続中…");
     this.net?.resume();
   }
 
@@ -1044,10 +1044,10 @@ export class App {
   private showUnavailable() {
     this.lobby.error(
       "オンライン対戦に接続できません",
-      "サーバーにつながりませんでした。この公開先ではオンライン対戦を使えないか、通信が切れています。",
+      "サーバーにつながりません。この公開先ではオンライン対戦を使えないか、通信が切れています。",
       [
         { label: "メニューへ", onClick: () => this.leaveToMenu() },
-        { label: "もう一度試す", primary: true, onClick: () => void this.openRoom(roomIdFromSearch(window.location.search) ?? null) },
+        { label: "再試行", primary: true, onClick: () => void this.openRoom(roomIdFromSearch(window.location.search) ?? null) },
       ],
     );
   }
@@ -1098,8 +1098,12 @@ export class App {
         // 裏返すルールで挟めない空きマスを押したときは理由を出す
         // 駒ごとの方向で、選んでいる駒の方向が限られるなら添える（他の駒なら返せることがある）
         const limited = g.rules.dirs === "piece" && PIECES[kind].reach !== "all";
-        const reach = limited ? `${PIECES[kind].name}は${dirMark(g.rules, kind)} ${REACH_MARK[PIECES[kind].reach].name}だけ挟める。` : "";
-        this.showToast(`${cellName(r, c)} に ${pieceLabel(g.rules, kind)} を置いても返せる駒がありません（${reach}● のマスに置けます）`);
+        const reach = REACH_MARK[PIECES[kind].reach];
+        this.showToast(
+          limited
+            ? `${cellName(r, c)} では返せません。${PIECES[kind].name}は${reach.mark}${reach.short}にだけ挟めます`
+            : `${cellName(r, c)} では返せる駒がありません`,
+        );
       }
       this.clearFocus();
       return;
@@ -1266,8 +1270,9 @@ export class App {
   private renderRuleCard(r: RuleSet) {
     // 遊び方のステップは習った分だけのルール（プリセットにない組み合わせ）なので「遊び方」と呼ぶ
     const name = this.inStep() ? "遊び方" : ruleName(r);
-    this.el.rulesName.textContent = `ルール — ${name}`;
-    byId("tab-rules4").title = `ルール — ${name}`;
+    // 見出しは「ルール」と名前を字の太さで分ける（区切りの記号は使わない）
+    this.el.rulesName.replaceChildren("ルール ", h("span", { class: "tab-sub", text: name }));
+    byId("tab-rules4").title = `${name}のルール`;
     const lines = ruleLines(r);
     fillSentences(this.el.rulesList, lines);
     this.el.rulesList.classList.toggle("dense", lines.length >= 6);
@@ -1290,7 +1295,7 @@ export class App {
         ? [h("span", {}, [h("span", { class: "key-dir", attrs: { "aria-hidden": "true" }, text: dirMarks(r) }), " 駒が挟める方向"])]
         : []),
       ...(r.king.on
-        ? [h("span", {}, [h("span", { class: "key-king", attrs: { "aria-hidden": "true" }, text: "王" }), " 自分の王（自分にだけ見える）"])]
+        ? [h("span", {}, [h("span", { class: "key-king", attrs: { "aria-hidden": "true" }, text: "王" }), " 自分の王。自分にだけ見える"])]
         : []),
       ...(r.king.on && this.online
         ? [h("span", {}, [h("span", { class: "key-cand", attrs: { "aria-hidden": "true" }, text: "?" }), " 相手の王の候補"])]
@@ -1594,17 +1599,17 @@ export class App {
     const away = this.online && this.room?.opponent.online === false;
     if (this.lesson?.solved) {
       // 遊び方のステップは小さな局面なので、正解の後にどちらも打てず終局することがある。終局とは言わない
-      text = "できた";
+      text = "クリア";
     } else if (g.result) {
       text = `終局 ${this.resultHeadline(g.result)}・${this.reasonShort(g)}`;
     } else if (this.online && this.room?.phase === "waiting") {
-      text = "相手を待っています…";
+      text = "相手を待っています";
     } else if (this.online && !this.net?.ready) {
-      text = this.net?.connState === "closed" ? "接続を閉じました" : "接続が切れました。つなぎ直しています…";
+      text = this.net?.connState === "closed" ? "接続を閉じました" : "再接続中…";
     } else if (this.online && this.sending) {
       text = "送信中…";
     } else if (!this.isHuman(g.turn)) {
-      text = this.online ? (away ? "相手の接続が切れています" : "相手の番") : "CPU が考えています…";
+      text = this.online ? (away ? "相手の接続が切れています" : "相手の番") : "CPU 思考中…";
     } else {
       text = this.settings?.mode === "pvp" ? `${PLAYER_NAME[g.turn]}の番` : "あなたの番";
     }
@@ -1628,13 +1633,13 @@ export class App {
     if (!pv || !f) {
       box.classList.remove("on");
       box.append(h("h2", { class: "label", text: "予測" }));
-      if (g.result) box.append(h("p", { class: "muted", text: "対局は終了しました。" }));
-      else if (!this.isHuman(g.turn)) box.append(h("p", { class: "muted", text: `${this.foe()}の手番です。` }));
+      if (g.result) box.append(h("p", { class: "muted", text: "終局" }));
+      else if (!this.isHuman(g.turn)) box.append(h("p", { class: "muted", text: `${this.foe()}の番` }));
       else {
         box.append(
           h("p", { class: "muted" }, [
             h("span", { class: "key-dot", attrs: { "aria-hidden": "true" } }),
-            ` のマスを選ぶと、${v.can}駒とダメージを予測します。`,
+            ` のマスを選ぶと、${v.can}駒とダメージが出ます`,
           ]),
         );
       }
@@ -1646,7 +1651,7 @@ export class App {
     const kind = this.kindFor(g);
     const designating = this.designating(g);
     const asKing = designating ? "王にして" : "";
-    box.append(h("h2", { class: "label", text: `予測 — ${cellName(f.r, f.c)} に ${pieceLabel(g.rules, kind)}${dirMark(g.rules, kind)} を${asKing}置くと` }));
+    box.append(h("h2", { class: "label", text: `${cellName(f.r, f.c)} に${pieceLabel(g.rules, kind)}${dirMark(g.rules, kind)}を${asKing}置くと` }));
     if (pv.targets.length === 0) {
       box.append(h("p", { class: "preview-main none", text: `${v.can}駒なし` }));
     } else {
@@ -1671,27 +1676,27 @@ export class App {
     // 王にする駒が返されうるなら、置いた駒の警告はこの 1 行にまとめる
     const kingPlacedExposed = designating && placedExposed;
     if (kingPlacedExposed) {
-      box.append(h("p", { class: "warn king", text: `！ 王にする ${pieceLabel(g.rules, kind)} は次の相手の手で${v.passive}（${v.hitIf}${pen}）` }));
+      box.append(h("p", { class: "warn king", text: `！ 王にする${pieceLabel(g.rules, kind)}が次に${v.passive}。${v.hitIf}${pen}` }));
     } else if (myKing !== undefined && kingExposed) {
       const [y, x] = [Math.floor(myKing / SIZE), myKing % SIZE];
       box.append(
         h("p", {
           class: "warn king",
-          text: `！ あなたの王（${cellName(y, x)} の${pieceLabel(g.rules, g.board[y][x]!.kind)}）が次の相手の手で${v.passive}（${v.hitIf}${pen}）`,
+          text: `！ 自分の王 ${cellName(y, x)} の${pieceLabel(g.rules, g.board[y][x]!.kind)}が次に${v.passive}。${v.hitIf}${pen}`,
         }),
       );
     }
     if (kingPlacedExposed) {
       // 上で警告済み
     } else if (placedExposed) {
-      box.append(h("p", { class: "warn", text: `！ ここに置いた ${pieceLabel(g.rules, kind)} は次の相手の手で${v.passive}` }));
+      box.append(h("p", { class: "warn", text: `！ 置いた${pieceLabel(g.rules, kind)}が次に${v.passive}` }));
     } else if (pv.exposedDamage > 0) {
-      box.append(h("p", { class: "warn soft", text: `！ 置いた後、相手は次の手で最大 ${pv.exposedDamage} ダメージ与えられる（! の駒）` }));
+      box.append(h("p", { class: "warn soft", text: `！ 次の相手の手で最大 ${pv.exposedDamage} ダメージ。! の駒が${v.passive}` }));
     }
     const touch = this.lastPointer === "touch" || this.lastPointer === "pen";
     const hint = touch
-      ? `同じマスをもう一度タップすると ${pieceLabel(g.rules, kind)} を${asKing}置きます`
-      : `クリックで ${pieceLabel(g.rules, kind)} を${asKing}置きます`;
+      ? `もう一度タップで${asKing}置く`
+      : `クリックで${asKing}置く`;
     box.append(h("p", { class: "hint", text: hint }));
   }
 
@@ -1833,7 +1838,7 @@ export class App {
     if (e.targets.length === 0) return head;
     const v = verb(r);
     const heal = e.heal > 0 ? ` +${e.heal}回復` : "";
-    const king = e.king ? ` 王を${v.past}！（${e.king.lose ? "即負け" : `体力−${e.king.penalty}`}）` : "";
+    const king = e.king ? ` 王を${v.past}・${e.king.lose ? "即負け" : `体力−${e.king.penalty}`}` : "";
     return `${head} ${e.targets.map((x) => pieceLabel(r, x.kind)).join("・")}を${v.past} ${e.damage}ダメージ${anchorText(r, e)}${heal}${king}`;
   }
 
@@ -1856,9 +1861,10 @@ export class App {
    */
   /**
    * 着手の演出の文字（ダメージ・端の駒・王）を、アニメーションでいちばん大きくなったとき（peak 倍）でも
-   * 盤の中に収まるよう横にずらす（マスの中央が基準。端に近い列でも画面の横にはみ出さない）
+   * 盤の中に収まるよう横にずらす（マスの中央が基準。端に近い列でも画面の横にはみ出さない）。
+   * 戻り値は最も大きくなったときの横の範囲（画面の座標）
    */
-  private fitPop(el: HTMLElement, r: number, c: number, peak: number) {
+  private fitPop(el: HTMLElement, r: number, c: number, peak: number): [number, number] {
     const board = this.el.board.getBoundingClientRect();
     const cell = this.cells[r][c].getBoundingClientRect();
     // offsetWidth は transform（拡大・縮小）を含まない、文字の本来の幅
@@ -1868,6 +1874,7 @@ export class App {
     const hi = board.right - half;
     const x = lo > hi ? (board.left + board.right) / 2 : Math.min(hi, Math.max(lo, cx));
     el.style.setProperty("--pop-x", `calc(-50% + ${Math.round(x - cx)}px)`);
+    return [x - half, x + half];
   }
 
   private playMoveEffects(m: MoveEvent, plan: ImpactPlan) {
@@ -1887,12 +1894,13 @@ export class App {
     const pop = m.heal > 0 ? `${m.damage} ダメージ ＋${m.heal} 回復` : `${m.damage} ダメージ`;
     const dmgPop = delayed(h("span", { class: `dmg-pop t-${tier}${plan.hurt ? " hurt" : ""}`, text: pop }));
     this.cells[m.r][m.c].append(dmgPop);
-    this.fitPop(dmgPop, m.r, m.c, tier === "huge" ? 1.45 : 1.15);
-    // 上乗せに使った端の駒に足した数字を出す
+    const [dmgL, dmgR] = this.fitPop(dmgPop, m.r, m.c, tier === "huge" ? 1.45 : 1.15);
+    // 上乗せに使った端の駒に足した数字を出す。同じ行・隣の行でダメージ数と横に重なるなら、駒の下に出す
     for (const a of m.anchors ?? []) {
       const anchorPop = h("span", { class: "anchor-pop", text: `+${g.rules.values[a.kind]}` });
       this.cells[a.r][a.c].append(anchorPop);
-      this.fitPop(anchorPop, a.r, a.c, 1.15);
+      const [l, r] = this.fitPop(anchorPop, a.r, a.c, 1.15);
+      if (Math.abs(a.r - m.r) <= 1 && l < dmgR && r > dmgL) anchorPop.classList.add("below");
     }
     // 王を返した: 王だった駒に「王！」と罰を出す（公開の演出）
     if (m.king) {
@@ -2013,11 +2021,11 @@ export class App {
     const loser = r.winner === null ? null : other(r.winner);
     const v = verb(g.rules);
     let judged: string;
-    if (r.winner === null) judged = `体力（${g.hp[0]}）も石数（${d0}）も同じで引き分け`;
-    else if (r.byDiscs) judged = `体力が同じ（${g.hp[0]}）で、石数 ${d0} 対 ${d1} で${this.name(r.winner)}の勝ち`;
-    else judged = `体力 ${g.hp[0]} 対 ${g.hp[1]} で${this.name(r.winner)}の勝ち`;
+    if (r.winner === null) judged = `体力 ${g.hp[0]}・石 ${d0} で並んで引き分け`;
+    else if (r.byDiscs) judged = `体力が並び、石数 ${d0} 対 ${d1} で${this.shortName(r.winner)}の勝ち`;
+    else judged = `体力 ${g.hp[0]} 対 ${g.hp[1]} で${this.shortName(r.winner)}の勝ち`;
     const stall = g.ply === 0 ? "最初から両者とも打てない設定" : "両者とも打てる手がなくなった";
-    const loserName = loser !== null ? this.name(loser) : "";
+    const loserName = loser !== null ? this.shortName(loser) : "";
     const reason = {
       ko: `${loserName}の体力が 0 になった`,
       limit: `${g.rules.maxPlies} 手で打ち切り。${judged}`,
@@ -2048,7 +2056,9 @@ export class App {
     const head = (p: Player) =>
       h("th", { class: `score-head${winner === p ? " won" : ""}`, attrs: { scope: "col" } }, [
         h("span", { class: `avatar p${p}`, attrs: { "aria-hidden": "true" } }),
-        this.name(p),
+        h("span", { class: "score-name", text: this.shortName(p) }),
+        // 2 人対戦は名前が先手・後手なので、手番を重ねて書かない
+        this.settings?.mode === "pvp" ? null : h("span", { class: "score-seat", text: PLAYER_NAME[p] }),
       ]);
     const row = (label: string, cells: [string, string]) =>
       h("tr", {}, [h("th", { text: label, attrs: { scope: "row" } }), h("td", { text: cells[0] }), h("td", { text: cells[1] })]);
@@ -2071,24 +2081,33 @@ export class App {
       ...who.map((p) =>
         h("section", { class: `stats p${p}`, attrs: { "data-player": String(p) } }, [
           h("h3", { class: "stats-title", text: cpu ? "あなたの成績" : `${PLAYER_NAME[p]}の成績` }),
-          h("dl", { class: "stats-list" }, this.statsRows(g, stats[p]).flatMap(([k, v]) => [h("dt", { text: k }), h("dd", { text: v })])),
+          h(
+            "dl",
+            { class: "stats-list" },
+            this.statsRows(g, stats[p]).flatMap(([k, v]) => [
+              h("dt", { text: k }),
+              typeof v === "string" ? h("dd", { text: v }) : h("dd", {}, [v[0], h("span", { class: "stats-note", text: ` ${v[1]}` })]),
+            ]),
+          ),
         ]),
       ),
     );
   }
 
-  private statsRows(g: GameState, s: PlayerStats): [string, string][] {
+  /** 成績の行（値が [数字, 添え書き] なら添え書きを薄い字で出す） */
+  private statsRows(g: GameState, s: PlayerStats): [string, string | [string, string]][] {
     const r = g.rules;
     const v = verb(r);
-    let best = "なし";
+    let best: string | [string, string] = "なし";
     if (s.best) {
       const { move: m, hit } = s.best;
       const parts = [`${v.past}駒 ${m.targets.length} 個で ${hit.base}`];
       if (hit.anchor > 0) parts.push(`端の駒 ${hit.anchor}`);
       if (hit.penalty > 0) parts.push(`王の罰 ${hit.penalty}`);
-      best = `${hit.total}（${m.ply} 手目 ${cellName(m.r, m.c)} に${pieceLabel(r, m.kind)}: ${parts.join(" ＋ ")}）`;
+      // 数字を主に、どの手か・内訳は薄い字で添える
+      best = [String(hit.total), `${m.ply} 手目 ${cellName(m.r, m.c)} ${pieceLabel(r, m.kind)}・${parts.join(" ＋ ")}`];
     }
-    const rows: [string, string][] = [
+    const rows: [string, string | [string, string]][] = [
       ["最大ダメージ", best],
       ["会心以上", `${s.bigHits} 回`],
     ];
@@ -2097,22 +2116,22 @@ export class App {
     return rows;
   }
 
-  /** 終局後の王の答え合わせ（例: 「d3（隠れたまま）」「e5（返された）」） */
+  /** 終局後の王の答え合わせ（例: 「d3 隠れたまま」「e5 返された」） */
   private kingResult(g: GameState, p: Player): string {
     const ki = this.kingOf(g, p);
     const moved = lastKingHit(g, p);
-    if (moved) return `${cellName(moved.r, moved.c)}（${verb(g.rules).hit}）`;
-    if (ki.cell) return `${cellName(ki.cell[0], ki.cell[1])}（隠れたまま）`;
+    if (moved) return `${cellName(moved.r, moved.c)} ${verb(g.rules).hit}`;
+    if (ki.cell) return `${cellName(ki.cell[0], ki.cell[1])} 隠れたまま`;
     // オンライン対戦では、返されなかった相手の王はサーバーが終局後も送らない
-    if (this.online && p !== this.me()) return "？（明かされない）";
-    return "なし（決める前に終局）";
+    if (this.online && p !== this.me()) return "非公開";
+    return "決める前に終局";
   }
 
   /** ルール詳細ダイアログを設定から作って開く。play（対局中）なら制限時間も載せる */
   private showRules(rules: RuleSet | null, play?: PlaySettings) {
     const r = rules ?? defaultRules();
     const content = byId("rules-content");
-    byId("rules-title").textContent = `ルール — ${ruleName(r)}`;
+    byId("rules-title").textContent = `${ruleName(r)}のルール`;
     content.replaceChildren();
     {
       const v = verb(r);

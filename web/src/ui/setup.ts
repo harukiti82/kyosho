@@ -5,6 +5,7 @@
 import { DEFAULT_CPU_LEVEL, type CpuLevel } from "../engine/cpu";
 import {
   cloneRules,
+  DEFAULT_PRESET,
   defaultRules,
   KIND_ORDER,
   LIMITS,
@@ -119,11 +120,17 @@ export function seatChoice(side: FormDataEntryValue | null): { human: Player; ra
   return { human: side === "1" ? 1 : 0, randomSeat: side === "random" };
 }
 
-/** 文の配列を <li> にして ol へ入れる（強調部分は <strong>） */
+/** 文の配列を <li> にして ol へ入れる（強調部分は <strong>、補足は薄い字の <span class="rule-note">） */
 export function fillSentences(list: HTMLElement, lines: Sentence[]) {
   list.replaceChildren(
     ...lines.map((line) =>
-      h("li", {}, line.map((seg) => (typeof seg === "string" ? seg : h("strong", { text: seg.strong })))),
+      h(
+        "li",
+        {},
+        line.map((seg) =>
+          typeof seg === "string" ? seg : "strong" in seg ? h("strong", { text: seg.strong }) : h("span", { class: "rule-note", text: ` ${seg.note}` }),
+        ),
+      ),
     ),
   );
 }
@@ -179,15 +186,19 @@ export class SetupDialog {
       this.saved.rules = decoded.rules;
       if (decoded.invalid.length > 0) {
         showNote(
-          `URL の設定に読めない値があったため、${decoded.invalid.map((k) => KEY_LABEL[k] ?? k).join("・")}は${presetById(QUERY_BASE).name}の値にしました。`,
+          `URL の${decoded.invalid.map((k) => KEY_LABEL[k] ?? k).join("・")}が読めないので、${presetById(QUERY_BASE).name}の値にしました`,
         );
       } else {
-        showNote("URL の設定を読み込みました。");
+        showNote("URL の設定で遊びます");
       }
     }
     this.rules = cloneRules(this.saved.rules);
     this.buildPresets();
     this.buildPieceTable();
+    // 数の欄は入力できる範囲を title に出す（範囲の説明の文は常に出さない）
+    for (const el of this.el.form.querySelectorAll<HTMLInputElement>("input[type=number]")) {
+      el.title ||= `${el.min}〜${el.max}`;
+    }
     this.bind();
   }
 
@@ -228,13 +239,20 @@ export class SetupDialog {
     this.el.hostField.hidden = false;
   }
 
+  /**
+   * プリセットの札。既定（標準）を大きな札で先頭に、ほかは新しい順に小さな札で並べる。
+   * 説明は選んだあとのルールの文（#setup-rules4）で読めるので、札には名前だけ（説明は title）。
+   * 名前の括弧の補足（例: 「v1.0（取る）」の「取る」）は括弧を外して小さな字で添える
+   */
   private buildPresets() {
-    for (const p of PRESETS) {
+    const main = presetById(DEFAULT_PRESET);
+    const others = PRESETS.filter((p) => p.id !== main.id).reverse();
+    for (const p of [main, ...others]) {
+      const [, name, sub] = /^(.*?)(?:（(.*)）)?$/.exec(p.name)!;
       const b = h(
         "button",
-        // 説明は選んだあとのルールの文（#setup-rules4）で読めるので、札には名前だけ（説明は title）
-        { class: "preset", attrs: { type: "button", "data-preset": p.id, "aria-pressed": "false", title: p.note } },
-        [h("span", { class: "preset-name", text: p.name })],
+        { class: `preset${p === main ? " preset-main" : ""}`, attrs: { type: "button", "data-preset": p.id, "aria-pressed": "false", title: p.note } },
+        [h("span", { class: "preset-name", text: name }), sub ? h("span", { class: "preset-sub", text: sub }) : null],
       );
       b.addEventListener("click", () => this.writeForm(p.rules));
       this.el.presets.append(b);
@@ -372,9 +390,11 @@ export class SetupDialog {
     for (const b of this.el.presets.querySelectorAll<HTMLElement>(".preset")) {
       b.setAttribute("aria-pressed", String(b.dataset.preset === match?.id));
     }
-    this.el.customTag.textContent = match ? `— ${match.name}` : "— カスタム（どのプリセットとも違う）";
+    this.el.customTag.textContent = match ? match.name : "カスタム";
+    this.el.customTag.title = match ? "" : "どのプリセットとも違う";
+    this.el.customTag.classList.toggle("custom", !match);
     const v = verb(this.rules);
-    this.el.gateOn.textContent = `置いた駒より強い駒は${v.cannot}`;
+    this.el.gateOn.textContent = `強い駒は${v.cannot}`;
     // 方向は「駒ごと」のときだけ効くので、全方向では薄く表示する
     this.el.pieceTable.classList.toggle("dirs-all", this.rules.dirs === "all");
     // 隠し王の追加設定は「あり」のときだけ見せる。減る体力の欄は罰が体力のときだけ
@@ -406,7 +426,7 @@ export class SetupDialog {
       shareUrl.hidden = false;
     } catch {
       // クリップボードが使えない環境では URL を表示して選択状態にする
-      shareStatus.textContent = "自動でコピーできませんでした。下の URL をコピーしてください";
+      shareStatus.textContent = "コピーできませんでした。下の URL をコピーしてください";
       shareUrl.hidden = false;
       shareUrl.select();
     }

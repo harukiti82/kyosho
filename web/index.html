@@ -23,24 +23,27 @@
         <p class="setup-note menu-note" id="menu-note" role="status" hidden></p>
         <div class="menu-panel" id="menu-main">
           <button type="button" class="btn menu-btn" id="menu-resume" hidden>対局に戻る</button>
-          <button type="button" class="btn primary menu-btn" id="menu-cpu">CPU対戦</button>
-          <button type="button" class="btn menu-btn" id="menu-multi">マルチ</button>
-          <!-- 遊び方（盤で打ちながら覚えるチュートリアル）。右に進み具合（はじめて・つづき・クリア済み） -->
-          <button type="button" class="btn menu-btn" id="menu-learn">遊び方<span class="menu-sub" id="menu-learn-state"></span></button>
-          <button type="button" class="btn ghost menu-btn" id="menu-settings">設定</button>
+          <button type="button" class="btn primary menu-btn menu-big" id="menu-cpu">CPU対戦</button>
+          <button type="button" class="btn menu-btn menu-big" id="menu-multi">マルチ</button>
+          <!-- 遊び方（盤で打ちながら覚えるチュートリアル。下に進み具合: おすすめ・つづき・クリア済み）と設定は小さな鍵を横に並べる -->
+          <div class="menu-row">
+            <button type="button" class="btn menu-btn menu-small" id="menu-learn">遊び方<span class="menu-sub" id="menu-learn-state"></span></button>
+            <button type="button" class="btn menu-btn menu-small" id="menu-settings">設定</button>
+          </div>
         </div>
         <div class="menu-panel" id="menu-levels" role="group" aria-labelledby="menu-levels-title" hidden>
           <h2 class="menu-head" id="menu-levels-title">CPU の強さ</h2>
-          <button type="button" class="btn menu-btn" data-level="easy" title="1 手先だけを見て、ときどき適当に打つ">イージー</button>
-          <button type="button" class="btn menu-btn" data-level="normal" title="相手の次の 1 手まで読む">ノーマル</button>
-          <button type="button" class="btn menu-btn" data-level="hard" title="さらに先まで読み、決着を狙う">ハード</button>
+          <!-- 強さは名前と星の数（読み上げは名前だけ）。右に 1 手の制限時間（ui/menu.ts の setLevelTimes） -->
+          <button type="button" class="btn menu-btn menu-level" data-level="easy" title="1 手先だけを見て、ときどき適当に打つ"><span class="lv-stars" aria-hidden="true"><i class="on"></i><i></i><i></i></span>イージー</button>
+          <button type="button" class="btn menu-btn menu-level" data-level="normal" title="相手の次の 1 手まで読む"><span class="lv-stars" aria-hidden="true"><i class="on"></i><i class="on"></i><i></i></span>ノーマル</button>
+          <button type="button" class="btn menu-btn menu-level" data-level="hard" title="さらに先まで読み、決着を狙う"><span class="lv-stars" aria-hidden="true"><i class="on"></i><i class="on"></i><i class="on"></i></span>ハード</button>
           <button type="button" class="btn ghost menu-btn menu-back">戻る</button>
         </div>
         <div class="menu-panel" id="menu-modes" role="group" aria-labelledby="menu-modes-title" hidden>
           <h2 class="menu-head" id="menu-modes-title">マルチ</h2>
           <button type="button" class="btn menu-btn" id="menu-pvp">この端末で 2 人</button>
           <!-- オンライン対戦のサーバー（/api/health）に届く公開先でだけ出す（ui/app.ts） -->
-          <button type="button" class="btn menu-btn" id="menu-online" hidden>オンライン（招待リンク）</button>
+          <button type="button" class="btn menu-btn" id="menu-online" hidden>オンライン<span class="menu-sub">招待リンク</span></button>
           <button type="button" class="btn ghost menu-btn menu-back">戻る</button>
         </div>
         <button type="button" class="menu-rule" id="menu-rule" title="ルール詳細"><span>ルール</span><strong id="menu-rule-name"></strong></button>
@@ -90,7 +93,10 @@
             <h2 class="coach-title" id="coach-title"></h2>
             <ol class="coach-steps" id="coach-steps" aria-label="ステップ"></ol>
           </div>
-          <p class="coach-goal" id="coach-goal"></p>
+          <div class="coach-goal" id="coach-goal">
+            <p class="coach-lead" id="coach-lead"></p>
+            <p class="coach-task" id="coach-task"></p>
+          </div>
           <p class="coach-msg" id="coach-msg" role="status" aria-live="polite" hidden></p>
           <div class="coach-actions" id="coach-actions" hidden>
             <button type="button" class="btn ghost" id="coach-again">もう一度</button>
@@ -128,7 +134,9 @@
         <h2 class="modal-title" id="setup-title" tabindex="-1" autofocus>設定</h2>
 
         <fieldset class="field">
+          <!-- 見出しに選んでいるルールの名前（どのプリセットとも違えば「カスタム」） -->
           <legend class="label">ルール <span class="custom-tag" id="custom-tag"></span></legend>
+          <!-- 標準を大きな札に、ほかのプリセットは小さな札にして並べる（ui/setup.ts） -->
           <div class="presets" id="presets"></div>
           <!-- 選んでいる設定のルール（対局中は引き出しの「ルール」に出る） -->
           <ol class="rules4-list setup-rules" id="setup-rules4" aria-label="この設定のルール"></ol>
@@ -136,13 +144,13 @@
 
         <!-- 細かい項目は折りたたむ（プリセットと違う設定で開いたときは開いて始める。ui/setup.ts） -->
         <details class="rule-details" id="rule-details">
-          <summary class="rule-details-head">ルールを細かく変える</summary>
+          <summary class="rule-details-head">詳細設定</summary>
           <div class="rule-fields">
             <div class="opt">
               <span class="opt-name" id="opt-action">挟んだ駒を</span>
               <div class="seg" role="radiogroup" aria-labelledby="opt-action">
-                <label><input type="radio" name="action" value="flip" /><span>裏返す（オセロ）</span></label>
-                <label><input type="radio" name="action" value="capture" /><span>取って持ち駒にする</span></label>
+                <label title="オセロと同じ"><input type="radio" name="action" value="flip" /><span>裏返す</span></label>
+                <label title="取った駒は自分の持ち駒になる"><input type="radio" name="action" value="capture" /><span>取る</span></label>
               </div>
             </div>
 
@@ -150,7 +158,7 @@
               <span class="opt-name" id="opt-gate">強さ制限</span>
               <div class="seg" role="radiogroup" aria-labelledby="opt-gate">
                 <label><input type="radio" name="gate" value="0" /><span>なし</span></label>
-                <label><input type="radio" name="gate" value="1" /><span id="gate-on-label">置いた駒より強い駒は返せない</span></label>
+                <label title="置いた駒より数字が大きい駒を含む列は挟めない"><input type="radio" name="gate" value="1" /><span id="gate-on-label">強い駒は返せない</span></label>
               </div>
             </div>
 
@@ -166,7 +174,7 @@
               <span class="opt-name" id="opt-anchor">端の駒の力</span>
               <div class="seg" role="radiogroup" aria-labelledby="opt-anchor">
                 <label><input type="radio" name="anchor" value="none" /><span>なし</span></label>
-                <label><input type="radio" name="anchor" value="attack" /><span>攻撃に上乗せ（挟んだ端の自分の駒の数字もダメージに足す）</span></label>
+                <label title="挟んだ端の自分の駒の数字もダメージに足す"><input type="radio" name="anchor" value="attack" /><span>攻撃に上乗せ</span></label>
               </div>
             </div>
 
@@ -190,13 +198,13 @@
             <div class="opt">
               <span class="opt-name" id="opt-dirs">挟める方向</span>
               <div class="seg" role="radiogroup" aria-labelledby="opt-dirs">
-                <label><input type="radio" name="dirs" value="all" /><span>全方向（8 方向）</span></label>
-                <label><input type="radio" name="dirs" value="piece" /><span>駒ごと（駒の矢印の方向だけ）</span></label>
+                <label title="8 方向"><input type="radio" name="dirs" value="all" /><span>全方向</span></label>
+                <label title="駒の矢印の方向だけ"><input type="radio" name="dirs" value="piece" /><span>駒ごと</span></label>
               </div>
             </div>
 
             <div class="opt">
-              <span class="opt-name" id="opt-pieces">駒（両者同じ。方向は駒の種類で決まる）</span>
+              <span class="opt-name" id="opt-pieces" title="両者同じ。方向は駒の種類で決まる">駒</span>
               <!-- 駒種ごとの 数・数字 の欄は ui/setup.ts が KIND_ORDER から作る -->
               <div class="piece-table" id="piece-table" role="group" aria-labelledby="opt-pieces"></div>
             </div>
@@ -204,14 +212,14 @@
             <div class="opt">
               <span class="opt-name">手数上限</span>
               <div class="nums">
-                <label class="num num-wide"><input type="number" name="maxPlies" inputmode="numeric" min="0" max="300" step="1" required aria-label="手数上限" /><span>手（0 = なし）</span></label>
+                <label class="num num-wide" title="0 で上限なし"><input type="number" name="maxPlies" inputmode="numeric" min="0" max="300" step="1" required aria-label="手数上限（0 で上限なし）" /><span>手</span></label>
               </div>
             </div>
             <div class="opt">
-              <span class="opt-name" id="opt-king">隠し王（読み合い）</span>
+              <span class="opt-name" id="opt-king">隠し王</span>
               <div class="seg" role="radiogroup" aria-labelledby="opt-king">
                 <label><input type="radio" name="king" value="0" /><span>なし</span></label>
-                <label><input type="radio" name="king" value="1" /><span>あり（最初の数手で 1 つを王にして隠す）</span></label>
+                <label title="最初の数手で 1 つを王にして隠す"><input type="radio" name="king" value="1" /><span>あり</span></label>
               </div>
               <div class="king-sub" id="king-sub">
                 <div class="seg" role="radiogroup" aria-label="王を返されたときの罰">
@@ -220,11 +228,12 @@
                 </div>
                 <div class="nums">
                   <label class="num" id="king-amount-field"><span>減る体力</span><input type="number" name="kingAmount" inputmode="numeric" min="1" max="200" step="1" required /></label>
-                  <label class="num"><span>期限 最初の</span><input type="number" name="kingDeadline" inputmode="numeric" min="1" max="20" step="1" required /><span>手</span></label>
+                  <label class="num" title="この手数までに王を決める"><span>期限</span><input type="number" name="kingDeadline" inputmode="numeric" min="1" max="20" step="1" required /><span>手目まで</span></label>
                 </div>
               </div>
             </div>
-            <p class="opt-help">体力 5〜200、駒の数 0〜40、駒の数字 1〜20、手数 0〜300、王の罰 1〜200、期限 1〜20。範囲外の値は自動で直します。</p>
+            <!-- 入力できる範囲（各欄の title にも出す。範囲外は保存時に範囲内へ直す） -->
+            <p class="sr-only">体力 5〜200、駒の数 0〜40、駒の数字 1〜20、手数 0〜300、王の罰 1〜200、期限 1〜20。範囲外の値は範囲内に直ります</p>
           </div>
         </details>
 
@@ -233,54 +242,55 @@
           <input type="text" class="share-url" id="share-url" readonly aria-label="この設定の URL" hidden />
         </div>
 
-        <fieldset class="field">
+        <!-- 手番と時間は設定の行（左に名前、右に選択）。先手・後手は石の色で示す -->
+        <fieldset class="field set-list">
           <legend class="label">手番</legend>
-          <div class="opt">
+          <div class="opt set-row">
             <span class="opt-name" id="opt-side">CPU対戦</span>
             <div class="seg side-seg" id="side-field" role="radiogroup" aria-labelledby="opt-side">
               <label><input type="radio" name="side" value="random" checked /><span>ランダム</span></label>
-              <label><input type="radio" name="side" value="0" /><span>先手（黒）</span></label>
-              <label><input type="radio" name="side" value="1" /><span>後手（白）</span></label>
+              <label><input type="radio" name="side" value="0" /><span><i class="seg-stone p0" aria-hidden="true"></i>先手<span class="sr-only">（黒）</span></span></label>
+              <label><input type="radio" name="side" value="1" /><span><i class="seg-stone p1" aria-hidden="true"></i>後手<span class="sr-only">（白）</span></span></label>
             </div>
           </div>
           <!-- オンライン対戦の入口がある公開先でだけ出す -->
-          <div class="opt" id="host-field" hidden>
-            <span class="opt-name" id="opt-host">オンライン（部屋を作る側）</span>
+          <div class="opt set-row" id="host-field" hidden>
+            <span class="opt-name" id="opt-host" title="部屋を作る側の手番">オンライン</span>
             <div class="seg side-seg" role="radiogroup" aria-labelledby="opt-host">
               <label><input type="radio" name="host" value="random" checked /><span>ランダム</span></label>
-              <label><input type="radio" name="host" value="first" /><span>先手（黒）</span></label>
-              <label><input type="radio" name="host" value="second" /><span>後手（白）</span></label>
+              <label><input type="radio" name="host" value="first" /><span><i class="seg-stone p0" aria-hidden="true"></i>先手<span class="sr-only">（黒）</span></span></label>
+              <label><input type="radio" name="host" value="second" /><span><i class="seg-stone p1" aria-hidden="true"></i>後手<span class="sr-only">（白）</span></span></label>
             </div>
           </div>
         </fieldset>
 
         <!-- 1 手ごとの制限時間。切れたら置ける手から 1 手を自動で打つ（ui/clock.ts） -->
-        <fieldset class="field">
-          <legend class="label">1 手の制限時間</legend>
-          <div class="opt">
-            <span class="opt-name" id="opt-time-cpu">CPU対戦（あなたの手番）</span>
+        <fieldset class="field set-list">
+          <legend class="label">1 手の時間</legend>
+          <div class="opt set-row">
+            <span class="opt-name" id="opt-time-cpu" title="あなたの手番だけ">CPU対戦</span>
             <div class="seg time-seg" role="radiogroup" aria-labelledby="opt-time-cpu">
-              <label title="イージー なし・ノーマル 45 秒・ハード 20 秒"><input type="radio" name="timeCpu" value="auto" checked /><span>強さに合わせる</span></label>
+              <label title="強さに合わせる: イージー なし・ノーマル 45 秒・ハード 20 秒"><input type="radio" name="timeCpu" value="auto" checked /><span>おまかせ</span></label>
               <label><input type="radio" name="timeCpu" value="0" /><span>なし</span></label>
-              <label><input type="radio" name="timeCpu" value="20" /><span>20 秒</span></label>
-              <label><input type="radio" name="timeCpu" value="45" /><span>45 秒</span></label>
-              <label><input type="radio" name="timeCpu" value="90" /><span>90 秒</span></label>
+              <label><input type="radio" name="timeCpu" value="20" /><span>20秒</span></label>
+              <label><input type="radio" name="timeCpu" value="45" /><span>45秒</span></label>
+              <label><input type="radio" name="timeCpu" value="90" /><span>90秒</span></label>
             </div>
           </div>
-          <div class="opt">
+          <div class="opt set-row">
             <span class="opt-name" id="opt-time-multi">マルチ</span>
             <div class="seg time-seg" role="radiogroup" aria-labelledby="opt-time-multi">
               <label><input type="radio" name="timeMulti" value="0" /><span>なし</span></label>
-              <label><input type="radio" name="timeMulti" value="20" /><span>20 秒</span></label>
-              <label><input type="radio" name="timeMulti" value="45" checked /><span>45 秒</span></label>
-              <label><input type="radio" name="timeMulti" value="90" /><span>90 秒</span></label>
+              <label><input type="radio" name="timeMulti" value="20" /><span>20秒</span></label>
+              <label><input type="radio" name="timeMulti" value="45" checked /><span>45秒</span></label>
+              <label><input type="radio" name="timeMulti" value="90" /><span>90秒</span></label>
             </div>
           </div>
         </fieldset>
 
         <div class="modal-actions">
           <button type="button" class="icon-btn" id="setup-rules" aria-label="ルール詳細" title="ルール詳細">?</button>
-          <button type="button" class="btn ghost" id="setup-copy">URL をコピー</button>
+          <button type="button" class="btn ghost" id="setup-copy" title="この設定の URL をコピー">URL をコピー</button>
           <button type="button" class="btn ghost" id="setup-cancel">やめる</button>
           <button type="submit" class="btn primary" id="setup-save">保存</button>
         </div>

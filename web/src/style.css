@@ -247,7 +247,65 @@ button {
   font-size: 1.05rem;
   letter-spacing: 0.06em;
 }
-/* 強さのボタンに添える、その強さでの 1 手の制限時間・遊び方の進み具合 */
+/* 主な入口（CPU対戦・マルチ）は背の高い鍵、遊び方・設定は小さな鍵を横に 2 つ */
+.menu-big {
+  padding: 1.05rem 1rem;
+  font-size: 1.15rem;
+}
+.menu-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.6rem;
+  margin-top: 0.25rem;
+}
+.menu-small {
+  display: grid;
+  place-content: center;
+  min-height: 3.4rem;
+  padding: 0.5rem 0.6rem;
+  font-size: 0.95rem;
+}
+.menu-small .menu-sub {
+  margin: 0.1rem 0 0;
+}
+/* 強さの鍵: 左に星と名前、右に 1 手の制限時間（時計の印） */
+.menu-level {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  text-align: left;
+}
+.lv-stars {
+  display: inline-flex;
+  gap: 0.18rem;
+}
+.lv-stars i {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  background: var(--surface-3);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+.lv-stars i.on {
+  background: var(--amber);
+  box-shadow: none;
+}
+.menu-level .menu-time {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin-left: auto;
+}
+.menu-level .menu-time::before {
+  content: "";
+  width: 0.7rem;
+  height: 0.7rem;
+  border: 1.5px solid currentColor;
+  border-radius: 50%;
+  background: linear-gradient(currentColor, currentColor) 50% 25% / 1.5px 35% no-repeat,
+    linear-gradient(currentColor, currentColor) 62% 50% / 30% 1.5px no-repeat;
+}
+/* 強さの鍵に添える 1 手の制限時間・遊び方とオンラインの添え書き */
 .menu-time,
 .menu-sub {
   margin-left: 0.6rem;
@@ -1088,6 +1146,11 @@ button {
   pointer-events: none;
   animation: pop 1.6s ease-out forwards;
 }
+/* ダメージ数と横に重なるときは駒の下に出す（App.playMoveEffects） */
+.anchor-pop.below {
+  top: 62%;
+  bottom: auto;
+}
 /* 着手の演出の文字の横の位置（--pop-x）は App.fitPop が盤の中に収まるように決める */
 /* 取った直後のダメージ数 */
 .dmg-pop {
@@ -1834,6 +1897,13 @@ button {
 .tab-panel {
   padding: 0.75rem 0.15rem 0.25rem;
 }
+/* 見出しの「ルール」に添える名前（区切りの記号を使わず、字の太さと色で分ける） */
+.tab-sub {
+  margin-left: 0.15em;
+  font-family: var(--font-piece);
+  font-weight: 800;
+  color: var(--ink);
+}
 .rules4-list {
   margin: 0;
   padding-left: 1.6rem;
@@ -1847,6 +1917,12 @@ button {
 }
 .rules4-list strong {
   color: var(--ink);
+}
+/* 行末の補足（駒の方向の一覧・手数上限）。括弧で囲まず、薄い字で離して添える */
+.rule-note {
+  display: block;
+  font-size: 0.92em;
+  color: var(--ink-dim);
 }
 
 /* ---- 棋譜 ---- */
@@ -1911,11 +1987,11 @@ button {
   padding: 0.65rem 1rem;
   border-radius: var(--radius);
   border: 1px solid var(--line);
-  border-left: 4px solid var(--amber);
   background: var(--surface-3);
   color: var(--ink);
   font-size: 0.9rem;
-  font-weight: 600;
+  font-weight: 700;
+  text-align: center;
   box-shadow: 0 14px 34px -12px rgba(0, 0, 0, 0.85);
   animation: toast-in 0.25s ease-out;
 }
@@ -2319,10 +2395,40 @@ button {
   font-weight: 600;
 }
 /* プリセットは名前だけの札（選んだ札は緑の縁で持ち上がる） */
+/* 札は名前の長さなりの幅で流し込み、行を埋める（同じ大きさの札を格子に並べない） */
 .presets {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(7.5rem, 1fr));
+  display: flex;
+  flex-wrap: wrap;
   gap: 0.4rem;
+}
+.preset {
+  flex: 1 1 auto;
+  min-width: 4.6rem;
+}
+/* 既定（標準）は 1 行を占める大きな札、ほかは小さな札 */
+.preset-main {
+  flex-basis: 100%;
+  padding: 0.75rem 0.8rem;
+}
+.preset-main .preset-name {
+  font-family: var(--font-piece);
+  font-size: 1.1rem;
+  letter-spacing: 0.1em;
+}
+.preset:not(.preset-main) {
+  padding: 0.4rem 0.45rem;
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.35);
+}
+.preset:not(.preset-main) .preset-name {
+  font-size: 0.8rem;
+}
+.preset-sub {
+  display: block;
+  margin-top: 0.05rem;
+  font-size: 0.68rem;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--ink-dim);
 }
 .preset {
   padding: 0.5rem 0.6rem;
@@ -2348,8 +2454,13 @@ button {
   font-size: 0.86rem;
 }
 .custom-tag {
+  margin-left: 0.3rem;
+  font-size: 0.82rem;
   letter-spacing: 0;
   color: var(--ink);
+}
+.custom-tag.custom {
+  color: var(--amber);
 }
 /* 選んでいる設定のルール（カードにせず、プリセットの下に控えめに） */
 .setup-rules {
@@ -2450,8 +2561,51 @@ button {
   outline: 2px solid var(--amber);
   outline-offset: 2px;
 }
-.side-seg {
-  margin-top: 0.45rem;
+/* 手番・時間: 設定の行（左に名前、右に選択）を細い線で区切って並べる */
+.set-list {
+  margin-bottom: 0.9rem;
+}
+.set-row {
+  align-items: center;
+  gap: 0.4rem 0.6rem;
+  padding: 0.5rem 0;
+  border-top: 1px solid var(--line);
+}
+/* 広い画面は名前を左に、狭い画面は名前の下に選択を 1 行で */
+@media (min-width: 560px) {
+  .set-row {
+    grid-template-columns: 5.5rem minmax(0, 1fr);
+  }
+}
+@media (max-width: 559px) {
+  .set-row .seg {
+    flex-wrap: nowrap;
+    gap: 0.3rem;
+  }
+  .set-row .seg span {
+    padding: 0.4rem 0.55rem;
+    font-size: 0.8rem;
+  }
+}
+.set-row .opt-name {
+  font-size: 0.86rem;
+  color: var(--ink);
+}
+/* 先手・後手の鍵の石 */
+.seg-stone {
+  display: inline-block;
+  width: 0.8em;
+  height: 0.8em;
+  margin-right: 0.35em;
+  border-radius: 50%;
+  vertical-align: -0.08em;
+}
+.seg-stone.p0 {
+  background: radial-gradient(circle at 34% 28%, #6a655c, var(--stone-0) 60%);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.25);
+}
+.seg-stone.p1 {
+  background: radial-gradient(circle at 34% 28%, #fff, var(--stone-1) 55%, #bdb5a5);
 }
 .nums {
   display: flex;
@@ -2617,6 +2771,21 @@ button {
   height: 1.6rem;
   margin: 0 auto 0.25rem;
 }
+/* 名前の下に手番を小さく（括弧でつながない） */
+.score-name {
+  display: block;
+  font-size: 0.9rem;
+  color: var(--ink);
+}
+.score-head.won .score-name {
+  color: var(--amber);
+}
+.score-seat {
+  display: block;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--ink-dim);
+}
 .score-head.won {
   color: var(--amber);
 }
@@ -2661,6 +2830,13 @@ button {
 .stats-list dd {
   margin: 0;
   min-width: 0;
+  font-weight: 800;
+}
+/* 最大ダメージの手と内訳（数字の後に薄い字で） */
+.stats-note {
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: var(--ink-dim);
 }
 .result-body .modal-actions {
   justify-content: center;
@@ -3080,10 +3256,34 @@ button {
 .coach-dot:disabled:not(.current):not(.done) {
   opacity: 0.4;
 }
+/* 覚えるルール（地の文）と課題（琥珀の三角を付けた太字） */
 .coach-goal {
+  display: grid;
+  gap: 0.3rem;
+}
+.coach-lead {
   margin: 0;
   font-size: 0.95rem;
   line-height: 1.55;
+}
+.coach-task {
+  display: flex;
+  align-items: baseline;
+  gap: 0.45rem;
+  margin: 0;
+  font-size: 0.92rem;
+  font-weight: 700;
+  line-height: 1.5;
+  color: var(--amber);
+}
+.coach-task::before {
+  content: "";
+  flex: none;
+  width: 0;
+  height: 0;
+  border-top: 0.32rem solid transparent;
+  border-bottom: 0.32rem solid transparent;
+  border-left: 0.5rem solid currentColor;
 }
 /* ヒント（黄の「!」）・できた（緑の「✓」） */
 .coach-msg {

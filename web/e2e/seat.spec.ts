@@ -24,7 +24,7 @@ async function startCpu(page: Page, side: "random" | "0" | "1", shot?: string) {
 
 /** 先手になった: 抽選の表示・手番の表示・まだ誰も打っていない・人間が打てる */
 async function isFirst(page: Page) {
-  await expect(page.locator("#toast")).toHaveText("対局開始！ 抽選の結果、あなたは先手（黒）です（あなたから打ちます）");
+  await expect(page.locator("#toast")).toHaveText("抽選で先手になりました");
   await expect(page.locator("#player-0")).toContainText("あなた");
   await expect(page.locator("#player-1")).toContainText("CPU");
   await expect(page.locator(".board.acting")).toBeVisible();
@@ -33,7 +33,7 @@ async function isFirst(page: Page) {
 
 /** 後手になった: 抽選の表示・CPU が初手を打ってから人間の手番 */
 async function isSecond(page: Page) {
-  await expect(page.locator("#toast")).toHaveText("対局開始！ 抽選の結果、あなたは後手（白）です（CPU から打ちます）");
+  await expect(page.locator("#toast")).toHaveText("抽選で後手になりました");
   await expect(page.locator("#player-1")).toContainText("あなた");
   await expect(page.locator("#player-0")).toContainText("CPU");
   await expect(moves(page)).toHaveCount(1, { timeout: 10_000 });
@@ -59,7 +59,7 @@ test("ランダム: 乱数が 0.5 以上なら後手になり、CPU が初手を
   await page.goto("/");
   await startCpu(page, "random");
   // CPU の初手の前から抽選の結果が見えている
-  await expect(page.locator("#toast")).toContainText("後手（白）");
+  await expect(page.locator("#toast")).toContainText("後手");
   await expect(moves(page)).toHaveCount(0);
   await isSecond(page);
   await noHorizontalScroll(page, page.viewportSize()!.width);

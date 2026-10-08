@@ -25,14 +25,14 @@ test("開くとメニュー。CPU対戦 → 強さを選ぶと、設定画面を
   await expect(page.locator("#menu")).toBeVisible();
   await expect(page.locator("#setup")).toBeHidden();
   await expect(page.locator("#game")).toBeHidden();
-  await expect(page.locator("#menu-main .menu-btn:visible")).toHaveText(["CPU対戦", "マルチ", "遊び方 はじめての方に", "設定"]);
+  await expect(page.locator("#menu-main .menu-btn:visible")).toHaveText(["CPU対戦", "マルチ", "遊び方 おすすめ", "設定"]);
   await expect(page.locator("#menu-rule-name")).toHaveText("標準");
   await noHorizontalScroll(page, page.viewportSize()!.width);
   await page.screenshot({ path: `${SHOT}/${prefix(page)}-menu.png` });
 
   await page.locator("#menu-cpu").click();
   // 強さの名前の右に、その強さでのあなたの 1 手の制限時間
-  await expect(page.locator("#menu-levels [data-level]")).toHaveText(["イージー 時間なし", "ノーマル 45秒", "ハード 20秒"]);
+  await expect(page.locator("#menu-levels [data-level]")).toHaveText(["イージー 制限なし", "ノーマル 45秒", "ハード 20秒"]);
   await page.screenshot({ path: `${SHOT}/${prefix(page)}-menu-levels.png` });
   // 戻る・Esc で 1 つ前へ
   await page.locator("#menu-levels .menu-back").click();
@@ -47,8 +47,8 @@ test("開くとメニュー。CPU対戦 → 強さを選ぶと、設定画面を
   await expect(page.locator("#setup")).toBeHidden();
   await expect(page.locator("#game")).toBeVisible();
   await ruleCardIs(page, defaultRules());
-  await expect(page.locator("#rules4-name")).toHaveText("ルール — 標準");
-  await expect(page.locator("#toast")).toHaveText("対局開始！ 抽選の結果、あなたは先手（黒）です（あなたから打ちます）");
+  await expect(page.locator("#rules4-name")).toHaveText("ルール 標準");
+  await expect(page.locator("#toast")).toHaveText("抽選で先手になりました");
   expect(await draws(page)).toBe(1);
   await expect(page.locator("#player-1")).toContainText("CPU");
   await expect(page.locator(".board.acting")).toBeVisible();
@@ -65,7 +65,7 @@ test("設定を保存していなければ CPU 対戦の手番は対局ごとに
   await page.locator("#setup-cancel").click();
   await page.locator("#menu-cpu").click();
   await page.locator("#menu-levels [data-level=normal]").click();
-  await expect(page.locator("#toast")).toHaveText("対局開始！ 抽選の結果、あなたは後手（白）です（CPU から打ちます）");
+  await expect(page.locator("#toast")).toHaveText("抽選で後手になりました");
   await expect(page.locator("#player-1")).toContainText("あなた");
   await expect(page.locator("#log .log-item.move")).toHaveCount(1, { timeout: 10_000 });
   await expect(page.locator(".board.acting")).toBeVisible();
@@ -73,7 +73,7 @@ test("設定を保存していなければ CPU 対戦の手番は対局ごとに
   await page.locator("#btn-menu").click();
   await page.locator("#menu-cpu").click();
   await page.locator("#menu-levels [data-level=easy]").click();
-  await expect(page.locator("#toast")).toHaveText("対局開始！ 抽選の結果、あなたは先手（黒）です（あなたから打ちます）");
+  await expect(page.locator("#toast")).toHaveText("抽選で先手になりました");
   await expect(page.locator("#player-0")).toContainText("あなた");
   await expect(page.locator("#log .log-item.move")).toHaveCount(0);
   expect(await draws(page)).toBe(2);
@@ -143,7 +143,7 @@ test("設定で変えたルールは次の対局と再読み込み後に使わ�
 
   // 共有された URL のルールは保存より優先（保存は書き換えない）
   await page.goto(`/?${encodeRules(presetById("v10").rules)}`);
-  await expect(page.locator("#menu-note")).toHaveText("URL の設定を読み込みました。");
+  await expect(page.locator("#menu-note")).toHaveText("URL の設定で遊びます");
   await expect(page.locator("#menu-rule-name")).toHaveText("v1.0（取る）");
   await page.goto("/");
   await expect(page.locator("#menu-rule-name")).toHaveText("隠し王");
