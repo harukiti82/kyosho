@@ -4,20 +4,24 @@
 
 ## 現在の対象
 
-- 何を / どこを: 1 手ごとの制限時間（ユーザー要望「毎ターン思考時間を設定」「CPU 対戦は難易度が高いほど短く」「イージーは無制限」。依頼元セッション経由）。ブランチ `feat/turn-timer`（作業ツリー `../kyosho-timer`）
-- ステータス: 実装・テスト済み、PR → マージ → 本番デプロイの確認中。直前に標準を 回復 低い方−1・王の指定期限 7 手・体力 129・130 に変更（PR #22、重いテストの制限時間 PR #23。マージ・本番デプロイ済み）
+- 何を / どこを: 遊び方（チュートリアル。ユーザー要望「ルールがわかりにくいという意見を得たため、ゲームをしながら実践形式で学べるチュートリアルを」。依頼元セッション経由）。ブランチ `feat/tutorial`（作業ツリー `../kyosho-tutorial`）
+- ステータス: 実装・テスト済み、PR → マージ → 本番デプロイの確認中。直前に 1 手の制限時間（PR #25）をマージ・本番デプロイ済み
 - 最終更新: 2026-10-08
+
+## 遊び方（チュートリアル）の要点
+
+- ステップは `ui/lessons.ts` の `LESSONS`（挟む → ダメージ → 駒の向き → 持ち駒 → 端の駒 → 回復 → 王を決める → 王を返す → 予測を読む → 実戦）。局面は engine の `gameFrom`、文はエンジンの棋譜の値。画面は `App.lesson`（`openLesson` / `inStep` / `lessonNeed`）と `ui/coach.ts`（`#coach`、引き出しの先頭 = スマホは駒台の下・PC は盤の横の上）。進み具合は localStorage `kyosho:tutorial`
+- 「予測を読む」より前のステップは始めの局面で自分の駒に「!」が出ない（`test/lesson.test.ts`）。e2e は `tutorial.spec.ts`（スクリーンショット *-tutorial-*）
+
 ## 1 手の制限時間の要点
 
-- ルール（`RuleSet`）ではなく `PlaySettings.turnSeconds`（URL に載せない）。設定メニュー「1 手の制限時間」: CPU 対戦 `Saved.timeCpu`（`auto` = `CPU_TURN_SECONDS` イージー 0・ノーマル 45・ハード 20 / 0 / 20 / 45 / 90）、マルチ `timeMulti`（既定 45）。選択肢は `net/protocol.ts` の `TURN_SECONDS`。時間切れの手は engine の `playTimeout(state, rng)`（置ける手から一様、棋譜の手に `timeout: true`）。画面: `ui/clock.ts` の `TurnClock`（Date.now の差）を `App.syncClock` が描き直しのたびに合わせ、`clockShouldRun`（操作できる手番・演出なし・決着の演出なし・メニューなし）で進める。`checkTimeout` は時計の tick と盤の入力の前に呼ぶ（二重に打たない）。時計は手番の人の名札（`#turn-clock`）
-- オンライン: サーバーが `deadline`（+ 猶予 `TURN_GRACE_MS` 1.5 秒）に alarm を張って打つ。両者切断でも進めて終局させる。`state.clock` / `move.seq` / `stale_move`。e2e は `timer.spec.ts`（`page.clock`）・`online/timer.spec.ts`（`TEST_TURN_SECONDS:3`）、ポートは `E2E_PORT` / `E2E_ONLINE_PORT`
+- ルールではなく `PlaySettings.turnSeconds`（URL に載せない）。CPU 対戦 `Saved.timeCpu`（`auto` = イージー 0・ノーマル 45・ハード 20）、マルチ `timeMulti`（既定 45）。時間切れは engine の `playTimeout`。画面は `ui/clock.ts` の `TurnClock` を `App.syncClock` が合わせる（遊び方は常に 0）。オンラインはサーバーの alarm（`.agent/online-protocol.md`「1 手の制限時間」）
 
 ## メニューと CPU の強さの要点
 
 - メニュー（`ui/menu.ts`、`#menu`）: CPU対戦 → 強さ（`data-level`）でそのまま開始 / マルチ → この端末で 2 人・オンライン（`/api/health` が通るときだけ）/ 設定 / 下の「ルール 名前」でルール詳細。対局中は右上の `#btn-menu` でメニューへ、`#menu-resume`「対局に戻る」で続き（終局後・オンラインの部屋も）
 - 設定メニュー（`ui/setup.ts` の `SetupDialog`、`#setup`）: フォームは下書きで「保存」で `localStorage` `kyosho:settings`（`loadSaved` / `storeSaved`。読めなければ標準）。ルールの優先は URL のクエリ ＞ 保存 ＞ `DEFAULT_PRESET`。URL への反映は保存時と対局開始時だけ。手番（CPU 対戦の side・オンラインの host）もここ
 - CPU の強さ: `engine/cpu.ts` の `chooseMove(view, level, rng)`。normal = `chooseLookahead`（sim と一致）、easy = 1 手読み＋35% で適当な手、hard = 2 手読み上位 8 手 × 相手の応手上位 6 手 × 自分の最善手を 2 手読み＋決着の読み。勝率は `npm run balance -- vs 400 std normal hard`、下限は `test/level.test.ts`
-- e2e は `e2e/helpers.ts` の `openSettings` / `saveSettings` / `startGame({ mode, side, preset, level })`。メニューの流れは `e2e/menu.spec.ts`
 
 ## 新デザインの要点（デザイン規約は AGENTS.md）
 
@@ -26,9 +30,7 @@
 - 駒台（`.tray`）: 残り数は `.piece-count`、置けない駒は `.blocked` の斜線、隠し王は右端の王の駒（`#king-toggle`「あと N 手」、2 人対戦の `#king-peek`）。説明の文は sr-only の `#king-note`
 - 予測: マスのバッジ（`.dmg-badge` / `.heal-badge`）＋吹き出し（`App.bubble`。返す駒・端の駒がない側に出し、上下両方にあれば盤の外の縁 `.edge-top` / `.edge-bottom`）。文の詳細は引き出しの「予測」タブ（`#preview`、閉じても `.tab-off` で読み上げに残す）
 - 引き出し（`#drawer`、`setTab`）: 「ルール — 名前」「予測」「棋譜」「印」。PC は盤の横でルールを開いて始め、スマホは閉じて始める
-- 設定メニュー: ルール（名前だけのプリセットの札＋選んだ設定のルール文 `#setup-rules4`）→「ルールを細かく変える」（`#rule-details`、プリセットと違う設定なら開いて始める）→ 手番 → やめる／保存。e2e は `openRuleFields` / `openTab`（`e2e/helpers.ts`）
-- 終局画面: 見出し（明朝、勝ちは琥珀）・理由の 1 文・成績表（`#result-detail` の `.score`。対局者が列、体力・石数・王が行、下に「N 手・ルール 名前」）・成績（`.stats`）
-- オンラインのダイアログ: 対戦待ちのように 2 つの席を VS で並べる（`.lobby`、空いた席は脈打つ）。ルールは「ルール — 名前」の折りたたみ
+- 設定メニュー: プリセットの札＋ルール文 `#setup-rules4` →「ルールを細かく変える」（`#rule-details`）→ 手番 → 制限時間 → やめる／保存（e2e は `openRuleFields` / `openTab`）。終局画面は見出し・理由・成績表（`.score`）・成績（`.stats`）。オンラインのダイアログは 2 つの席を VS で並べる（`.lobby`）
 
 ## 直近の観点・指摘
 
@@ -37,24 +39,21 @@
 - オンラインの画面: 通信層は `net/online.ts`（DOM なし・`test/online.test.ts`）、案内のダイアログは `ui/online.ts`、対局は `ui/app.ts`（`settings.mode === "online"`）。手は送るだけで、盤は届いた `view` で描く。王は `App.kingOf`（view の `myKing` / `oppKing`）。トークンは sessionStorage `kyosho:token:<roomId>`（別タブは別人）。入口は `/api/health` が `{"ok":true}` のときだけ。e2e は `npm run e2e:online`（wrangler dev :8790）。画面側の挙動の詳細は `.agent/online-protocol.md`「画面側の挙動」
 - サーバーの不足（直していない）: 終局後も返されなかった相手の王が届かない（終局画面は「？（明かされない）」）・同じ部屋での再戦の申し込みがない（「新しい部屋で再戦」は招待リンクを送り直す）
 
-- 配信: 1 つの Worker（`server/wrangler.jsonc`）が `web/dist` を静的アセットで、`/api` を Worker で返す（`run_worker_first: ["/api", "/api/*"]`。静的アセットでは Worker も DO も起きない）。Origin は同一オリジン＋`ALLOWED_ORIGINS`（本番は `https://kyosho.rukiharukichi.com`、`npm run dev` が `--var` で localhost に置き換える）。CORS なし。画面はサーバー URL を持たず `API_PATH`（`/api`）の絶対パスで呼ぶ。GitHub Pages 版ではオンラインがつながらないので、画面は `/api/health` に届かなければ入口を出さない
-- 独自ドメイン: `server/wrangler.jsonc` の `routes`（`kyosho.rukiharukichi.com`、`custom_domain: true`）。ドメインを変えるなら `routes` と `ALLOWED_ORIGINS` の 2 か所（手順は README「独自ドメイン（kyosho.rukiharukichi.com）」）
+- 配信（詳細は AGENTS.md）: 1 つの Worker（`server/wrangler.jsonc`）が `web/dist` を静的アセットで、`/api` を Worker で返す（`run_worker_first: ["/api", "/api/*"]`。静的アセットでは Worker も DO も起きない）。Origin は同一オリジン＋`ALLOWED_ORIGINS`（本番は `https://kyosho.rukiharukichi.com`、`npm run dev` が `--var` で localhost に置き換える）。CORS なし。画面はサーバー URL を持たず `API_PATH`（`/api`）の絶対パスで呼ぶ。GitHub Pages 版ではオンラインがつながらないので、画面は `/api/health` に届かなければ入口を出さない
 - オンライン対戦: サーバーは engine を import する権威サーバー。各自には `viewFor` だけを送る（`server/test/king.test.ts` が、相手の王の指定だけ違う 2 部屋で自分に届くバイト列が一致することを検査）。3 人目は拒否（観戦なし）。先手・後手は作成者の `hostSeat`（既定 random）。再接続はトークン（`sessionStorage` 推奨）。放置した部屋は alarm で削除（24 時間・終局後 1 時間）
 - server/ は vitest 4（pool-workers の要件）。npm 11.4 は install で落ちるので `npx npm@11.21.0 install`。`worker-configuration.d.ts` は生成物（`npm run typecheck` / `test` の前に `wrangler types`）
 - 普通のオセロなら置けるマス: `board.ts` の `othelloCells`（石の色だけ・8 方向。駒の方向・強さ・持ち駒を見ない参考表示で、合法手の判定には使わない）。盤は操作できる手番だけ `.cell.othello`（点線の枠、`--othello`）、凡例 `.key-othello`。e2e `othello.spec.ts`・オンラインは `online.spec.ts`
 - 最重要要件は「ルールが一目で分かること」＝ルールはいつでも 1 タップで見られる。ルールカードは設定から自動生成（`ui/ruletext.ts`、最大 8 行）して引き出しの「ルール — 名前」のタブ（見出しは常に表示、PC は開いて始める）。予測の赤枠＋ダメージ・回復、返されうる自駒の「!」、自分の王の赤い「!」、駒の方向アイコン、端の駒の青枠＋左下の「+数字」と内訳（返した駒 ＋ 端の金5 ＝ 7）を崩さない
 - 決着の演出: 中身（種類・副題・接戦の励まし）は `ui/outcome.ts` の `outcomeOf`（DOM なし、接戦は自分の体力上限の `CLOSE_PERCENT`=10% 以下）。表示は `fx.ts` の `finale`（画面全体を覆いタップ／クリックで飛ばす）、音は `sound.ts` の `finale`、流れは `App.playFinale` / `endFinale`（Enter / Esc / スペースでも飛ばす）。最大 2.5 秒（`FINALE_MS` 2300）。負けたら終局画面の「再戦」を `.urge` で強調、励ましは `#result-cheer`
 - 手応えの演出: 段階は `ui/impact.ts` の `tierOf`（合計（上乗せ・王の罰込み）÷ 受けた側の体力上限。5% / 10% / 20% は `TIER_THRESHOLDS`、王を返した手は特大）。演出は `ui/fx.ts`（`#fx` 層・transform / opacity のみ）、効果音は `ui/sound.ts`（Web Audio 合成・消音は localStorage）。大・特大は `App.fxLock` で入力と CPU を最大 1.5 秒待たせる。`src/ui/` で `Math.random` を使わない（e2e の鏡の対局がずれる）
-- 端の駒の力: ダメージは `damageOf` ＝ `baseDamageOf` ＋ `anchorBonusOf`（返した列ごとの反対端 `Line.end` / `endAt`）。予測・警告・CPU はすべてこれを通す。`MoveEvent.anchors` は上乗せがあるときだけ
 - プリセット「拠点」は方向駒＋上乗せ、体力 125・130（4000 局で先手 47.3%・平均 31.3 手）。隅の端の上乗せは全体の約 1%、隅を取った側の勝率は同じ手数の方向駒より低い（RULES.md「拠点」）
-- 方向駒: 盤上の駒は種類だけを持ち、数字は `RuleSet.values`、方向は `PIECES[kind].reach`。プリセット「方向駒」は体力 60・65
-- 既存プリセットは 全方向・既定の数字・横角 0 個・上乗せなし。URL は方向駒・端の駒の項目を基準（v1.0）と違うときだけ載せる（既存の URL は不変）
-- 隠し情報: 相手の王は UI・CPU から見えない API 境界（`viewFor` / `kingInfo`）
 - プリセット v0.4 / v1.0 / v2 案は `sim/*.py` と全手一致（`npm test` の replay）。数値は勝手に変えない
 - スマホ（幅 375px）で横スクロールなし・盤が最初の画面に収まる・タップ 2 回で確定。盤の左右端の列の着手演出は `.edge-l` / `.edge-r` で内側に寄せる
 
 ## 未解決・次の一手
 
+- [ ] ユーザーの試遊で遊び方の分かりやすさ（ステップの順・目標の文・光と矢印の誘導・最後の実戦）の感想を聞く。初回にメニューで勧める強さ（今は「はじめての方に」の琥珀の文字だけ）もユーザー判断
+- [ ] progress.md が 30 件を超えた。`progress-archive.md` への移送をユーザーに提案する
 - [ ] ユーザーの試遊で制限時間の長さ（ノーマル 45 秒・ハード 20 秒・マルチ 45 秒）と時計の見やすさの感想を聞く
 - [ ] ユーザーの試遊で CPU の強さの手応え（イージーで勝てるか・ハードが強すぎないか）とメニューの流れの感想を聞く。スマホ 2 台でオンラインの作成 → 参加も実機で確かめる
 - [ ] ユーザーの試遊で 期限 7 手・回復 低い方−1 の標準の手応えを聞く（CPU の強さの差: ハード対ノーマル 72.0%・ノーマル対イージー 85.8%）
@@ -64,12 +63,10 @@
 
 ## 現フェーズで Read すべき設計書
 
-- 制限時間: `web/src/ui/clock.ts`, `web/src/ui/app.ts`（「制限時間」節 `syncClock` / `checkTimeout`）, `web/src/engine/game.ts`（`playTimeout`）, `server/src/room.ts`, `.agent/online-protocol.md`「1 手の制限時間」
-
+- 遊び方: `web/src/ui/lessons.ts`, `web/src/ui/coach.ts`, `web/src/ui/app.ts`（「遊び方（チュートリアル）」節 `openLesson` / `inStep`、`onCellClick`・`renderBoard` の誘導）, `web/test/lesson.test.ts`, `web/e2e/tutorial.spec.ts`
+- 制限時間: `web/src/ui/clock.ts`, `web/src/ui/app.ts`（「制限時間」節 `syncClock` / `checkTimeout`）, `web/src/engine/game.ts`（`playTimeout`）, `server/src/room.ts`
 - メニュー・設定メニュー・CPU の強さ: `web/src/ui/menu.ts`, `web/src/ui/setup.ts`, `web/src/ui/app.ts`（`showMenu` / `resume` / `leaveToMenu`）, `web/src/engine/cpu.ts`（`chooseMove`）
-
 - 画面の見た目を直す: AGENTS.md の「デザイン規約」→ `web/src/style.css`（`:root` のトークン）, `web/index.html`, `web/src/ui/app.ts`（`placeSeats` / `renderPlayers` / `kingTag` / `bubble` / `setTab` / `renderScore`）
-
 - オンライン対戦の画面の修正: `.agent/online-protocol.md`（「画面側の挙動」）→ `web/src/net/online.ts` → `web/src/ui/app.ts`（「オンライン対戦」節）, `web/src/ui/online.ts`, `web/e2e/online/`
 - 設定項目・プリセットの変更: `RULES.md` の「Web 試遊版」節 → `web/src/engine/rules.ts` → AGENTS.md の「ルール・設定項目を変えるとき」
 - ダメージ・端の駒: `web/src/engine/board.ts`（`damageOf` / `anchorsOf`）, `web/test/anchor.test.ts`。方向駒: `board.ts`（`pieceLines`）, `test/direction.test.ts`。隠し王: `game.ts`（隠し王節）, `cpu.ts`, `test/king.test.ts`
@@ -78,5 +75,5 @@
 
 ## 関連ファイル / リンク
 
-- E2E のスクリーンショット: `web/screenshots/`（pc-* / sp-* 、隠し王は *-king-*、方向駒は *-dir*、拠点は *-anchor*、演出は *-impact-*、決着は *-result-*、オンラインは *-online-*）
+- E2E のスクリーンショット: `web/screenshots/`（pc-* / sp-* 、隠し王は *-king-*、方向駒は *-dir*、拠点は *-anchor*、演出は *-impact-*、決着は *-result-*、オンラインは *-online-*、遊び方は *-tutorial-*）
 - デプロイ: `.github/workflows/pages.yml`（GitHub Pages。PR はテスト+ビルドのみ、main への push でデプロイ）、`.github/workflows/deploy.yml`（Cloudflare。Secret 登録済み = main へのマージで本番デプロイ）、`server/wrangler.jsonc`

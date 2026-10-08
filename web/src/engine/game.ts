@@ -192,6 +192,55 @@ export function createGame(rules: RuleSet = defaultRules()): GameState {
   return settleTurn(g, 0);
 }
 
+/** 盤の途中の局面の指定（チュートリアルの局面など） */
+export interface Position {
+  /** 盤の駒（ここにないマスは空き。中央の初期配置も置かない） */
+  stones: readonly { at: Cell; owner: Player; kind: PieceKind }[];
+  /** 持ち駒 [先手, 後手]。省略すると両者ともルールの初期の持ち駒 */
+  hands?: [Hand, Hand];
+  /** 体力 [先手, 後手]。省略するとルールの初期体力 */
+  hp?: [number, number];
+  /** 手番。省略すると先手 */
+  turn?: Player;
+  /** 隠し王の駒のマス [先手, 後手]（隠れた状態から始める）。null・省略は未指定 */
+  kings?: [Cell | null, Cell | null];
+}
+
+/**
+ * 指定した局面から対局を始める（手数 0・棋譜なし）。手番の人が打てなければ createGame と同じくパス・終局にする。
+ * マスの重複・盤の外・王のマスに持ち主の駒がない指定は例外
+ */
+export function gameFrom(rules: RuleSet, pos: Position): GameState {
+  const r = cloneRules(rules);
+  const board: Board = Array.from({ length: SIZE }, () => Array(SIZE).fill(null));
+  for (const { at: [y, x], owner, kind } of pos.stones) {
+    if (!(y >= 0 && y < SIZE && x >= 0 && x < SIZE)) throw new Error(`盤の外です: (${y}, ${x})`);
+    if (board[y][x]) throw new Error(`同じマスに 2 つ置いています: (${y}, ${x})`);
+    board[y][x] = { owner, kind };
+  }
+  const kings: [KingState, KingState] = [noKing(), noKing()];
+  for (const p of [0, 1] as const) {
+    const cell = pos.kings?.[p] ?? null;
+    if (!cell) continue;
+    if (!r.king.on) throw new Error("隠し王なしのルールで王を指定しています");
+    if (board[cell[0]][cell[1]]?.owner !== p) throw new Error(`王のマス (${cell[0]}, ${cell[1]}) に持ち主の駒がありません`);
+    kings[p] = { cell: [cell[0], cell[1]], auto: false, revealed: false };
+  }
+  const hands = pos.hands ?? [r.hand, r.hand];
+  const g: GameState = {
+    rules: r,
+    board,
+    hands: [{ ...hands[0] }, { ...hands[1] }],
+    hp: pos.hp ? [pos.hp[0], pos.hp[1]] : [r.hp[0], r.hp[1]],
+    turn: pos.turn ?? 0,
+    ply: 0,
+    history: [],
+    result: null,
+    kings,
+  };
+  return settleTurn(g, g.turn);
+}
+
 /** 手番のプレイヤーが (r, c) に kind を置けるか */
 export function isLegal(state: GameState, r: number, c: number, kind: PieceKind): boolean {
   if (state.result) return false;

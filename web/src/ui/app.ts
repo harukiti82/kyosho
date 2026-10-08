@@ -66,6 +66,21 @@ import { OnlineDialog, seatText } from "./online";
 import { hitOf, statsOf, tierOf, tierText, type HitBreakdown, type PlayerStats, type Tier } from "./impact";
 import { outcomeOf, type Outcome } from "./outcome";
 import { dirMark, endDetails, handText, hpText, kingPenaltyText, pieceLabel, ruleDetails, ruleLines, verb } from "./ruletext";
+import { Coach } from "./coach";
+import {
+  FINISHED_TEXT,
+  illegalHint,
+  judgeMove,
+  LESSONS,
+  loadProgress,
+  nextNeed,
+  progressAt,
+  progressLabel,
+  resumeStep,
+  saveProgress,
+  type Lesson,
+  type Progress,
+} from "./lessons";
 import { Menu } from "./menu";
 import { cryptoRandom, drawSeat, fillSentences, SetupDialog, type PlaySettings } from "./setup";
 import { Sound } from "./sound";
@@ -87,6 +102,15 @@ interface ImpactPlan extends FxTiming {
   hurt: boolean;
   text: string | null;
   reduce: boolean;
+}
+
+/** 遊び方（チュートリアル）で開いているステップ。solved は正解を打った後（「次へ」を待つ間は盤を操作させない） */
+interface LessonRun {
+  index: number;
+  lesson: Lesson;
+  solved: boolean;
+  /** 駒台・名札に出す駒（始めの局面の持ち駒にある駒。数字の小さい順） */
+  kinds: PieceKind[];
 }
 
 const idx = ([y, x]: Cell) => y * SIZE + x;
@@ -152,6 +176,13 @@ export class App {
   /** この端末で作った部屋の記録（自分の招待リンクを開いたときの注意書き） */
   private readonly local = safeStore(() => window.localStorage);
 
+  // ---- 遊び方（チュートリアル） ----
+  /** 開いているステップ（チュートリアル中でなければ null） */
+  private lesson: LessonRun | null = null;
+  /** 進み具合（localStorage。読めなければ null = はじめて） */
+  private progress: Progress | null;
+  private readonly coach: Coach;
+
   private readonly cells: HTMLButtonElement[][] = [];
   private readonly setup: SetupDialog;
   private readonly menu: Menu;
@@ -186,6 +217,7 @@ export class App {
       cpu: (level) => this.start(this.setup.playSettings("cpu", level)),
       pvp: () => this.start(this.setup.playSettings("pvp")),
       online: () => this.start(this.setup.playSettings("online")),
+      learn: () => this.openLesson(resumeStep(this.progress)),
       settings: () => this.setup.open(),
       rules: () => this.showRules(this.setup.current.rules),
       resume: () => this.resume(),
@@ -203,6 +235,13 @@ export class App {
     );
     this.menu.setRuleName(ruleName(this.setup.current.rules));
     this.showLevelTimes();
+    this.coach = new Coach({
+      next: () => this.openLesson((this.lesson?.index ?? 0) + 1),
+      again: () => this.openLesson(this.lesson?.index ?? 0),
+      jump: (i) => this.openLesson(i),
+    });
+    this.progress = loadProgress(this.local);
+    this.showLearnState();
     this.bindControls();
     // 招待リンク（?room=）から開いたら部屋へ、それ以外はメニューから
     const roomId = roomIdFromSearch(window.location.search);
@@ -305,7 +344,10 @@ export class App {
   private bindControls() {
     const { result, rules } = this.el;
     this.bindTabs();
-    byId("btn-rules").addEventListener("click", () => this.showRules(this.settings?.rules ?? null, this.settings ?? undefined));
+    // 遊び方のステップ中は、習っている標準ルール（実戦のルール）の詳細を見せる
+    byId("btn-rules").addEventListener("click", () =>
+      this.inStep() ? this.showRules(LESSONS[LESSONS.length - 1].rules) : this.showRules(this.settings?.rules ?? null, this.settings ?? undefined),
+    );
     byId("btn-menu").addEventListener("click", () => this.showMenu());
     byId("rules-close").addEventListener("click", () => rules.close());
     const mute = byId("btn-mute");
@@ -362,7 +404,8 @@ export class App {
 
   // ---- 対局の進行 ----
 
-  private start(settings: PlaySettings) {
+  /** 対局を始める。lesson なら遊び方のステップ（局面はステップが作る。URL は書き換えない） */
+  private start(settings: PlaySettings, lesson: LessonRun | null = null) {
     this.menu.hide();
     byId("btn-menu").hidden = false;
     if (settings.mode === "online") {
@@ -375,12 +418,14 @@ export class App {
     const drawn = settings.mode === "cpu" && settings.randomSeat;
     if (drawn) settings = { ...settings, human: drawSeat() };
     this.settings = settings;
-    this.setup.reflectUrl(settings.rules);
+    this.lesson = lesson;
+    if (!lesson) this.setup.reflectUrl(settings.rules);
     this.gameNo++;
-    this.game = createGame(settings.rules);
+    this.game = lesson ? lesson.lesson.start() : createGame(settings.rules);
     this.el.game.hidden = false;
     this.renderRuleCard(settings.rules);
     this.renderLegend(settings.rules);
+    this.showCoach();
     this.afterChange();
     if (drawn) {
       const first = settings.human === 0 ? "あなたから" : "CPU から";
@@ -408,6 +453,9 @@ export class App {
     this.kingOn = false;
     this.peek = false;
     this.seenEvents = 0;
+    // 遊び方は start が lesson を渡したときだけ続ける（ほかの対局・オンラインの部屋では閉じる）
+    this.lesson = null;
+    this.coach.hide();
   }
 
   private get online() {
@@ -425,6 +473,8 @@ export class App {
 
   private canAct(): boolean {
     if (!this.game || this.game.result || this.fxLock || !this.isHuman(this.game.turn)) return false;
+    // 遊び方: 正解を打った後は「次へ」を待つ
+    if (this.lesson?.solved) return false;
     // オンライン対戦は、対局中・つながっている・前の手の返事を待っていないときだけ
     return !this.online || (this.room?.phase === "playing" && !!this.net?.ready && !this.sending);
   }
@@ -565,6 +615,7 @@ export class App {
         if (q) this.onState(q);
       }, hold);
     }
+    if (g.result && this.lesson?.lesson.match) this.finishTutorial();
     if (g.result) {
       // 最後の一手の演出（特大なら出し切る）→ 決着の演出 → 終局画面
       this.resultTimer = window.setTimeout(() => this.playFinale(g), g.ply > 0 ? Math.max(RESULT_DELAY_MS, hold + 300) : 0);
@@ -575,7 +626,8 @@ export class App {
 
   private scheduleCpu(delay: number) {
     const g = this.game;
-    if (!g || g.result || this.online || this.isHuman(g.turn)) return;
+    // 遊び方のステップでは CPU は打たない（実戦だけ打つ）
+    if (!g || g.result || this.online || this.isHuman(g.turn) || this.inStep()) return;
     this.cpuTimer = window.setTimeout(() => {
       // メニューを開いている間は打たない（「対局に戻る」で読み直す）
       if (this.game !== g || this.menu.visible) return;
@@ -599,6 +651,8 @@ export class App {
     const g = this.game!;
     const fresh = history.slice(this.seenEvents);
     this.seenEvents = history.length;
+    // 遊び方のステップでは、知らせはコーチの 1 文にまとめる（トーストを重ねない）
+    if (this.inStep()) return;
     const msgs: string[] = [];
     for (const e of fresh) {
       if (e.type === "pass") {
@@ -635,6 +689,64 @@ export class App {
     const s = this.settings;
     if (!s) return;
     this.start(s.mode === "online" ? { ...s, hostSeat: s.human === 0 ? "first" : "second" } : s);
+  }
+
+  // ---- 遊び方（チュートリアル） ----
+
+  /** 遊び方の実戦でないステップを開いているか（開いていればそのステップ） */
+  private inStep(): LessonRun | null {
+    return this.lesson && !this.lesson.lesson.match ? this.lesson : null;
+  }
+
+  /** i 番目のステップを始める（前回の位置として覚える） */
+  private openLesson(i: number) {
+    const lesson = LESSONS[Math.max(0, Math.min(LESSONS.length - 1, i))];
+    const index = LESSONS.indexOf(lesson);
+    this.progress = progressAt(this.progress, index);
+    saveProgress(this.local, this.progress);
+    this.showLearnState();
+    const { hands } = lesson.start();
+    const kinds = kindsByValue(lesson.rules, KIND_ORDER.filter((k) => hands[0][k] + hands[1][k] > 0));
+    // 人間が先手・CPU はイージー・制限時間なし（ステップでは CPU も時計も動かない）
+    this.start({ mode: "cpu", human: 0, rules: lesson.rules, level: "easy", turnSeconds: 0 }, { index, lesson, solved: false, kinds });
+  }
+
+  private showCoach() {
+    const run = this.lesson;
+    if (!run) {
+      this.coach.hide();
+      return;
+    }
+    // 一度でも開いたステップと、終えた後は全部へ移れる
+    const open = this.progress?.done ? LESSONS.length - 1 : (this.progress?.reached ?? run.index);
+    this.coach.show(run.index, LESSONS.map((l) => l.title), open, run.lesson.goal);
+  }
+
+  /** 正解を打った: 何が起きたかの 1 文と「次へ」 */
+  private lessonSolved(run: LessonRun, before: GameState) {
+    const m = lastMoveOf(this.game!);
+    if (!m) return;
+    const nextIsMatch = !!LESSONS[run.index + 1]?.match;
+    this.coach.success(run.lesson.done(m, before), nextIsMatch ? "実戦へ" : "次へ");
+  }
+
+  /** 実戦が終わった: 遊び方を終えたことを覚える（勝ち負けは問わない） */
+  private finishTutorial() {
+    this.progress = { ...progressAt(this.progress, LESSONS.length - 1), done: true };
+    saveProgress(this.local, this.progress);
+    this.showLearnState();
+    this.coach.success(FINISHED_TEXT, null);
+  }
+
+  private showLearnState() {
+    this.menu.setLearnState(progressLabel(this.progress), this.progress === null);
+  }
+
+  /** 遊び方で、盤より先に駒台で選ぶもの（正解の駒・王）。操作できないとき・正解を打った後は何もない */
+  private lessonNeed(g: GameState): { kind?: PieceKind; king?: true } {
+    const step = this.inStep();
+    if (!step || step.solved || !this.canAct()) return {};
+    return nextNeed(step.lesson, this.kindFor(g), this.kingOn);
   }
 
   // ---- オンライン対戦 ----
@@ -977,8 +1089,13 @@ export class App {
     if (!g || !this.canAct()) return;
     const kind = this.kindFor(g);
     if (!isLegal(g, r, c, kind)) {
-      // 裏返すルールで挟めない空きマスを押したときは理由を出す
-      if (g.board[r][c] === null && g.rules.action === "flip") {
+      const step = this.inStep();
+      if (step) {
+        // 遊び方: 理由とヒントはコーチに出す
+        const hint = illegalHint(step.lesson, g, { r, c, kind, king: this.kingOn });
+        if (hint) this.coach.hint(hint);
+      } else if (g.board[r][c] === null && g.rules.action === "flip") {
+        // 裏返すルールで挟めない空きマスを押したときは理由を出す
         // 駒ごとの方向で、選んでいる駒の方向が限られるなら添える（他の駒なら返せることがある）
         const limited = g.rules.dirs === "piece" && PIECES[kind].reach !== "all";
         const reach = limited ? `${PIECES[kind].name}は${dirMark(g.rules, kind)} ${REACH_MARK[PIECES[kind].reach].name}だけ挟める。` : "";
@@ -993,7 +1110,20 @@ export class App {
     if (!touch || samePinned) {
       if (touch) this.tapLearned = true;
       // 自分で選んだときだけ king を渡す（期限の手の自動指定はエンジンが行う）
-      this.place(r, c, kind, this.kingOn && this.kingOf(g, g.turn).canDesignate);
+      const king = this.kingOn && this.kingOf(g, g.turn).canDesignate;
+      const step = this.inStep();
+      if (step) {
+        // 遊び方: 正解でなければ打たずにヒント。正解なら盤を止めてから打つ（描き直しで操作できない表示にする）
+        const hint = judgeMove(step.lesson, g, { r, c, kind, king });
+        if (hint) {
+          this.coach.hint(hint);
+          this.clearFocus();
+          return;
+        }
+        step.solved = true;
+      }
+      this.place(r, c, kind, king);
+      if (step && this.game !== g) this.lessonSolved(step, g);
       return;
     }
     this.setFocus(r, c, true);
@@ -1124,6 +1254,9 @@ export class App {
 
   /** この対局で持ち駒に出てくる駒種（設定で 0 個の駒は出さない。取るルールでは盤上の歩も入りうる）。数字の小さい順 */
   private kindsInGame(g: GameState): PieceKind[] {
+    // 遊び方のステップは、その局面の持ち駒にある駒だけ（使い切った駒は 0 で残す）
+    const step = this.inStep();
+    if (step) return step.kinds;
     return kindsByValue(
       g.rules,
       KIND_ORDER.filter((k) => g.rules.hand[k] > 0 || (g.rules.action === "capture" && k === "fu") || g.hands[0][k] + g.hands[1][k] > 0),
@@ -1131,13 +1264,16 @@ export class App {
   }
 
   private renderRuleCard(r: RuleSet) {
-    this.el.rulesName.textContent = `ルール — ${ruleName(r)}`;
-    byId("tab-rules4").title = `ルール — ${ruleName(r)}`;
+    // 遊び方のステップは習った分だけのルール（プリセットにない組み合わせ）なので「遊び方」と呼ぶ
+    const name = this.inStep() ? "遊び方" : ruleName(r);
+    this.el.rulesName.textContent = `ルール — ${name}`;
+    byId("tab-rules4").title = `ルール — ${name}`;
     const lines = ruleLines(r);
     fillSentences(this.el.rulesList, lines);
     this.el.rulesList.classList.toggle("dense", lines.length >= 6);
     // 盤を主役にするため、ルールは引き出しに入れる。横に余裕のある画面（盤の横に置く）では開いて始める
-    this.setTab(window.matchMedia("(min-width: 900px)").matches ? "rules4" : null);
+    // 遊び方のステップはコーチを主にするので閉じて始める
+    this.setTab(window.matchMedia("(min-width: 900px)").matches && !this.inStep() ? "rules4" : null);
   }
 
   private renderLegend(r: RuleSet) {
@@ -1206,6 +1342,12 @@ export class App {
     const cands = this.oppCandidates(g);
     const designating = this.designating(g);
     const last = lastMoveOf(g);
+    // 遊び方: 打つマスを光らせ、駒台で選ぶもの（駒・王）がなければ矢印も出す。1 マスだけのときだけ矢印（候補から選ぶステップは光だけ）
+    const step = this.inStep();
+    const guides = new Set(act && step && !step.solved ? step.lesson.guide.map(idx) : []);
+    const need = this.lessonNeed(g);
+    const arrow = guides.size === 1 && !need.kind && !need.king;
+    const marks = new Map((step && !step.solved ? (step.lesson.marks ?? []) : []).map((m) => [idx(m.at), m]));
     this.el.board.classList.toggle("over", !!g.result);
     this.el.board.classList.toggle("acting", act);
 
@@ -1256,6 +1398,16 @@ export class App {
         if (add !== undefined) {
           cell.append(h("span", { class: "anchor-badge", text: `+${add}`, attrs: { "aria-hidden": "true" } }));
           label += ` 端の駒としてダメージに+${add}`;
+        }
+        const mark = marks.get(i);
+        if (mark) {
+          cell.append(h("span", { class: "king-cand lesson-mark", text: mark.text, attrs: { "aria-hidden": "true" } }));
+          label += ` ${mark.label}`;
+        }
+        if (guides.has(i)) {
+          cell.classList.add("guide");
+          cell.append(...guideMarks(arrow));
+          label += " ここに置く";
         }
         if (willTake.has(i)) label += ` ${v.can}`;
         if (canTake) label += ` 置くと${v.can}`;
@@ -1440,7 +1592,10 @@ export class App {
   private renderStatus(g: GameState) {
     let text: string;
     const away = this.online && this.room?.opponent.online === false;
-    if (g.result) {
+    if (this.lesson?.solved) {
+      // 遊び方のステップは小さな局面なので、正解の後にどちらも打てず終局することがある。終局とは言わない
+      text = "できた";
+    } else if (g.result) {
       text = `終局 ${this.resultHeadline(g.result)}・${this.reasonShort(g)}`;
     } else if (this.online && this.room?.phase === "waiting") {
       text = "相手を待っています…";
@@ -1454,13 +1609,14 @@ export class App {
       text = this.settings?.mode === "pvp" ? `${PLAYER_NAME[g.turn]}の番` : "あなたの番";
     }
     this.el.status.textContent = text;
-    this.el.status.classList.toggle("over", !!g.result);
+    this.el.status.classList.toggle("over", !!g.result && !this.lesson?.solved);
     this.el.ply.textContent = g.rules.maxPlies > 0 ? `${g.ply} / ${g.rules.maxPlies} 手` : `${g.ply} 手`;
     // 手番の側の木枠の縁を光らせる（操作できる手番は緑、待つ手番は琥珀）
     const frame = this.el.frame;
     const top = this.el.seats[1].contains(this.el.players[g.turn]);
-    frame.classList.toggle("turn-top", !g.result && top);
-    frame.classList.toggle("turn-bottom", !g.result && !top);
+    const idle = !!g.result || !!this.lesson?.solved;
+    frame.classList.toggle("turn-top", !idle && top);
+    frame.classList.toggle("turn-bottom", !idle && !top);
     frame.classList.toggle("turn-act", this.canAct());
   }
 
@@ -1542,8 +1698,9 @@ export class App {
   private renderHand(g: GameState) {
     const box = this.el.handButtons;
     box.replaceChildren();
-    this.el.hand.classList.toggle("over", !!g.result);
-    if (g.result) {
+    this.el.hand.classList.toggle("over", !!g.result && !this.inStep());
+    // 遊び方のステップで決着した（体力 0 の手）ときは、再戦の鍵を出さず駒台のまま
+    if (g.result && !this.inStep()) {
       this.el.handTitle.textContent = "対局終了";
       const again = h("button", { class: "btn primary", text: this.online ? "新しい部屋で再戦" : "再戦", attrs: { type: "button", id: "btn-rematch" } });
       again.addEventListener("click", () => this.rematch());
@@ -1557,6 +1714,7 @@ export class App {
     const act = this.canAct();
     const playable = act ? playableKinds(g) : [];
     const sel = this.kindFor(g, p);
+    const need = this.lessonNeed(g);
     this.el.handTitle.textContent = `${this.name(p)}の持ち駒`;
     for (const k of this.kindsInGame(g)) {
       const n = g.hands[p][k];
@@ -1576,8 +1734,9 @@ export class App {
             title: `${pieceLabel(g.rules, k)} 残り ${n}${blocked ? "・置けるマスなし" : ""}`,
           },
         },
-        [this.stone(p, k), h("span", { class: "piece-count", text: String(n), attrs: { "aria-hidden": "true" } })],
+        [this.stone(p, k), h("span", { class: "piece-count", text: String(n), attrs: { "aria-hidden": "true" } }), ...(need.kind === k ? guideMarks(true) : [])],
       );
+      if (need.kind === k) b.classList.add("guide");
       b.disabled = !act || n === 0 || blocked;
       b.addEventListener("click", () => this.selectKind(k));
       box.append(b);
@@ -1625,6 +1784,10 @@ export class App {
         piece(forced ? "この手で王" : `あと${left}手`),
       );
       btn.disabled = forced;
+      if (this.lessonNeed(g).king) {
+        btn.classList.add("guide");
+        btn.append(...guideMarks(true));
+      }
       btn.addEventListener("click", () => {
         this.kingOn = !this.kingOn;
         this.render();
@@ -1810,6 +1973,8 @@ export class App {
   /** 決着の演出。finaleMs の後か、タップ／クリック／Enter で終局画面へ進む */
   private playFinale(g: GameState) {
     if (this.game !== g || !g.result) return;
+    // 遊び方のステップは、体力 0 で勝つ手だけ決着の演出を見せる（打てる手がなくなっただけの終局は演出しない）
+    if (this.inStep() && g.result.reason !== "ko") return;
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const o = this.outcome(g);
     this.finale = g;
@@ -1825,7 +1990,8 @@ export class App {
     this.finale = null;
     window.clearTimeout(this.finaleTimer);
     this.fx.endFinale();
-    if (this.game === g) this.showResult(g.result!);
+    // 遊び方のステップ（体力 0 で勝つ手）は終局画面を出さず、コーチの「次へ」で進む
+    if (this.game === g && !this.inStep()) this.showResult(g.result!);
   }
 
   private resultHeadline(r: GameResult): string {
@@ -2054,6 +2220,12 @@ function anchorText(r: RuleSet, e: MoveEvent): string {
 /** 対局に出てくる駒の方向のマーク（例: 「↕↔✕✚✱」。同じ方向は 1 回） */
 function dirMarks(r: RuleSet): string {
   return [...new Set(kindsInRules(r).map((k) => dirMark(r, k)))].join("");
+}
+
+/** 遊び方の誘導の印（脈打つ輪と、arrow なら弾む矢印）。読み上げには出さない */
+function guideMarks(arrow: boolean): HTMLElement[] {
+  const ring = h("span", { class: "guide-ring", attrs: { "aria-hidden": "true" } });
+  return arrow ? [ring, h("span", { class: "guide-arrow", attrs: { "aria-hidden": "true" } })] : [ring];
 }
 
 function inView(el: HTMLElement) {

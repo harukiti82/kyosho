@@ -23,7 +23,7 @@ test("開くとメニュー。CPU対戦 → 強さを選ぶと、設定画面を
   await expect(page.locator("#menu")).toBeVisible();
   await expect(page.locator("#setup")).toBeHidden();
   await expect(page.locator("#game")).toBeHidden();
-  await expect(page.locator("#menu-main .menu-btn:visible")).toHaveText(["CPU対戦", "マルチ", "設定"]);
+  await expect(page.locator("#menu-main .menu-btn:visible")).toHaveText(["CPU対戦", "マルチ", "遊び方 はじめての方に", "設定"]);
   await expect(page.locator("#menu-rule-name")).toHaveText("標準");
   await noHorizontalScroll(page, page.viewportSize()!.width);
   await page.screenshot({ path: `${SHOT}/${prefix(page)}-menu.png` });

@@ -25,6 +25,8 @@
           <button type="button" class="btn menu-btn" id="menu-resume" hidden>対局に戻る</button>
           <button type="button" class="btn primary menu-btn" id="menu-cpu">CPU対戦</button>
           <button type="button" class="btn menu-btn" id="menu-multi">マルチ</button>
+          <!-- 遊び方（盤で打ちながら覚えるチュートリアル）。右に進み具合（はじめて・つづき・クリア済み） -->
+          <button type="button" class="btn menu-btn" id="menu-learn">遊び方<span class="menu-sub" id="menu-learn-state"></span></button>
           <button type="button" class="btn ghost menu-btn" id="menu-settings">設定</button>
         </div>
         <div class="menu-panel" id="menu-levels" role="group" aria-labelledby="menu-levels-title" hidden>
@@ -81,6 +83,20 @@
 
       <!-- ルール・予測の詳細・棋譜・印の見かたをまとめた引き出し。選んだタブを押し直すと閉じる -->
       <div class="side drawer" id="drawer">
+        <!-- 遊び方（チュートリアル）のコーチ。スマホは駒台の下、広い画面は盤の横の上（ui/coach.ts） -->
+        <section class="coach" id="coach" aria-labelledby="coach-title" hidden>
+          <div class="coach-head">
+            <span class="coach-num" id="coach-num"></span>
+            <h2 class="coach-title" id="coach-title"></h2>
+            <ol class="coach-steps" id="coach-steps" aria-label="ステップ"></ol>
+          </div>
+          <p class="coach-goal" id="coach-goal"></p>
+          <p class="coach-msg" id="coach-msg" role="status" aria-live="polite" hidden></p>
+          <div class="coach-actions" id="coach-actions" hidden>
+            <button type="button" class="btn ghost" id="coach-again">もう一度</button>
+            <button type="button" class="btn primary" id="coach-next">次へ</button>
+          </div>
+        </section>
         <div class="tabs" role="tablist" aria-label="ルール・予測・棋譜・印の見かた">
           <button type="button" class="tab" role="tab" id="tab-rules4" aria-controls="rules4" aria-selected="false"><span id="rules4-name">ルール</span></button>
           <button type="button" class="tab" role="tab" id="tab-preview" aria-controls="preview" aria-selected="false" tabindex="-1">予測</button>
