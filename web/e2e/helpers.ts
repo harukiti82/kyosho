@@ -48,20 +48,23 @@ export async function readSetup(page: Page): Promise<RuleSet> {
 
 /**
  * 対局を始める。preset・side の指定があれば設定メニューで選んで保存し、設定メニューが開いていれば（フォームを変えた後なら）保存してから、
- * メニューの CPU対戦 → 強さ（既定はノーマル）／マルチ → この端末で 2 人 で始める
+ * メニューの CPU対戦 → 強さ（既定はノーマル）／マルチ → この端末で 2 人 で始める。
+ * CPU 対戦で side を省くと先手（人間から打つ）を選ぶ（画面の既定はランダムだが、種付きの CPU の手を再現するテストは人間が先手の前提）。
+ * 設定メニューで選んだ手番をそのまま使うときは side: "saved"
  */
 export async function startGame(
   page: Page,
-  opts: { mode?: "cpu" | "pvp"; side?: 0 | 1 | "random"; preset?: PresetId; level?: CpuLevel } = {},
+  opts: { mode?: "cpu" | "pvp"; side?: 0 | 1 | "random" | "saved"; preset?: PresetId; level?: CpuLevel } = {},
 ) {
   const mode = opts.mode ?? "cpu";
-  if (opts.preset || (mode === "cpu" && opts.side !== undefined)) {
+  const side = mode === "cpu" ? (opts.side ?? 0) : "saved";
+  if (opts.preset || side !== "saved") {
     await openSettings(page);
     if (opts.preset) await page.locator(`.preset[data-preset=${opts.preset}]`).click();
-    if (mode === "cpu" && opts.side !== undefined) {
+    if (side !== "saved") {
       // ラベルを押す（スマホ幅では隠れた input への直接のクリックが効かない）
-      await page.locator(`label:has(> input[name=side][value="${opts.side}"])`).click();
-      await expect(page.locator(`input[name=side][value="${opts.side}"]`)).toBeChecked();
+      await page.locator(`label:has(> input[name=side][value="${side}"])`).click();
+      await expect(page.locator(`input[name=side][value="${side}"]`)).toBeChecked();
     }
   }
   if (await page.locator("#setup").isVisible()) await saveSettings(page);
@@ -101,6 +104,26 @@ export async function waitHumanTurnOrEnd(page: Page): Promise<boolean> {
   );
   return page.locator("#result").evaluate((d) => (d as HTMLDialogElement).open);
 }
+
+/**
+ * CPU 対戦の手番の抽選の乱数（crypto.getRandomValues）を values の順に返すようにする（使い切ったら最後の値を繰り返す）。page.goto の前に呼ぶ。
+ * 抽選した回数は window.__seatDraws に数える（draws で読む）。Math.random（CPU の乱数）には触れない
+ */
+export async function stubDraws(page: Page, values: number[]) {
+  await page.addInitScript((vs) => {
+    const w = window as unknown as { __seatDraws: number };
+    w.__seatDraws = 0;
+    crypto.getRandomValues = (<T extends ArrayBufferView | null>(a: T): T => {
+      const v = vs[Math.min(w.__seatDraws, vs.length - 1)];
+      w.__seatDraws++;
+      (a as unknown as Uint32Array)[0] = Math.floor(v * 2 ** 32);
+      return a;
+    }) as Crypto["getRandomValues"];
+  }, values);
+}
+
+/** stubDraws で差し替えた抽選を引いた回数 */
+export const draws = (page: Page) => page.evaluate(() => (window as unknown as { __seatDraws: number }).__seatDraws);
 
 /** 種付き乱数（mulberry32） */
 export function rng(seed: number) {

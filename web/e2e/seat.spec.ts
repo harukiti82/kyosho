@@ -3,29 +3,10 @@
 // スクリーンショットは web/screenshots/*-seat-*.png に保存する。
 
 import { expect, test, type Page } from "@playwright/test";
-import { noHorizontalScroll, openSettings, seedPage, startGame, waitHumanTurnOrEnd } from "./helpers";
+import { draws, noHorizontalScroll, openSettings, seedPage, startGame, stubDraws, waitHumanTurnOrEnd } from "./helpers";
 
 const SHOT = "screenshots";
 const moves = (page: Page) => page.locator("#log .log-item.move");
-
-/**
- * 抽選の乱数を values の順に返すようにする（使い切ったら最後の値を繰り返す）。page.goto の前に呼ぶ。
- * 抽選した回数は window.__seatDraws に数える。Math.random（CPU の乱数）には触れない
- */
-async function stubDraws(page: Page, values: number[]) {
-  await page.addInitScript((vs) => {
-    const w = window as unknown as { __seatDraws: number };
-    w.__seatDraws = 0;
-    crypto.getRandomValues = (<T extends ArrayBufferView | null>(a: T): T => {
-      const v = vs[Math.min(w.__seatDraws, vs.length - 1)];
-      w.__seatDraws++;
-      (a as unknown as Uint32Array)[0] = Math.floor(v * 2 ** 32);
-      return a;
-    }) as Crypto["getRandomValues"];
-  }, values);
-}
-
-const draws = (page: Page) => page.evaluate(() => (window as unknown as { __seatDraws: number }).__seatDraws);
 
 const prefix = (page: Page) => ((page.viewportSize()?.width ?? 1280) < 600 ? "sp" : "pc");
 
@@ -38,7 +19,7 @@ async function startCpu(page: Page, side: "random" | "0" | "1", shot?: string) {
     await page.locator("#side-field").scrollIntoViewIfNeeded();
     await page.screenshot({ path: `${SHOT}/${shot}` });
   }
-  await startGame(page);
+  await startGame(page, { side: "saved" });
 }
 
 /** 先手になった: 抽選の表示・手番の表示・まだ誰も打っていない・人間が打てる */
@@ -63,9 +44,9 @@ async function isSecond(page: Page) {
 test("ランダム: 乱数が 0.5 未満なら先手になり、すぐに打てる", async ({ page }) => {
   await stubDraws(page, [0.1]);
   await page.goto("/");
-  // 既定は従来どおり「自分が先手」
+  // 既定は「ランダム」
   await openSettings(page);
-  await expect(page.locator("input[name=side][value='0']")).toBeChecked();
+  await expect(page.locator("input[name=side][value=random]")).toBeChecked();
   await startCpu(page, "random", `${prefix(page)}-seat-setup.png`);
   await isFirst(page);
   expect(await draws(page)).toBe(1);
@@ -94,7 +75,7 @@ test("ランダム: メニューから始め直すと引き直す", async ({ pag
   // 手番の設定は「ランダム」のまま残る
   await openSettings(page);
   await expect(page.locator("input[name=side][value=random]")).toBeChecked();
-  await startGame(page);
+  await startGame(page, { side: "saved" });
   await isSecond(page);
   expect(await draws(page)).toBe(2);
 });

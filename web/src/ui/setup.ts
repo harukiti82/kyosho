@@ -63,7 +63,7 @@ export const SETTINGS_KEY = "kyosho:settings";
 
 export const defaultSaved = (): Saved => ({
   rules: defaultRules(),
-  side: "0",
+  side: "random",
   host: "random",
   timeCpu: "auto",
   timeMulti: `${DEFAULT_MULTI_SECONDS}`,
@@ -74,7 +74,7 @@ const isHost = (v: unknown): v is HostSeat => v === "random" || v === "first" ||
 
 /**
  * 保存した設定を読む。保存がない・壊れている・読めない値がある（ストレージが使えない場合を含む）ときは、
- * その部分を既定（標準・先手・ランダム・強さに合わせる・45 秒）にする。ルールは一部でも読めなければ全体を標準にする
+ * その部分を既定（標準・CPU 対戦の手番はランダム・オンラインの席はランダム・強さに合わせる・45 秒）にする。ルールは一部でも読めなければ全体を標準にする
  */
 export function loadSaved(store: KeyValueStore): Saved {
   const out = defaultSaved();
