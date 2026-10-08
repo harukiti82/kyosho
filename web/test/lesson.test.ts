@@ -107,10 +107,12 @@ describe("チュートリアルの各ステップ", () => {
     expect(lesson("anchor").rules.anchor).toBe("attack");
     expect(lesson("heal").rules.heal).toBe("lowMinus1");
     expect(lesson("king").rules.king).toEqual(std.king);
-    // 目標は 1〜2 文で短く
+    // 覚えるルールは 1 文、課題は短い命令形（2 文まで）。括弧の補足・感嘆符は使わない
     for (const l of LESSONS) {
-      expect(l.goal.length, l.id).toBeGreaterThan(0);
-      expect(l.goal.split("。").filter(Boolean).length, l.id).toBeLessThanOrEqual(2);
+      expect(l.lead.length, l.id).toBeGreaterThan(0);
+      expect(l.lead, l.id).not.toContain("。");
+      expect(l.task.split("。").filter(Boolean).length, l.id).toBeLessThanOrEqual(2);
+      expect(`${l.lead}${l.task}`, l.id).not.toMatch(/[（）！]/);
     }
   });
 
@@ -137,7 +139,7 @@ describe("チュートリアルの各ステップ", () => {
     const { g, m } = solve(lesson("flank"));
     expect(legalCells(g, "fu").map(([r, c]) => cellName(r, c))).toEqual(["d5"]);
     expect(m.targets).toHaveLength(2);
-    expect(lesson("flank").done(m, g)).toBe("相手の歩 2 つを挟んで、自分の駒に裏返した。");
+    expect(lesson("flank").done(m, g)).toBe("相手の歩を 2 つ裏返した");
   });
 
   it("ダメージ: 正解は 6 ダメージで相手の体力が 0 になって勝ち。もう一方は 2 ダメージでヒント", () => {
@@ -146,8 +148,8 @@ describe("チュートリアルの各ステップ", () => {
     expect(g.hp[1]).toBe(6);
     expect(m.damage).toBe(6);
     expect(next.result).toEqual({ winner: 0, reason: "ko", byDiscs: false });
-    expect(l.done(m, g)).toBe("歩1＋金5で 6 ダメージ。相手の体力が 0 になって勝ち。");
-    expect(judgeMove(l, g, { r: 4, c: 1, kind: "fu", king: false })).toBe("そこは 2 ダメージ。マスに触れると、置く前に数字が出る。");
+    expect(l.done(m, g)).toBe("歩1＋金5で 6 ダメージを与えて勝ち");
+    expect(judgeMove(l, g, { r: 4, c: 1, kind: "fu", king: false })).toBe("そこは 2 ダメージ。マスに触れると置く前に数字が出る");
   });
 
   it("駒の向き: 正解のマスは点線の枠（オセロなら置ける）で、最初に選ばれる歩では置けず、飛なら置ける", () => {
@@ -158,8 +160,8 @@ describe("チュートリアルの各ステップ", () => {
     expect(isLegal(g, e4[0], e4[1], "fu")).toBe(false);
     expect(othelloCells(g.board, 0)).toContainEqual(e4);
     // 歩のまま押した・飛で違うマスに置いた
-    expect(illegalHint(l, g, { r: e4[0], c: e4[1], kind: "fu", king: false })).toBe("歩は↕ 縦（上下）にしか挟めない。駒台で飛を選んでから置こう。");
-    expect(judgeMove(l, g, { r: 5, c: 6, kind: "hi", king: false })).toBe("光っているマスに、飛で横に挟もう。");
+    expect(illegalHint(l, g, { r: e4[0], c: e4[1], kind: "fu", king: false })).toBe("歩は↕縦にしか挟めない。駒台で飛を選ぼう");
+    expect(judgeMove(l, g, { r: 5, c: 6, kind: "hi", king: false })).toBe("光るマスに、飛で横に挟もう");
     expect(nextNeed(l, "fu", false)).toEqual({ kind: "hi" });
     expect(nextNeed(l, "hi", false)).toEqual({});
     expect(solve(l).m.targets).toHaveLength(2);
@@ -173,7 +175,7 @@ describe("チュートリアルの各ステップ", () => {
     expect(next.hands[0].kin).toBe(0);
     // 同じマスに歩でも置けるが、正解は金
     expect(isLegal(g, 2, 2, "fu")).toBe(true);
-    expect(judgeMove(l, g, { r: 2, c: 2, kind: "fu", king: false })).toBe("歩は↕ 縦（上下）にしか挟めない。駒台で金を選んでから置こう。");
+    expect(judgeMove(l, g, { r: 2, c: 2, kind: "fu", king: false })).toBe("歩は↕縦にしか挟めない。駒台で金を選ぼう");
   });
 
   it("端の駒: 正解は 返した歩1 ＋ 端の金5 ＝ 6。もう一方は端が歩で 2", () => {
@@ -181,8 +183,8 @@ describe("チュートリアルの各ステップ", () => {
     const { g, m } = solve(l);
     expect(m.damage).toBe(6);
     expect(m.anchors).toEqual([{ r: 7, c: 3, kind: "kin" }]);
-    expect(l.done(m, g)).toBe("返した歩1に端の金5が足されて、6 ダメージ。");
-    expect(judgeMove(l, g, { r: 5, c: 6, kind: "fu", king: false })).toBe("そこは端が歩1で 2 ダメージ。金を端にできるマスへ。");
+    expect(l.done(m, g)).toBe("返した歩1に端の金5が足されて 6 ダメージ");
+    expect(judgeMove(l, g, { r: 5, c: 6, kind: "fu", king: false })).toBe("そこは端が歩1で 2 ダメージ。金を端にできるマスへ");
   });
 
   it("回復: 飛3 と端の金5 で挟むと 2 回復。歩で金を挟むと回復 0 でヒント", () => {
@@ -190,7 +192,7 @@ describe("チュートリアルの各ステップ", () => {
     const { g, next, m } = solve(l);
     expect(m.heal).toBe(2);
     expect(next.hp[0]).toBe(g.hp[0] + 2);
-    expect(l.done(m, g)).toBe("飛3と端の金5で挟んで、体力が 2 回復した。");
+    expect(l.done(m, g)).toBe("飛3と端の金5で挟んで 2 回復");
     expect(previewMove(g, 5, 6, "fu")?.heal).toBe(0);
     expect(judgeMove(l, g, { r: 5, c: 6, kind: "fu", king: false })).toContain("回復 0");
     expect(firstKind(g)).toBe("fu");
@@ -206,8 +208,8 @@ describe("チュートリアルの各ステップ", () => {
     expect(nextNeed(l, "fu", true)).toEqual({});
     const { next, m } = solve(l);
     expect(kingInfo(next, 0)).toMatchObject({ status: "hidden", cell: [5, 4], auto: false });
-    expect(l.done(m, g)).toBe("この歩1があなたの王になった（相手には見えず、返されると体力−30）。");
-    expect(l.goal).toContain("最初の 7 手");
+    expect(l.done(m, g)).toBe("この歩1が王になった。返されると体力−30");
+    expect(l.lead).toContain("最初の 7 手");
   });
 
   it("王を返す: 「?」の金が相手の王で、返すと 6 ダメージ＋体力−30", () => {
@@ -217,8 +219,8 @@ describe("チュートリアルの各ステップ", () => {
     expect(kingInfo(g, 0).status).toBe("hidden");
     expect(m.king).toMatchObject({ r: 6, c: 2, kind: "kin", penalty: 30, lose: false });
     expect(next.hp[1]).toBe(g.hp[1] - m.damage - 30);
-    expect(l.done(m, g)).toBe("相手の王を返して、6 ダメージに −30 が上乗せされた。");
-    expect(l.goal).toContain("体力−30");
+    expect(l.done(m, g)).toBe("王を返した。6 ダメージに −30 が上乗せ");
+    expect(l.lead).toContain("体力−30");
   });
 
   it("予測を読む: 大きいダメージのマスは置いた駒が次に返され、正解のマスは返されない。点線だけのマスもある", () => {
@@ -232,7 +234,7 @@ describe("チュートリアルの各ステップ", () => {
     expect(pg.exposed).not.toContainEqual(good);
     expect(judgeMove(l, g, { r: bad[0], c: bad[1], kind: "fu", king: false })).toContain("返される");
     expect(m.damage).toBe(pg.damage);
-    expect(l.done(m, g)).toBe(`置いた駒を返されない手で、${pg.damage} ダメージ。`);
+    expect(l.done(m, g)).toBe(`返されない手で ${pg.damage} ダメージ`);
     // 王は決まっている（王の駒の操作を出さない）
     expect(kingInfo(g, 0).canDesignate).toBe(false);
     // 普通のオセロなら置けるが、持ち駒では置けないマス
@@ -276,7 +278,7 @@ describe("進み具合の保存", () => {
   });
 
   it("メニューの表示と再開の位置", () => {
-    expect(progressLabel(null)).toBe("はじめての方に");
+    expect(progressLabel(null)).toBe("おすすめ");
     expect(progressLabel({ step: 3, reached: 3, done: false })).toBe(`つづき 4/${LESSONS.length}`);
     expect(progressLabel({ step: 9, reached: 9, done: true })).toBe("クリア済み");
     expect(resumeStep(null)).toBe(0);

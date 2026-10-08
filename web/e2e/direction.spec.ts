@@ -72,10 +72,10 @@ test.describe("PC 幅", () => {
     await openSettings(page);
     await page.locator(".preset[data-preset=dir]").click();
     expect(await readSetup(page)).toEqual(DIR);
-    await expect(page.locator("#custom-tag")).toHaveText("— 方向駒");
+    await expect(page.locator("#custom-tag")).toHaveText("方向駒");
     await openRuleFields(page);
     await expect(page.locator("#setup-rules4 li")).toHaveText(ruleLines(DIR).map(sentenceText));
-    await expect(page.locator("#setup-rules4")).toContainText("挟めるのは駒の矢印の方向だけ（歩↕ 横↔ 角✕ 飛✚ 金✱）");
+    await expect(page.locator("#setup-rules4")).toContainText("駒の矢印の方向だけ挟める 歩↕ 横↔ 角✕ 飛✚ 金✱");
     // 駒の表: 6 種。方向は種類で固定（表示のみ）
     await expect(page.locator(".piece-row")).toHaveCount(KIND_ORDER.length);
     await expect(page.locator(".piece-row[data-kind=yoko] .piece-row-dir")).toHaveText("横");
@@ -120,7 +120,7 @@ test.describe("PC 幅", () => {
 
     // 不正な値は項目ごとに URL の基準（v1.0）の値にして知らせる
     await page.goto("/?dir=diagonal&kaku=99&vfu=0&vkin=5");
-    await expect(page.locator("#menu-note")).toHaveText("URL の設定に読めない値があったため、挟める方向・角の数・歩の数字はv1.0（取る）の値にしました。");
+    await expect(page.locator("#menu-note")).toHaveText("URL の挟める方向・角の数・歩の数字が読めないので、v1.0（取る）の値にしました");
     const bad = await readSetup(page);
     expect([bad.dirs, bad.hand.kaku, bad.values.fu, bad.values.kin]).toEqual(["all", 0, 1, 5]);
     expect(errors).toEqual([]);
@@ -134,7 +134,7 @@ test.describe("PC 幅", () => {
     await page.goto(`/?${encodeRules(DIR)}`);
     await startGame(page);
     await expect(page.locator("#rules4 li")).toHaveText(ruleLines(DIR).map(sentenceText));
-    await expect(page.locator("#rules4-name")).toHaveText("ルール — 方向駒");
+    await expect(page.locator("#rules4-name")).toHaveText("ルール 方向駒");
     await expect(page.locator("#legend")).toContainText("↕↔✕✚✱ 駒が挟める方向");
     // 持ち駒のボタンにも方向のアイコン（数字の小さい順: 歩 横 角 飛 金）
     const order = await page.locator("#hand-buttons .piece-btn").evaluateAll((bs) =>
@@ -188,7 +188,7 @@ test.describe("PC 幅", () => {
       await selectPiece(page, ch.kind);
       await cellAt(page, ch.r, ch.c).hover();
       const pv = previewMove(s, ch.r, ch.c, ch.kind)!;
-      await expect(page.locator("#preview .label")).toContainText(`${pieceLabel(DIR, ch.kind)}${dirMark(DIR, ch.kind)} を`);
+      await expect(page.locator("#preview .label")).toContainText(`${pieceLabel(DIR, ch.kind)}${dirMark(DIR, ch.kind)}を`);
       expect(await cellsWith(page, ".cell.will-take")).toEqual(names(pv.targets));
       if (pv.damage > 0) await expect(cellAt(page, ch.r, ch.c).locator(".dmg-badge")).toHaveText(String(pv.damage));
       // 予測中の「!」は、置いた後に相手の持ち駒の方向で返されうる自分の駒
@@ -231,7 +231,7 @@ test.describe("PC 幅", () => {
     // 初手: c4 は横なら返せるが、歩（縦）では返せない
     await selectPiece(page, "fu");
     await cellAt(page, 3, 2).click();
-    await expect(page.locator("#toast")).toHaveText("c4 に 歩1 を置いても返せる駒がありません（歩は↕ 縦（上下）だけ挟める。● のマスに置けます）");
+    await expect(page.locator("#toast")).toHaveText("c4 では返せません。歩は↕縦にだけ挟めます");
     await expect(page.locator("#log .log-item")).toHaveCount(0);
     await selectPiece(page, "yoko");
     await expect(cellAt(page, 3, 2)).toHaveClass(/open/);
@@ -266,7 +266,7 @@ test.describe("スマホ幅 375px", () => {
     await selectPiece(page, "yoko", true);
     expect(await cellsWith(page, ".cell.open")).toEqual(["c4", "f5"]);
     await cellAt(page, 3, 2).tap();
-    await expect(page.locator("#preview .label")).toContainText("c4 に 横1↔ を置くと");
+    await expect(page.locator("#preview .label")).toContainText("c4 に横1↔を置くと");
     await expect(page.locator("#preview")).toContainText("もう一度タップ");
     await expect(page.locator(".cell.will-take")).toHaveCount(1);
     await page.screenshot({ path: `${SHOT}/sp-dir.png` });

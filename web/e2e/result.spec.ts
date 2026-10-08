@@ -86,7 +86,7 @@ for (const project of ["desktop", "mobile"] as const) {
   test.describe(project === "desktop" ? "PC 幅" : "スマホ幅 375px", () => {
     test.beforeEach(({}, info) => test.skip(info.project.name !== project, `${project} のみ`));
 
-    test("勝利: 最後の特大の一手を出し切ってから紙吹雪・発光・「勝利！」、時間で終局画面と成績へ", async ({ page }) => {
+    test("勝利: 最後の特大の一手を出し切ってから紙吹雪・発光・「勝利」、時間で終局画面と成績へ", async ({ page }) => {
       const errors: string[] = [];
       page.on("pageerror", (e) => errors.push(String(e)));
       const s = await playToEnd(page, WIN, touch);
@@ -98,7 +98,7 @@ for (const project of ["desktop", "mobile"] as const) {
       await expect(finale(page)).toHaveCount(0);
       await waitFinale(page, "win");
       const shownAt = Date.now();
-      await expect(finale(page).locator(".fin-title")).toHaveText("勝利！");
+      await expect(finale(page).locator(".fin-title")).toHaveText("勝利");
       await expect(finale(page).locator(".fin-sub")).toHaveText("体力 0 で撃破");
       await expect(finale(page).locator(".fin-cheer")).toHaveCount(0);
       await expect(page.locator(".fx-confetto")).toHaveCount(28);
@@ -119,11 +119,11 @@ for (const project of ["desktop", "mobile"] as const) {
       expect(errors).toEqual([]);
     });
 
-    test("敗北: 彩度を落として沈む・「敗北…」・タップ／クリックで飛ばすと終局画面で「再戦」を強調", async ({ page }) => {
+    test("敗北: 彩度を落として沈む・「敗北」・タップ／クリックで飛ばすと終局画面で「再戦」を強調", async ({ page }) => {
       const s = await playToEnd(page, LOSE, touch);
       expect(s.result).toMatchObject({ winner: 1, reason: "ko" });
       await waitFinale(page, "lose");
-      await expect(finale(page).locator(".fin-title")).toHaveText("敗北…");
+      await expect(finale(page).locator(".fin-title")).toHaveText("敗北");
       await expect(finale(page).locator(".fin-sub")).toHaveText("体力 0 で撃破された");
       await expect(page.locator(".fx-sink")).toHaveCount(1);
       await expect(page.locator(".fx-confetto, .fx-glow")).toHaveCount(0);
@@ -141,12 +141,12 @@ for (const project of ["desktop", "mobile"] as const) {
       await page.screenshot({ path: `${SHOT}/${pre}-result-lose-screen.png` });
     });
 
-    test("接戦の敗北: 体力判定で 3 点差なら「あと 3 点だった」を演出と終局画面に添える", async ({ page }) => {
+    test("接戦の敗北: 体力判定で 3 点差なら「3 点差の惜敗」を演出と終局画面に添える", async ({ page }) => {
       const s = await playToEnd(page, LOSE_CLOSE, touch);
       expect(s.hp).toEqual([39, 42]);
       await waitFinale(page, "lose");
-      await expect(finale(page).locator(".fin-sub")).toHaveText("体力判定で敗北（体力 39 対 42）");
-      await expect(finale(page).locator(".fin-cheer")).toHaveText("惜しい！ あと 3 点だった");
+      await expect(finale(page).locator(".fin-sub")).toHaveText("体力判定 39 対 42 で敗北");
+      await expect(finale(page).locator(".fin-cheer")).toHaveText("3 点差の惜敗");
       await page.waitForTimeout(1300);
       if (touch) await noHorizontalScroll(page, 375);
       await page.screenshot({ path: `${SHOT}/${pre}-result-lose-close.png` });
@@ -154,7 +154,7 @@ for (const project of ["desktop", "mobile"] as const) {
       if (touch) await skip(page);
       else await page.keyboard.press("Enter");
       await expect(page.locator("#result")).toBeVisible({ timeout: 500 });
-      await expect(page.locator("#result-cheer")).toHaveText("惜しい！ あと 3 点だった");
+      await expect(page.locator("#result-cheer")).toHaveText("3 点差の惜敗");
       await expect(page.locator("#result-rematch")).toHaveClass(/urge/);
       expect(await moveCount(page)).toBe(4);
     });
@@ -175,8 +175,8 @@ for (const project of ["desktop", "mobile"] as const) {
     });
 
     for (const [sc, winner, title] of [
-      [PVP_BLACK, 0, "先手の勝ち！"],
-      [PVP_WHITE, 1, "後手の勝ち！"],
+      [PVP_BLACK, 0, "先手の勝ち"],
+      [PVP_WHITE, 1, "後手の勝ち"],
     ] as const) {
       test(`2 人対戦: ${title}（勝った側の駒色・敗北の演出は出さない）`, async ({ page }) => {
         const s = await playToEnd(page, sc, touch);
@@ -206,7 +206,7 @@ test.describe("PC 幅（動きを減らす設定・音・飛ばす操作・エ�
     await playToEnd(page, WIN, false);
     await waitFinale(page, "win");
     await expect(finale(page)).toHaveClass(/reduce/);
-    await expect(finale(page).locator(".fin-title")).toHaveText("勝利！");
+    await expect(finale(page).locator(".fin-title")).toHaveText("勝利");
     await expect(finale(page).locator(".fin-sub")).toHaveText("体力 0 で撃破");
     await expect(page.locator(".fx-confetto, .fx-glow, .fx-sink, .fx-calm")).toHaveCount(0);
     await page.screenshot({ path: `${SHOT}/pc-result-reduced-win.png` });
@@ -214,7 +214,7 @@ test.describe("PC 幅（動きを減らす設定・音・飛ばす操作・エ�
 
     await playToEnd(page, LOSE_CLOSE, false);
     await waitFinale(page, "lose");
-    await expect(finale(page).locator(".fin-cheer")).toHaveText("惜しい！ あと 3 点だった");
+    await expect(finale(page).locator(".fin-cheer")).toHaveText("3 点差の惜敗");
     await expect(page.locator(".fx-confetto, .fx-glow, .fx-sink, .fx-calm")).toHaveCount(0);
     await page.screenshot({ path: `${SHOT}/pc-result-reduced-lose.png` });
   });

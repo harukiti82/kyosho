@@ -111,7 +111,7 @@ test.describe("普通のオセロなら置けるマス", () => {
     await seedPage(page, 1);
     await page.goto("/");
     await startGame(page);
-    await expect(page.locator("#rules4-name")).toHaveText(`ルール — ${presetById("std").name}`);
+    await expect(page.locator("#rules4-name")).toHaveText(`ルール ${presetById("std").name}`);
     await watchIdleMarks(page);
 
     // 初期配置: 歩（縦だけ）で置けるのは d3・e6、オセロなら c4・d3・e6・f5
@@ -161,7 +161,7 @@ test.describe("普通のオセロなら置けるマス", () => {
     } else {
       await c4.click();
     }
-    await expect(page.locator("#status")).toContainText("が考えています");
+    await expect(page.locator("#status")).toContainText("CPU 思考中");
     await expect(page.locator(".cell.othello")).toHaveCount(0);
     await page.screenshot({ path: `${SHOT}/${pre}-othello-cpu-turn.png` });
 

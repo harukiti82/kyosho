@@ -36,7 +36,7 @@ async function toMenu(page: Page) {
 test("CPU 対戦: 強さに合わせた制限時間（イージー なし・ノーマル 45 秒・ハード 20 秒）が自分の名札に出る", async ({ page }) => {
   await open(page);
   await page.locator("#menu-cpu").click();
-  await expect(page.locator("[data-level=easy] .menu-time")).toHaveText(/時間なし/);
+  await expect(page.locator("[data-level=easy] .menu-time")).toHaveText(/制限なし/);
   await expect(page.locator("[data-level=normal] .menu-time")).toHaveText(/45秒/);
   await expect(page.locator("[data-level=hard] .menu-time")).toHaveText(/20秒/);
   await page.screenshot({ path: `${SHOT}/${prefix(page)}-timer-levels.png` });
@@ -70,7 +70,7 @@ test("設定メニューで変えた制限時間が反映される（CPU 対戦 
   await page.screenshot({ path: `${SHOT}/${prefix(page)}-timer-setup.png` });
   await saveSettings(page);
   await page.locator("#menu-cpu").click();
-  await expect(page.locator("[data-level=hard] .menu-time")).toHaveText(/時間なし/);
+  await expect(page.locator("[data-level=hard] .menu-time")).toHaveText(/制限なし/);
   await page.locator("#menu-levels .menu-back").click();
 
   await startGame(page, { level: "hard", side: 0 });
@@ -105,7 +105,7 @@ test("時間切れ: 置ける手から自動で 1 手打ち、棋譜とトース
   await page.screenshot({ path: `${SHOT}/${prefix(page)}-timer-danger.png` });
   await page.clock.fastForward(5_000);
 
-  await expect(page.locator("#toast")).toContainText("時間切れ！ 先手（あなた）の手を自動で打ちました");
+  await expect(page.locator("#toast")).toContainText("時間切れ。あなたの手を");
   await expect(moves(page).last()).toHaveClass(/\btimeout\b/);
   await expect(moves(page).last()).toContainText("（時間切れ・自動）");
   await page.screenshot({ path: `${SHOT}/${prefix(page)}-timer-timeout.png` });
@@ -226,8 +226,8 @@ test("隠し王の期限の手で時間切れなら、置いた駒が自動で�
   await expect(page.locator(".board.acting")).toBeVisible();
   await expect(page.locator("#king-toggle")).toHaveAttribute("aria-label", "この手で置く駒が王になる");
   await page.clock.fastForward(46_000);
-  await expect(page.locator("#toast")).toContainText("時間切れ！");
-  await expect(page.locator("#toast")).toContainText("自動であなたの王になりました");
+  await expect(page.locator("#toast")).toContainText("時間切れ。");
+  await expect(page.locator("#toast")).toContainText("が自動で王になりました");
   const m = moves(page).first();
   await expect(m).toHaveClass(/\btimeout\b/);
   // 名札の王はそのマス

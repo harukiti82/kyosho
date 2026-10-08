@@ -101,9 +101,11 @@ export class Fx {
         h("p", { class: "fin-title", text: oc.title }),
         h("p", { class: "fin-sub", text: oc.subtitle }),
         oc.cheer ? h("p", { class: "fin-cheer", text: oc.cheer }) : null,
-        h("p", { class: "fin-skip", text: "タップ／Enter で結果へ" }),
+        h("p", { class: "fin-skip", text: "タップで結果へ" }),
       ]),
     );
+    // Enter・Esc・スペースでも飛ばせる（App.playFinale）。画面の文は短くし、キーは title に置く
+    root.title = "クリック・Enter で結果へ";
     root.addEventListener("click", () => o.onSkip());
     this.layer.append(root);
     this.finaleEl = root;

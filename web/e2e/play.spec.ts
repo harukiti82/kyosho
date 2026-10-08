@@ -137,7 +137,7 @@ test.describe("PC 幅", () => {
       await page.locator(`.preset[data-preset=${p.id}]`).click();
       expect(await readSetup(page)).toEqual(p.rules);
       await expect(page.locator("#setup-rules4 li")).toHaveText(ruleLines(p.rules).map(sentenceText));
-      await expect(page.locator("#custom-tag")).toHaveText(`— ${p.name}`);
+      await expect(page.locator("#custom-tag")).toHaveText(`${p.name}`);
     }
     // 個別に変えるとカスタムになる（取るルール＋強さ制限は「取れない」）
     await page.locator(".preset[data-preset=v2]").click();
@@ -145,7 +145,7 @@ test.describe("PC 幅", () => {
     await page.locator("input[name=action][value=capture]").check({ force: true });
     await expect(page.locator("#custom-tag")).toContainText("カスタム");
     await expect(page.locator(".preset[aria-pressed=true]")).toHaveCount(0);
-    await expect(page.locator("#gate-on-label")).toHaveText("置いた駒より強い駒は取れない");
+    await expect(page.locator("#gate-on-label")).toHaveText("強い駒は取れない");
     await expect(page.locator("#setup-rules4")).toContainText("置いた駒より数字が大きい駒を含む列は取れない");
     // ラベルを押す（見えない 1px のラジオへの force のクリックは、レイアウトによって別の要素に当たる）
     await page.locator("label:has(> input[name=heal][value=avg])").click();
@@ -169,7 +169,7 @@ test.describe("PC 幅", () => {
     await expect(page.locator("#menu-rule-name")).toHaveText("カスタム");
     expect(new URL(page.url()).search.slice(1)).toBe(encodeRules(custom));
     await page.reload();
-    await expect(page.locator("#menu-note")).toHaveText("URL の設定を読み込みました。");
+    await expect(page.locator("#menu-note")).toHaveText("URL の設定で遊びます");
     expect(await readSetup(page)).toEqual(custom);
     expect(errors).toEqual([]);
   });
@@ -219,7 +219,7 @@ test.describe("PC 幅", () => {
     expect(std).toEqual(presetById("std").rules);
     // 指定の URL: 読めない値はなく、プリセット「標準」と一致する
     await page.goto(`/?${STD_QUERY}`);
-    await expect(page.locator("#menu-note")).toHaveText("URL の設定を読み込みました。");
+    await expect(page.locator("#menu-note")).toHaveText("URL の設定で遊びます");
     expect(await readSetup(page)).toEqual(std);
     await expect(page.locator(".preset[aria-pressed=true]")).toHaveAttribute("data-preset", "std");
 
@@ -227,10 +227,10 @@ test.describe("PC 幅", () => {
     await page.goto("/");
     await expect(page.locator("#menu-note")).toBeHidden();
     expect(await readSetup(page)).toEqual(std);
-    await expect(page.locator("#custom-tag")).toHaveText("— 標準");
+    await expect(page.locator("#custom-tag")).toHaveText("標準");
     await startGame(page);
     await ruleCardIs(page, std);
-    await expect(page.locator("#rules4-name")).toHaveText("ルール — 標準");
+    await expect(page.locator("#rules4-name")).toHaveText("ルール 標準");
     await expect(page.locator("#player-0 .hp-num")).toHaveText("129");
     await expect(page.locator("#player-0 .hp-max")).toHaveText("/ 129");
     await expect(page.locator("#player-1 .hp-num")).toHaveText("130");
@@ -243,7 +243,7 @@ test.describe("PC 幅", () => {
 
     // ルール詳細も新しい既定の文
     await page.locator("#btn-rules").click();
-    await expect(page.locator("#rules-title")).toHaveText("ルール — 標準");
+    await expect(page.locator("#rules-title")).toHaveText("標準のルール");
     await expect(page.locator("#rules")).toContainText("王を返されたら通常のダメージに加えて体力 −30");
     await expect(page.locator("#rules")).toContainText("回復 = 挟んだ両端（置いた駒と反対端の自分の駒）の低い方 − 1（0 未満は 0）");
     await expect(page.locator("#rules")).toContainText("7 手目までに選ばなかったら、7 手目に置いた駒が自動で王になる");
@@ -260,7 +260,7 @@ test.describe("PC 幅", () => {
       await page.goto("/");
       await startGame(page, { preset: preset.id });
       await ruleCardIs(page, r);
-      await expect(page.locator("#rules4-name")).toHaveText(`ルール — ${preset.name}`);
+      await expect(page.locator("#rules4-name")).toHaveText(`ルール ${preset.name}`);
       await expect(page.locator("#player-0 .hp-num")).toHaveText(String(r.hp[0]));
       await expect(page.locator("#player-1 .hp-max")).toHaveText(`/ ${r.hp[1]}`);
       await expect(page.locator("#ply")).toHaveText(r.maxPlies > 0 ? `0 / ${r.maxPlies} 手` : "0 手");
@@ -361,7 +361,7 @@ test.describe("PC 幅", () => {
       }
       if (seq.passAfter.includes(i)) {
         await expect(page.locator("#toast")).toBeVisible();
-        await expect(page.locator("#toast")).toContainText("パス（置けるマスがありません）");
+        await expect(page.locator("#toast")).toContainText("置けるマスなしでパス");
         await expect(page.locator("#log .log-item.pass").first()).toContainText("パス（置ける所なし）");
         await cellsUniform(page);
         if (!sawPass) {
@@ -470,7 +470,7 @@ test.describe("スマホ幅 375px", () => {
     await cellsUniform(page);
 
     await page.locator("#btn-rules").tap();
-    await expect(page.locator("#rules-title")).toHaveText("ルール — v2案（強い駒は返せない）");
+    await expect(page.locator("#rules-title")).toHaveText("v2案（強い駒は返せない）のルール");
     await expect(page.locator("#rules")).toContainText("置いた駒より数字が大きい駒が 1 つでも入っている列は返せない");
     // 冒頭から読める（末尾のボタンにフォーカスしてスクロールしない）
     expect(await page.locator("#rules").evaluate((d) => d.scrollTop)).toBe(0);

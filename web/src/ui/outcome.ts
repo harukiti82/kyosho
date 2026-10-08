@@ -16,7 +16,7 @@ export interface Outcome {
   tone: OutcomeTone;
   /** 2 人対戦で勝った側（駒の印を出す）。それ以外は null */
   winner: Player | null;
-  /** 大きな文字（「勝利！」「敗北…」「引き分け」「先手の勝ち！」） */
+  /** 大きな文字（「勝利」「敗北」「引き分け」「先手の勝ち」） */
   title: string;
   /** 決着の理由 */
   subtitle: string;
@@ -52,7 +52,7 @@ export function outcomeOf(g: Pick<GameState, "rules" | "history" | "hp" | "board
       tone: "calm",
       winner: null,
       title: "引き分け",
-      subtitle: `体力も石数も同じ（体力 ${g.hp[0]}・石 ${d0}）`,
+      subtitle: `体力 ${g.hp[0]}・石 ${d0} で並んだ`,
       cheer: null,
       urgeRematch: false,
     };
@@ -70,9 +70,9 @@ export function outcomeOf(g: Pick<GameState, "rules" | "history" | "hp" | "board
     let subtitle: string;
     if (byKing) subtitle = `${W}が${L}の王を討って決着`;
     else if (r.reason === "ko") subtitle = `${L}の体力を 0 にして撃破`;
-    else if (r.byDiscs) subtitle = `体力が同じ — 石数で決着（先手 ${d0} 対 後手 ${d1}）`;
-    else subtitle = `体力判定で決着（先手 ${g.hp[0]} 対 後手 ${g.hp[1]}）`;
-    return { kind: "win", tone: w === 0 ? "black" : "white", winner: w, title: `${W}の勝ち！`, subtitle, cheer: null, urgeRematch: false };
+    else if (r.byDiscs) subtitle = `体力が並び、石数 ${d0} 対 ${d1} で決着`;
+    else subtitle = `体力判定 ${g.hp[0]} 対 ${g.hp[1]} で決着`;
+    return { kind: "win", tone: w === 0 ? "black" : "white", winner: w, title: `${W}の勝ち`, subtitle, cheer: null, urgeRematch: false };
   }
 
   const me = view.human;
@@ -86,16 +86,16 @@ export function outcomeOf(g: Pick<GameState, "rules" | "history" | "hp" | "board
   } else if (r.reason === "ko") {
     subtitle = won ? "体力 0 で撃破" : "体力 0 で撃破された";
     // 相手の残り体力が自分の体力上限の 10% 以下なら、あと少しだった
-    if (!won && isClose(g.hp[foe], g.rules.hp[me])) cheer = `惜しい！ 相手の体力はあと ${g.hp[foe]} だった`;
+    if (!won && isClose(g.hp[foe], g.rules.hp[me])) cheer = `相手の残り体力 ${g.hp[foe]} の惜敗`;
   } else if (r.byDiscs) {
-    subtitle = `${won ? "石数で勝利" : "石数で敗北"}（体力は同じ・石 ${vs(discs)}）`;
-    if (!won) cheer = `惜しい！ 体力は互角、石の差はあと ${discs[foe] - discs[me]} 個だった`;
+    subtitle = `体力が並び、石数 ${vs(discs)} で${won ? "勝利" : "敗北"}`;
+    if (!won) cheer = `石 ${discs[foe] - discs[me]} 個差の惜敗`;
   } else {
-    subtitle = `${won ? "体力判定で勝利" : "体力判定で敗北"}（体力 ${vs(g.hp)}）`;
+    subtitle = `体力判定 ${vs(g.hp)} で${won ? "勝利" : "敗北"}`;
     const gap = g.hp[foe] - g.hp[me];
-    if (!won && isClose(gap, g.rules.hp[me])) cheer = `惜しい！ あと ${gap} 点だった`;
+    if (!won && isClose(gap, g.rules.hp[me])) cheer = `${gap} 点差の惜敗`;
   }
   return won
-    ? { kind: "win", tone: "warm", winner: null, title: "勝利！", subtitle, cheer: null, urgeRematch: false }
-    : { kind: "lose", tone: "gloom", winner: null, title: "敗北…", subtitle, cheer, urgeRematch: true };
+    ? { kind: "win", tone: "warm", winner: null, title: "勝利", subtitle, cheer: null, urgeRematch: false }
+    : { kind: "lose", tone: "gloom", winner: null, title: "敗北", subtitle, cheer, urgeRematch: true };
 }

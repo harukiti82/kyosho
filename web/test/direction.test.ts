@@ -271,17 +271,17 @@ describe("URL・設定・ルール文", () => {
   it("ルールカードに方向の 1 行（含まれる駒だけ）。全方向では出さない", () => {
     const card = ruleLines(DIR).map(sentenceText);
     expect(card.slice(0, 5)).toEqual([
-      "挟んだ相手の駒を裏返す（挟めるマスにしか置けない）",
-      "挟めるのは駒の矢印の方向だけ（歩↕ 横↔ 角✕ 飛✚ 金✱）",
+      "挟めるマスに置き、相手の駒を裏返す",
+      "駒の矢印の方向だけ挟める 歩↕ 横↔ 角✕ 飛✚ 金✱",
       "返した駒の数字の合計がダメージ",
       "回復なし",
-      "最初の5手のうち1つを王に（相手に見えない）。王を返されたら体力−20",
+      "最初の5手のうち1つを王にする。相手に見えず、返されたら体力−20",
     ]);
     expect(card).toHaveLength(6);
     expect(card[5]).toMatch(/^体力 .* が 0 で負け$/);
     const fewer = { ...DIR, hand: { fu: 0, yoko: 0, gin: 2, kaku: 3, kin: 0, hi: 0 } };
     // 中央の歩は常に盤上にあるので含める
-    expect(sentenceText(dirLine(fewer))).toBe("挟めるのは駒の矢印の方向だけ（歩↕ 銀✱ 角✕）");
+    expect(sentenceText(dirLine(fewer))).toBe("駒の矢印の方向だけ挟める 歩↕ 銀✱ 角✕");
     expect(ruleLines(ALL(DIR)).map(sentenceText).join("")).not.toContain("矢印");
     expect(handText(DIR)).toBe("歩1↕ ×8・横1↔ ×8・角3✕ ×6・飛3✚ ×6・金5✱ ×4");
     expect(handText(presetById("orig").rules)).toBe("歩1 ×14・銀2 ×10・金3 ×6・飛5 ×2");

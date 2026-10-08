@@ -1,4 +1,4 @@
-// 遊び方（チュートリアル）のコーチ: ステップの石の列・見出し・目標・ヒント／できたの 1 文・「もう一度」「次へ」。
+// 遊び方（チュートリアル）のコーチ: ステップの石の列・見出し・覚えるルールの 1 文・課題・ヒント／できたの 1 文・「もう一度」「次へ」。
 // 表示と入力だけで、局面と判定は ui/lessons.ts、盤の誘導は ui/app.ts が受け持つ。
 
 import { byId, h } from "./dom";
@@ -16,7 +16,8 @@ export class Coach {
     steps: byId("coach-steps"),
     num: byId("coach-num"),
     title: byId("coach-title"),
-    goal: byId("coach-goal"),
+    lead: byId("coach-lead"),
+    task: byId("coach-task"),
     msg: byId("coach-msg"),
     actions: byId("coach-actions"),
     again: byId("coach-again"),
@@ -36,12 +37,13 @@ export class Coach {
    * ステップ i（0 始まり）を出す。titles は全ステップの見出し、open は押して移れる最も先のステップ
    * （それより先の石は押せない）
    */
-  show(i: number, titles: readonly string[], open: number, goal: string) {
+  show(i: number, titles: readonly string[], open: number, lead: string, task: string) {
     const { el } = this;
     el.root.hidden = false;
     el.num.textContent = `${i + 1}/${titles.length}`;
     el.title.textContent = titles[i];
-    el.goal.textContent = goal;
+    el.lead.textContent = lead;
+    el.task.textContent = task;
     el.steps.replaceChildren(
       ...titles.map((t, j) => {
         const b = h("button", {

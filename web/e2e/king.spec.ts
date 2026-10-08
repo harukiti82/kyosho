@@ -82,14 +82,14 @@ test.describe("PC 幅", () => {
     expect(await readSetup(page)).toEqual(KING);
     await expect(page.locator("#king-sub")).toBeVisible();
     await expect(page.locator("#setup-rules4 li")).toHaveText(ruleLines(KING).map(sentenceText));
-    await expect(page.locator("#setup-rules4")).toContainText("最初の5手のうち1つを王に（相手に見えない）。王を返されたら体力−20");
+    await expect(page.locator("#setup-rules4")).toContainText("最初の5手のうち1つを王にする。相手に見えず、返されたら体力−20");
     await page.locator("#opt-king").scrollIntoViewIfNeeded();
     await page.screenshot({ path: `${SHOT}/pc-king-setup.png` });
 
     // 即負けにすると減る体力の欄は隠れ、ルール文が変わる
     await page.locator("input[name=kingPenalty][value=lose]").check({ force: true });
     await expect(page.locator("#king-amount-field")).toBeHidden();
-    await expect(page.locator("#setup-rules4")).toContainText("王を返されたら即負け");
+    await expect(page.locator("#setup-rules4")).toContainText("相手に見えず、返されたら即負け");
     await expect(page.locator("#custom-tag")).toContainText("カスタム");
     // 期限の範囲外は直す
     await page.locator("input[name=kingDeadline]").fill("25");
@@ -98,7 +98,7 @@ test.describe("PC 幅", () => {
     await page.locator("input[name=kingDeadline]").fill("0");
     await page.locator("input[name=kingDeadline]").press("Tab");
     await expect(page.locator("input[name=kingDeadline]")).toHaveValue("1");
-    await expect(page.locator("#setup-rules4")).toContainText("最初に置く駒が王（相手に見えない）。王を返されたら即負け");
+    await expect(page.locator("#setup-rules4")).toContainText("最初に置く駒が王。相手に見えず、返されたら即負け");
     // 取るルールでは「取られたら」
     await page.locator("input[name=action][value=capture]").check({ force: true });
     await expect(page.locator("#king-lose-label")).toHaveText("取られたら即負け");
@@ -117,7 +117,7 @@ test.describe("PC 幅", () => {
 
     // 不正な値は URL の基準（v1.0）の値（なし・体力−20・5 手）にして知らせる
     await page.goto("/?king=1&kpen=boom&kdmg=0&kdue=99");
-    await expect(page.locator("#menu-note")).toContainText("王の罰・王の罰の体力・王の指定期限はv1.0（取る）の値にしました");
+    await expect(page.locator("#menu-note")).toContainText("URL の王の罰・王の罰の体力・王の指定期限が読めないので、v1.0（取る）の値にしました");
     expect((await readSetup(page)).king).toEqual({ on: true, penalty: "hp", amount: 20, deadline: 5 });
     expect(errors).toEqual([]);
   });
@@ -133,7 +133,7 @@ test.describe("PC 幅", () => {
       await page.goto(`/?${encodeRules(rules)}`);
       await startGame(page);
       await expect(page.locator("#rules4 li")).toHaveText(ruleLines(rules).map(sentenceText));
-      await expect(page.locator("#legend")).toContainText("自分の王（自分にだけ見える）");
+      await expect(page.locator("#legend")).toContainText("自分の王。自分にだけ見える");
 
       const rand = rng(seed);
       let s = createGame(rules);
@@ -180,7 +180,7 @@ test.describe("PC 幅", () => {
         s = playMove(s, ch.r, ch.c, ch.kind, { king: ch.king });
         const m = lastMoveOf(s)!;
         if (ch.king) {
-          await expect(page.locator("#toast")).toContainText(`${cellName(ch.r, ch.c)} の歩1をあなたの王にしました`);
+          await expect(page.locator("#toast")).toContainText(`${cellName(ch.r, ch.c)} の歩1を王にしました`);
           await expect(cellAt(page, ch.r, ch.c).locator(".king-mark")).toBeVisible();
           // 自分の王の場所は名札（王の駒の形とマス名）。説明は title。駒台の王の駒は消える
           await expect(page.locator("#player-0 .king-tag")).toHaveText(`王 ${cellName(ch.r, ch.c)}`);
@@ -190,9 +190,9 @@ test.describe("PC 幅", () => {
         if (m.king) {
           // CPU の王を返した: トースト・棋譜・王！の演出・体力（ダメージ＋罰）
           const k = m.king;
-          await expect(page.locator("#toast")).toContainText(`王を返した！ 後手（CPU）の王は ${cellName(k.r, k.c)} の`);
+          await expect(page.locator("#toast")).toContainText(`王を返した。CPUの王は ${cellName(k.r, k.c)} の`);
           await expect(page.locator("#log .log-item").first()).toHaveClass(/king/);
-          await expect(page.locator("#log .log-item").first()).toContainText(k.lose ? "王を返した！（即負け）" : "王を返した！（体力−20）");
+          await expect(page.locator("#log .log-item").first()).toContainText(k.lose ? "王を返した・即負け" : "王を返した・体力−20");
           if (!hitShot) {
             await expect(cellAt(page, k.r, k.c).locator(".king-pop")).toBeVisible();
             await expect(page.locator("#player-1 .delta")).toHaveText(`−${m.damage + k.penalty}`);
@@ -219,12 +219,12 @@ test.describe("PC 幅", () => {
       // 終局: 画面と鏡の対局が一致。王の答え合わせが出て、両者の隠れた王の印が出る
       await expect(page.locator("#result-winner")).toHaveText(s.result!.winner === 0 ? "あなたの勝ち" : "CPU の勝ち");
       if (rules.king.penalty === "lose") {
-        await expect(page.locator("#result-reason")).toHaveText("後手（CPU）の王が返されたので即負け");
+        await expect(page.locator("#result-reason")).toHaveText("CPUの王が返されたので即負け");
       }
       // 成績表の「王」の行で答え合わせ（列は先手・後手）
       const kingRow = page.locator("#result-detail tbody tr").filter({ has: page.locator("th", { hasText: /^王$/ }) });
       await expect(kingRow.locator("td")).toHaveCount(2);
-      await expect(kingRow.locator("td").nth(1)).toContainText("（返された）");
+      await expect(kingRow.locator("td").nth(1)).toContainText(" 返された");
       await page.screenshot({ path: `${SHOT}/pc-king-result${rules.king.penalty === "lose" ? "-lose" : ""}.png` });
       await page.locator("#result-view").click();
       const hidden = ([0, 1] as const).map((p) => kingInfo(s, p).cell).filter((c) => c !== null);
@@ -260,7 +260,7 @@ test.describe("PC 幅", () => {
     await expect(cellAt(page, r, c).locator(".ghost .king-mark")).toBeVisible();
     // 王にする駒が返されうる警告は 1 行にまとめる（置いた駒の警告と重ねない）
     await expect(page.locator("#preview .warn.king")).toHaveCount(1);
-    await expect(page.locator("#preview .warn.king")).toContainText("王にする 歩1 は次の相手の手で返されうる（返されたら体力−20）");
+    await expect(page.locator("#preview .warn.king")).toContainText("王にする歩1が次に返されうる。返されたら体力−20");
     await expect(page.locator("#preview")).not.toContainText("ここに置いた");
     await page.screenshot({ path: `${SHOT}/pc-king-pvp-designate.png` });
     await cellAt(page, r, c).click();
@@ -323,14 +323,14 @@ test.describe("PC 幅", () => {
   test("期限 1 手（CPU 対戦）: 最初に置いた駒が自動で王になり、その旨を表示する", async ({ page }) => {
     await page.goto(`/?${encodeRules(withKing({ deadline: 1 }))}`);
     await startGame(page);
-    await expect(page.locator("#rules4")).toContainText("最初に置く駒が王（相手に見えない）。王を返されたら体力−20");
+    await expect(page.locator("#rules4")).toContainText("最初に置く駒が王。相手に見えず、返されたら体力−20");
     await expect(page.locator("#king-toggle")).toBeDisabled();
     await expect(page.locator("#king-toggle")).toHaveAccessibleName("この手で置く駒が王になる");
     await expect(page.locator("#king-toggle")).toContainText("この手で王");
     const cell = page.locator(".cell.can-take").first();
     const name = ((await cell.getAttribute("aria-label")) ?? "").split(" ")[0];
     await cell.click();
-    await expect(page.locator("#toast")).toContainText(`期限の 1 手目なので、置いた歩1（${name}）が自動であなたの王になりました`);
+    await expect(page.locator("#toast")).toContainText(`期限の 1 手目なので、${name} の歩1が自動で王になりました`);
     expect(await kingMarks(page)).toEqual([name]);
   });
 });
@@ -358,10 +358,10 @@ test.describe("スマホ幅 375px", () => {
     const take = page.locator(".cell.can-take").first();
     const name = ((await take.getAttribute("aria-label")) ?? "").split(" ")[0];
     await take.tap();
-    await expect(page.locator("#preview")).toContainText("もう一度タップすると 歩1 を王にして置きます");
+    await expect(page.locator("#preview")).toContainText("もう一度タップで王にして置く");
     await page.screenshot({ path: `${SHOT}/sp-king-preview.png`, fullPage: true });
     await take.tap();
-    await expect(page.locator("#toast")).toContainText("あなたの王にしました");
+    await expect(page.locator("#toast")).toContainText("を王にしました");
     expect(await kingMarks(page)).toEqual([name]);
     await noHorizontalScroll(page, 375);
     await page.screenshot({ path: `${SHOT}/sp-king-placed.png` });

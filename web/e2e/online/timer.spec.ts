@@ -24,9 +24,9 @@ test("制限時間: 両者の名札に時計が出て、時間切れはサーバ
   await shortenTurn(host);
   const url = await createRoomFromSetup(host, null, "first");
   // 作成者の案内は自分の設定（要求を差し替える前の 45 秒）。参加者の確認はサーバーの部屋の値
-  await expect(host.page.locator("#room-time")).toHaveText("1 手 45 秒（切れたら自動で 1 手）");
+  await expect(host.page.locator("#room-time")).toHaveText("1 手 45 秒");
   await guest.page.goto(new URL(url).pathname + new URL(url).search);
-  await expect(guest.page.locator("#room-time")).toHaveText(`1 手 ${TEST_TURN_SECONDS} 秒（切れたら自動で 1 手）`);
+  await expect(guest.page.locator("#room-time")).toHaveText(`1 手 ${TEST_TURN_SECONDS} 秒`);
   await joinFromInvite(guest, url, `${SHOT}/${pre}-online-timer-join.png`);
   await waitPlaying(host, guest);
 
@@ -44,8 +44,8 @@ test("制限時間: 両者の名札に時計が出て、時間切れはサーバ
     await expect(moves(p)).toHaveCount(1);
     await expect(moves(p).first()).toHaveClass(/\btimeout\b/);
   }
-  await expect(host.page.locator("#toast")).toContainText("時間切れ！ 先手（あなた）の手を自動で打ちました");
-  await expect(guest.page.locator("#toast")).toContainText("時間切れ！ 先手（相手）の手を自動で打ちました");
+  await expect(host.page.locator("#toast")).toContainText("時間切れ。あなたの手を");
+  await expect(guest.page.locator("#toast")).toContainText("時間切れ。相手の手を");
   expect(guest.last!.view.board).toEqual(host.last!.view.board);
   expect(guest.last!.view.hp).toEqual(host.last!.view.hp);
   await host.page.screenshot({ path: `${SHOT}/${pre}-online-timer-timeout-host.png` });
@@ -63,7 +63,7 @@ test("制限時間: 両者の名札に時計が出て、時間切れはサーバ
   await expect.poll(() => host.last!.opponent.online, { timeout: 15_000 }).toBe(false);
   await expect.poll(() => host.last!.view.history.length, { timeout: 15_000 }).toBe(4);
   expect(host.last!.view.history[3]).toMatchObject({ type: "move", player: 1, timeout: true });
-  await expect(host.page.locator("#toast")).toContainText("時間切れ！ 後手（相手）の手を自動で打ちました");
+  await expect(host.page.locator("#toast")).toContainText("時間切れ。相手の手を");
   await expect(host.page.locator(".board.acting")).toBeVisible();
 });
 
@@ -75,7 +75,7 @@ test("制限時間なしの部屋（設定で「なし」）は時計を出さ�
   await host.page.locator(`label:has(> input[name=timeMulti][value="0"])`).click();
   await host.page.locator("#setup-save").click();
   const url = await createRoomFromSetup(host, null, "first");
-  await expect(host.page.locator("#room-time")).toHaveText("1 手の制限時間なし");
+  await expect(host.page.locator("#room-time")).toHaveText("時間制限なし");
   await joinFromInvite(guest, url);
   await waitPlaying(host, guest);
   expect(host.last!.clock).toBeNull();

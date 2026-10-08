@@ -43,25 +43,25 @@ const LIMIT = (winner: Player | null, byDiscs = false): GameResult => ({ winner,
 describe("CPU 対戦: 勝ち・負けと決着の理由", () => {
   it("体力 0 で勝ち: 勝利・暖色・励ましなし", () => {
     const o = outcomeOf(ended(KO(0), [40, 0]), CPU0)!;
-    expect(o).toMatchObject({ kind: "win", tone: "warm", title: "勝利！", subtitle: "体力 0 で撃破", cheer: null, urgeRematch: false, winner: null });
+    expect(o).toMatchObject({ kind: "win", tone: "warm", title: "勝利", subtitle: "体力 0 で撃破", cheer: null, urgeRematch: false, winner: null });
   });
 
   it("体力 0 で負け: 敗北・再戦を強調", () => {
     const o = outcomeOf(ended(KO(1), [0, 60]), CPU0)!;
-    expect(o).toMatchObject({ kind: "lose", tone: "gloom", title: "敗北…", subtitle: "体力 0 で撃破された", cheer: null, urgeRematch: true });
+    expect(o).toMatchObject({ kind: "lose", tone: "gloom", title: "敗北", subtitle: "体力 0 で撃破された", cheer: null, urgeRematch: true });
   });
 
   it("体力判定で勝ち・負け（数字は自分 対 相手の順）", () => {
-    expect(outcomeOf(ended(LIMIT(0), [30, 12]), CPU0)!.subtitle).toBe("体力判定で勝利（体力 30 対 12）");
-    expect(outcomeOf(ended(LIMIT(0), [30, 12]), CPU1)).toMatchObject({ kind: "lose", subtitle: "体力判定で敗北（体力 12 対 30）" });
+    expect(outcomeOf(ended(LIMIT(0), [30, 12]), CPU0)!.subtitle).toBe("体力判定 30 対 12 で勝利");
+    expect(outcomeOf(ended(LIMIT(0), [30, 12]), CPU1)).toMatchObject({ kind: "lose", subtitle: "体力判定 12 対 30 で敗北" });
     // 両者打てずに終局（stalled）も同じ
-    expect(outcomeOf(ended({ winner: 1, reason: "stalled", byDiscs: false }, [5, 9]), CPU1)!.subtitle).toBe("体力判定で勝利（体力 9 対 5）");
+    expect(outcomeOf(ended({ winner: 1, reason: "stalled", byDiscs: false }, [5, 9]), CPU1)!.subtitle).toBe("体力判定 9 対 5 で勝利");
   });
 
   it("石数で勝ち・負け", () => {
     const g = ended(LIMIT(0, true), [20, 20], { board: discs(12, 9) });
-    expect(outcomeOf(g, CPU0)).toMatchObject({ kind: "win", subtitle: "石数で勝利（体力は同じ・石 12 対 9）" });
-    expect(outcomeOf(g, CPU1)).toMatchObject({ kind: "lose", subtitle: "石数で敗北（体力は同じ・石 9 対 12）", cheer: "惜しい！ 体力は互角、石の差はあと 3 個だった" });
+    expect(outcomeOf(g, CPU0)).toMatchObject({ kind: "win", subtitle: "体力が並び、石数 12 対 9 で勝利" });
+    expect(outcomeOf(g, CPU1)).toMatchObject({ kind: "lose", subtitle: "体力が並び、石数 9 対 12 で敗北", cheer: "石 3 個差の惜敗" });
   });
 
   it("王の即負けで決着: 王の文言", () => {
@@ -82,7 +82,7 @@ describe("CPU 対戦: 勝ち・負けと決着の理由", () => {
 
   it("引き分け: 体力と石数", () => {
     const o = outcomeOf(ended(LIMIT(null), [20, 20], { board: discs(8, 8) }), CPU0)!;
-    expect(o).toMatchObject({ kind: "draw", tone: "calm", title: "引き分け", subtitle: "体力も石数も同じ（体力 20・石 8）", cheer: null, urgeRematch: false });
+    expect(o).toMatchObject({ kind: "draw", tone: "calm", title: "引き分け", subtitle: "体力 20・石 8 で並んだ", cheer: null, urgeRematch: false });
   });
 
   it("終局していなければ null", () => {
@@ -100,23 +100,23 @@ describe("接戦の励まし（自分の体力上限の 10% 以下・境界を�
   });
 
   it.each([
-    [10, "惜しい！ 相手の体力はあと 10 だった"],
+    [10, "相手の残り体力 10 の惜敗"],
     [11, null],
-    [1, "惜しい！ 相手の体力はあと 1 だった"],
+    [1, "相手の残り体力 1 の惜敗"],
   ] as const)("体力 0 で負け・相手の残り %i（自分の上限 100）", (left, cheer) => {
     expect(outcomeOf(ended(KO(1), [0, left]), CPU0)!.cheer).toBe(cheer);
   });
 
   it("体力 0 の励ましは自分の体力上限で測る（相手の上限ではない）", () => {
     // 自分（先手）の上限 40・相手の上限 200: 相手の残り 4 は 10% 以下、5 は超える
-    expect(outcomeOf(ended(KO(1), [0, 4], { maxHp: [40, 200] }), CPU0)!.cheer).toBe("惜しい！ 相手の体力はあと 4 だった");
+    expect(outcomeOf(ended(KO(1), [0, 4], { maxHp: [40, 200] }), CPU0)!.cheer).toBe("相手の残り体力 4 の惜敗");
     expect(outcomeOf(ended(KO(1), [0, 5], { maxHp: [40, 200] }), CPU0)!.cheer).toBeNull();
   });
 
   it.each([
-    [[30, 40], "惜しい！ あと 10 点だった"],
+    [[30, 40], "10 点差の惜敗"],
     [[29, 40], null],
-    [[39, 40], "惜しい！ あと 1 点だった"],
+    [[39, 40], "1 点差の惜敗"],
   ] as const)("体力判定で負け %j（自分の上限 100）", (hp, cheer) => {
     expect(outcomeOf(ended(LIMIT(1), [...hp]), CPU0)!.cheer).toBe(cheer);
   });
@@ -130,9 +130,9 @@ describe("接戦の励まし（自分の体力上限の 10% 以下・境界を�
 
 describe("2 人対戦: 敗北の演出にならない", () => {
   it.each([
-    [KO(0), "先手の勝ち！", "black", "後手の体力を 0 にして撃破"],
-    [KO(1), "後手の勝ち！", "white", "先手の体力を 0 にして撃破"],
-    [LIMIT(1), "後手の勝ち！", "white", "体力判定で決着（先手 20 対 後手 25）"],
+    [KO(0), "先手の勝ち", "black", "後手の体力を 0 にして撃破"],
+    [KO(1), "後手の勝ち", "white", "先手の体力を 0 にして撃破"],
+    [LIMIT(1), "後手の勝ち", "white", "体力判定 20 対 25 で決着"],
   ] as const)("%j → %s", (result, title, tone, subtitle) => {
     const o = outcomeOf(ended(result, [20, 25]), PVP)!;
     expect(o).toMatchObject({ kind: "win", title, tone, subtitle, winner: result.winner, cheer: null, urgeRematch: false });
@@ -145,7 +145,7 @@ describe("2 人対戦: 敗北の演出にならない", () => {
   });
 
   it("石数・王・引き分け", () => {
-    expect(outcomeOf(ended(LIMIT(0, true), [20, 20], { board: discs(12, 9) }), PVP)!.subtitle).toBe("体力が同じ — 石数で決着（先手 12 対 後手 9）");
+    expect(outcomeOf(ended(LIMIT(0, true), [20, 20], { board: discs(12, 9) }), PVP)!.subtitle).toBe("体力が並び、石数 12 対 9 で決着");
     const king = ended({ winner: 1, reason: "king", byDiscs: false }, [50, 50], { history: [move(1, { king: { r: 0, c: 1, kind: "fu", penalty: 0, lose: true } })] });
     expect(outcomeOf(king, PVP)!.subtitle).toBe("後手が先手の王を討って決着");
     expect(outcomeOf(ended(LIMIT(null), [20, 20], { board: discs(8, 8) }), PVP)!.kind).toBe("draw");
@@ -163,6 +163,6 @@ describe("エンジンの実際の終局から作る", () => {
     expect(g.result).toEqual(KO(0));
     expect(outcomeOf(g, CPU0)).toMatchObject({ kind: "win", subtitle: "体力 0 で撃破" });
     expect(outcomeOf(g, CPU1)).toMatchObject({ kind: "lose", subtitle: "体力 0 で撃破された", urgeRematch: true });
-    expect(outcomeOf(g, PVP)).toMatchObject({ kind: "win", title: "先手の勝ち！" });
+    expect(outcomeOf(g, PVP)).toMatchObject({ kind: "win", title: "先手の勝ち" });
   });
 });

@@ -14,23 +14,21 @@ export interface DialogAction {
   onClick: () => void;
 }
 
-/** この部屋のルール（見出し「ルール — 名前」を押すと開く） */
+/** この部屋のルール（見出し「ルール 名前」を押すと開く） */
 function roomRules(rules: RuleSet, name: string, open = false) {
   const list = h("ol", { class: "rules4-list" });
   fillSentences(list, ruleLines(rules));
-  const box = h("details", { class: "online-rules" }, [h("summary", { text: `ルール — ${name}` }), list]);
+  const box = h("details", { class: "online-rules" }, [h("summary", {}, ["ルール ", h("span", { class: "tab-sub", text: name })]), list]);
   box.open = open;
   return box;
 }
 
-/** この部屋の 1 手の制限時間 */
+/** この部屋の 1 手の制限時間（切れたときの動きは title） */
 function roomTime(turnSeconds: number) {
-  const text = turnSeconds > 0 ? `1 手 ${turnSecondsText(turnSeconds)}（切れたら自動で 1 手）` : "1 手の制限時間なし";
-  return h("p", { class: "online-time", attrs: { id: "room-time" }, text });
+  const text = turnSeconds > 0 ? `1 手 ${turnSecondsText(turnSeconds)}` : "時間制限なし";
+  const title = turnSeconds > 0 ? "切れたら置ける手から自動で 1 手" : "1 手の制限時間なし";
+  return h("p", { class: "online-time", attrs: { id: "room-time", title }, text });
 }
-
-/** 先手（黒）・後手（白） */
-export const seatText = (p: Player) => `${PLAYER_NAME[p]}（${p === 0 ? "黒" : "白"}）`;
 
 export class OnlineDialog {
   private readonly el = {
@@ -66,16 +64,16 @@ export class OnlineDialog {
     copy.addEventListener("click", async () => {
       try {
         await navigator.clipboard.writeText(o.url);
-        status.textContent = "コピーしました。相手に送ってください";
+        status.textContent = "コピーしました";
       } catch {
-        status.textContent = "自動でコピーできませんでした。上のリンクを選んでコピーしてください";
+        status.textContent = "コピーできませんでした。リンクを選んでコピーしてください";
         input.focus();
         input.select();
       }
     });
     const buttons: HTMLElement[] = [copy];
     if (typeof navigator.share === "function") {
-      const share = h("button", { class: "btn ghost", text: "共有…", attrs: { type: "button", id: "invite-share" } });
+      const share = h("button", { class: "btn ghost", text: "共有", attrs: { type: "button", id: "invite-share" } });
       share.addEventListener("click", () => {
         navigator.share({ title: "挟将で対戦しよう", text: `挟将（${o.ruleName}）で対戦しよう`, url: o.url }).catch(() => {});
       });
@@ -90,22 +88,22 @@ export class OnlineDialog {
           h("div", { class: "lobby-seat" }, [
             h("span", { class: `avatar p${o.you}`, attrs: { "aria-hidden": "true" } }),
             h("span", { class: "lobby-name", text: "あなた" }),
-            h("span", { class: "online-seat", text: seatText(o.you) }),
+            h("span", { class: "online-seat", text: PLAYER_NAME[o.you] }),
           ]),
           h("span", { class: "lobby-vs", text: "VS", attrs: { "aria-hidden": "true" } }),
           h("div", { class: "lobby-seat waiting", attrs: { id: "invite-waiting" } }, [
             h("span", { class: "avatar empty", attrs: { "aria-hidden": "true" } }),
             h("span", { class: "lobby-name", text: "相手" }),
-            h("span", { class: "online-wait" }, [h("span", { class: "spinner", attrs: { "aria-hidden": "true" } }), "参加を待っています"]),
+            h("span", { class: "online-wait" }, [h("span", { class: "spinner", attrs: { "aria-hidden": "true" } }), "参加待ち"]),
           ]),
         ]),
-        h("p", { class: "online-lead", text: "このリンクを相手に送ってください。開いて「参加する」を押すと始まります" }),
+        h("p", { class: "online-lead", text: "相手がこのリンクから参加すると始まります" }),
         input,
         h("div", { class: "share invite-actions" }, [...buttons, status]),
         roomTime(o.turnSeconds),
         roomRules(o.rules, o.ruleName),
       ],
-      [{ label: "やめてメニューへ", id: "invite-leave", onClick: o.onLeave }],
+      [{ label: "やめる", id: "invite-leave", onClick: o.onLeave }],
     );
   }
 
@@ -127,19 +125,19 @@ export class OnlineDialog {
             h("span", { class: "lobby-name", text: "あなた" }),
           ]),
         ]),
-        h("p", { class: "online-lead", text: "先手・後手は部屋を作った人の設定で決まります" }),
+        h("p", { class: "online-lead", text: "先手・後手は部屋を作った人が決めます" }),
         o.createdHere
           ? h("p", {
               class: "setup-note",
-              attrs: { id: "join-own" },
-              text: "この部屋はこのブラウザで作られました。ここで参加すると、あなたが相手の席に座ります。相手と遊ぶなら、参加せずにリンクを相手に送ってください。",
+              attrs: { id: "join-own", title: "相手と遊ぶなら、参加せずにリンクを相手に送ってください" },
+              text: "このブラウザで作った部屋なので、参加すると自分が相手の席に座ります。",
             })
           : null,
         roomTime(o.turnSeconds),
         roomRules(o.rules, o.ruleName, true),
       ],
       [
-        { label: "参加しないでメニューへ", onClick: o.onCancel },
+        { label: "参加しない", onClick: o.onCancel },
         { label: "参加する", primary: true, id: "join-room", onClick: o.onJoin },
       ],
     );
