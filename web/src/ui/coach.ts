@@ -71,6 +71,9 @@ export class Coach {
       this.el.next.textContent = next;
       this.el.next.focus({ preventScroll: true });
     }
+    // スマホはコーチが駒台の下にあり、できたの文と「次へ」が画面の下にはみ出ることがある。はみ出た分だけ寄せる（盤は画面に残る）
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    this.el.root.scrollIntoView({ block: "nearest", behavior: reduce ? "auto" : "smooth" });
   }
 
   hide() {

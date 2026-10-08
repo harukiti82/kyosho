@@ -4,13 +4,14 @@
 
 ## 現在の対象
 
-- 何を / どこを: 全画面の「AI っぽさ」を取る（ユーザー要望「設定画面とか随所にAIっぽさが残ってるからどうにかして」。依頼元セッション経由）。文言（括弧・ダッシュの補足・感嘆符・長いトーストをやめる）、メニュー・設定メニューの配置、遊び方のコーチ、回復の課題の「+5」とダメージ数の重なり。ブランチ `style/less-ai-ui`
-- ステータス: 実装済み、テスト・PR・本番デプロイの確認中。判断基準は AGENTS.md「デザイン規約」の「文言」「配置」
+- 何を / どこを: 遊び方（チュートリアル）の文言を、初めて遊ぶ人が一度読めば分かる言葉に書き直す（ユーザー評価「チュートリアルの言葉選びがわかりにくすぎる」。依頼元セッション経由）。`web/src/ui/lessons.ts` の文、スマホで「できた」の文が画面の下にはみ出る分だけ寄せる `ui/coach.ts`。ブランチ `feat/tutorial-wording`（worktree `../kyosho-lesson`）
+- ステータス: 実装済み、テスト・PR・本番デプロイの確認中
 - 最終更新: 2026-10-08
 
 ## 遊び方（チュートリアル）の要点
 
-- ステップは `ui/lessons.ts` の `LESSONS`（挟む → ダメージ → 駒の向き → 持ち駒 → 端の駒 → 回復 → 王を決める → 王を返す → 予測を読む → 実戦）。局面は engine の `gameFrom`、文はエンジンの棋譜の値。画面は `App.lesson`（`openLesson` / `inStep` / `lessonNeed`）と `ui/coach.ts`（`#coach`、引き出しの先頭 = スマホは駒台の下・PC は盤の横の上）。進み具合は localStorage `kyosho:tutorial`
+- ステップは `ui/lessons.ts` の `LESSONS`（挟む → ダメージ → 駒の向き → 持ち駒 → 反対側の駒 → 回復 → 王を決める → 王を裏返す → 予測を読む → 実戦）。局面は engine の `gameFrom`、文はエンジンの棋譜の値。画面は `App.lesson`（`openLesson` / `inStep` / `lessonNeed`）と `ui/coach.ts`（`#coach`、引き出しの先頭 = スマホは駒台の下・PC は盤の横の上）。進み具合は localStorage `kyosho:tutorial`
+- 文の書き方: 内部の用語（端の駒・上乗せ・期限・低い方−1・返す）を使わず、盤の物を指して言う（「置いた駒の反対側にある自分の駒」）。できたの文はそのとき盤で起きた数字（「飛3と金5で挟んだ。小さいほうの 3 から 1 を引いた 2 だけ…」）。覚えるルール 2 文まで・課題と合わせて 3 文まで。`test/lesson.test.ts` が用語・文の数を検査する。足し算の＋は `PLUS`（WORD JOINER で折り返さない）
 - 「予測を読む」より前のステップは始めの局面で自分の駒に「!」が出ない（`test/lesson.test.ts`）。e2e は `tutorial.spec.ts`（スクリーンショット *-tutorial-*）
 
 ## 1 手の制限時間の要点
@@ -38,7 +39,6 @@
 - CPU 対戦の手番: 設定の `side` は `random` / `0` / `1`（既定は `random`。手番は URL に載らず、設定メニューの保存（localStorage）に載る。保存済みの `0` / `1` はそのまま）。`random` は `PlaySettings.randomSeat` で、`App.start` が対局ごとに `drawSeat`（`crypto.getRandomValues`。`Math.random` は CPU と共有なので使わない）で引き直し、トーストで知らせる。e2e は `seat.spec.ts`・`menu.spec.ts`（`helpers.ts` の `stubDraws` で crypto を差し替え）。`startGame` は CPU 対戦で side を省くと先手を選ぶ（種付きの鏡の対局は人間が先手の前提。設定の手番のままなら `side: "saved"`）
 - オンラインの画面: 通信層は `net/online.ts`（DOM なし・`test/online.test.ts`）、案内のダイアログは `ui/online.ts`、対局は `ui/app.ts`（`settings.mode === "online"`）。手は送るだけで、盤は届いた `view` で描く。王は `App.kingOf`（view の `myKing` / `oppKing`）。トークンは sessionStorage `kyosho:token:<roomId>`（別タブは別人）。入口は `/api/health` が `{"ok":true}` のときだけ。e2e は `npm run e2e:online`（wrangler dev :8790）。画面側の挙動の詳細は `.agent/online-protocol.md`「画面側の挙動」
 - サーバーの不足（直していない）: 終局後も返されなかった相手の王が届かない（終局画面は「非公開」）・同じ部屋での再戦の申し込みがない（「新しい部屋で再戦」は招待リンクを送り直す）
-
 - 配信（詳細は AGENTS.md）: 1 つの Worker（`server/wrangler.jsonc`）が `web/dist` を静的アセットで、`/api` を Worker で返す（`run_worker_first: ["/api", "/api/*"]`。静的アセットでは Worker も DO も起きない）。Origin は同一オリジン＋`ALLOWED_ORIGINS`（本番は `https://kyosho.rukiharukichi.com`、`npm run dev` が `--var` で localhost に置き換える）。CORS なし。画面はサーバー URL を持たず `API_PATH`（`/api`）の絶対パスで呼ぶ。GitHub Pages 版ではオンラインがつながらないので、画面は `/api/health` に届かなければ入口を出さない
 - オンライン対戦: サーバーは engine を import する権威サーバー。各自には `viewFor` だけを送る（`server/test/king.test.ts` が、相手の王の指定だけ違う 2 部屋で自分に届くバイト列が一致することを検査）。3 人目は拒否（観戦なし）。先手・後手は作成者の `hostSeat`（既定 random）。再接続はトークン（`sessionStorage` 推奨）。放置した部屋は alarm で削除（24 時間・終局後 1 時間）
 - server/ は vitest 4（pool-workers の要件）。npm 11.4 は install で落ちるので `npx npm@11.21.0 install`。`worker-configuration.d.ts` は生成物（`npm run typecheck` / `test` の前に `wrangler types`）
