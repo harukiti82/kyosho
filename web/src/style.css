@@ -1,45 +1,17 @@
-/* 挟将 — 対局アプリ風（暗い卓・木枠の盤・立体の石） */
+/* 挟将 — ペルソナ3風（深い青の水中・斜めの帯・太い斜体の見出し・選ぶと白に反転）。ユーザーの個人サイト rukiharukichi.com に揃える */
 
 :root {
   color-scheme: dark;
-  --danger: #ef5b4f;
-  --heal: #63c472;
-  --warn: #f5c12e;
-  --gold: #d9aa45;
-  /* 盤と石 */
-  --wood-1: #6b4426;
-  --wood-2: #3f2715;
-  --felt: #2c7a4b;
-  --felt-hi: #36905a;
-  --felt-line: #133a22;
-  --stone-0: #161513;
-  --stone-0-ink: #f3e9d2;
-  --stone-1: #f4f0e6;
-  --stone-1-ink: #2a1f14;
-  /* 駒の漢字は明朝（将棋の駒のように）。UI はシステムのゴシック */
-  --font-piece: "Hiragino Mincho ProN", "Yu Mincho", "YuMincho", "Noto Serif JP", "Noto Serif CJK JP", serif;
-  color: var(--ink);
-  -webkit-text-size-adjust: 100%;
+  /* 色はユーザーの個人サイト rukiharukichi.com（ペルソナ3風）と同じ値: 紺・シアン・白、選んだ項目の後ろにずらす赤 */
   --navy-950: #020817;
   --navy-900: #04112e;
   --navy-800: #0a1f4f;
   --navy-700: #0f2e6e;
-  --blue-500: #1e6ff0;
   --cyan-400: #2fd3ff;
   --cyan-300: #7ae6ff;
-  --ice-100: #e6f8ff;
   --red-500: #ff2d55;
-  --skew: -12deg;
-  --tilt: -7deg;
-  --ease-snap: cubic-bezier(0.2, 0.9, 0.25, 1.25);
-  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
-  --d-display: "Avenir Next Condensed", "Arial Narrow", "Helvetica Neue", "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", system-ui, sans-serif;
-  /* 斜めの帯（平行四辺形）。skew でなく clip-path にして、横幅を広げない（スマホの横スクロールを出さない） */
-  --d-slant: polygon(0.7rem 0, 100% 0, calc(100% - 0.7rem) 100%, 0 100%);
-  --d-slant-sm: polygon(0.4rem 0, 100% 0, calc(100% - 0.4rem) 100%, 0 100%);
-  /* アプリのトークン */
+  /* 地（水中の青）と面（紺。重ねる順に明るく） */
   --bg: #0a2c9f;
-  --bg-hi: #1270dc;
   --surface: #04112e;
   --surface-2: #0a1f4f;
   --surface-3: #0f2e6e;
@@ -47,16 +19,45 @@
   --ink: #f2faff;
   --ink-muted: #cfe9ff;
   --ink-dim: #8fb8dc;
+  /* 操作の色: 手番・決定はシアン、選んだもの（駒・狙ったマス・フォーカス）は白 */
   --go: #2fd3ff;
   --go-hi: #7ae6ff;
   --go-ink: #04112e;
-  /* 選んだ駒・フォーカスは白（琥珀はやめる）。盤の上の印（赤・黄・金）は変えず、端の駒は青い盤で沈まないよう明るい水色に */
   --amber: #ffffff;
+  /* 盤の上の印: 返す駒は赤・回復は緑・警告は黄・王は金。端の駒は青い盤で沈まない明るい水色 */
+  --danger: #ef5b4f;
+  --heal: #63c472;
+  --warn: #f5c12e;
+  --gold: #d9aa45;
   --anchor: #5fe3ff;
   --othello: rgba(230, 248, 255, 0.6);
+  /* 形: 角は丸めず、帯・鍵は -12° の斜め、見出し・メニューの並びは -7° に傾ける */
   --radius: 0;
   --radius-sm: 0;
+  --skew: -12deg;
+  --tilt: -7deg;
+  /* 斜めの帯（平行四辺形）。skew でなく clip-path にして、横幅を広げない（スマホの横スクロールを出さない） */
+  --slant: polygon(0.7rem 0, 100% 0, calc(100% - 0.7rem) 100%, 0 100%);
+  --slant-sm: polygon(0.4rem 0, 100% 0, calc(100% - 0.4rem) 100%, 0 100%);
+  --ease-snap: cubic-bezier(0.2, 0.9, 0.25, 1.25);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  /* 盤（深い水の色のマス）と石 */
+  --cell: #0d3c8f;
+  --cell-hi: #1656b8;
+  --stone-0: #161513;
+  --stone-0-ink: #f3e9d2;
+  --stone-1: #f4f0e6;
+  --stone-1-ink: #2a1f14;
+  /* 書体（すべてシステムのフォント）: 見出し・名前・鍵・数字は細身の英字の書体の太い斜体、駒の漢字は明朝、ほかはゴシック */
+  --font-display: "Avenir Next Condensed", "Arial Narrow", "Helvetica Neue", "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", system-ui, sans-serif;
+  --font-piece: "Hiragino Mincho ProN", "Yu Mincho", "YuMincho", "Noto Serif JP", "Noto Serif CJK JP", serif;
   font-family: "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", "Yu Gothic UI", system-ui, sans-serif;
+  color: var(--ink);
+  -webkit-text-size-adjust: 100%;
+  /*
+   * 地は html に持たせる（body の後ろに固定した光の筋を、内容の下・地の上に置くため）。
+   * 重なりは下から 縦のグラデーション → 画面を横切る斜めの深い水（-7° に傾けた縁）→ 下の端だけの水面のさざ波（書く順はその逆）
+   */
   background:
     repeating-linear-gradient(180deg, rgba(160, 235, 255, 0.07) 0 1px, transparent 1px 14px) bottom / 100% 30vh no-repeat fixed,
     linear-gradient(173deg, transparent 0 58%, rgba(5, 22, 105, 0.45) 58.3%, rgba(5, 22, 105, 0.3) 100%) fixed,
@@ -115,7 +116,7 @@ body::after {
 .turn-clock,
 .hp-num,
 .btn {
-  font-family: var(--d-display);
+  font-family: var(--font-display);
   font-style: italic;
 }
 .btn {
@@ -142,7 +143,7 @@ body::after {
 .btn.ghost {
   background: var(--surface-2);
 }
-/* 決定のボタン: 緑で厚みを付ける（押すと沈む） */
+/* 決定のボタン: 白い斜めの板に紺の字、後ろに赤い破片 */
 .btn.primary {
   border-color: transparent;
   background: #fff;
@@ -157,7 +158,7 @@ body::after {
   background: var(--cyan-300);
 }
 .btn.primary:active {
-  box-shadow: 0 1px 0 #557a2c;
+  box-shadow: none;
   transform: skewX(var(--skew)) translateX(0.15rem);
 }
 .icon-btn {
@@ -202,6 +203,22 @@ body::after {
   font-size: 0.85rem;
   color: var(--ink-muted);
 }
+.btn,
+.icon-btn {
+  border: 0;
+  border-radius: 0;
+  background: var(--navy-900);
+  box-shadow: none;
+  color: #fff;
+  font-weight: 800;
+  clip-path: var(--slant-sm);
+  transition: background-color 0.1s, color 0.1s, transform 0.18s var(--ease-snap);
+}
+.btn:hover,
+.icon-btn:hover {
+  background: var(--cyan-400);
+  color: var(--navy-900);
+}
 
 /* ---- ヘッダー ---- */
 .topbar {
@@ -223,14 +240,6 @@ body::after {
   color: #fff;
   text-shadow: 0.06em 0.06em 0 var(--navy-950);
   gap: 0.45rem;
-}
-/* 白黒の石を半分ずつ重ねた印 */
-.title-mark {
-  width: 1.35rem;
-  height: 1.35rem;
-  border-radius: 50%;
-  background: linear-gradient(90deg, var(--stone-0) 50%, var(--stone-1) 50%);
-  box-shadow: 0 0 0 2px var(--surface-3), 0 2px 4px rgba(0, 0, 0, 0.6);
 }
 .title-sub {
   font-size: 0.72rem;
@@ -262,7 +271,7 @@ body::after {
   text-shadow: 0.05em 0.05em 0 var(--navy-950);
 }
 
-/* ---- メニュー（起動時の画面）: 盤の石 2 つの印と、縦に並べた厚みのある鍵 ---- */
+/* ---- メニュー（起動時の画面）: 時計と水面のロゴ、段々に右へずれる大きな斜体の項目（選ぶと白い板に反転） ---- */
 .menu {
   display: grid;
   place-items: start center;
@@ -284,29 +293,7 @@ body::after {
   gap: 0.7rem;
   transform: rotate(var(--tilt));
   transform-origin: left bottom;
-  animation: d-title-in 0.6s var(--ease-out) both;
-}
-.menu-stone {
-  display: inline-grid;
-  place-items: center;
-  width: 4.6rem;
-  aspect-ratio: 1;
-  border-radius: 50%;
-  font-family: var(--font-piece);
-  font-size: 2.3rem;
-  font-weight: 800;
-  line-height: 1;
-}
-/* 盤の石と同じ質感（.stone.p0 / .stone.p1） */
-.menu-stone.p0 {
-  background: radial-gradient(circle at 34% 26%, #66615a 0%, #2a2825 32%, var(--stone-0) 62%, #030303 100%);
-  color: var(--stone-0-ink);
-  box-shadow: inset 0 -0.12em 0.18em rgba(0, 0, 0, 0.7), inset 0 0.06em 0.06em rgba(255, 255, 255, 0.18), 0 0.12em 0.2em rgba(0, 0, 0, 0.55);
-}
-.menu-stone.p1 {
-  background: radial-gradient(circle at 34% 26%, #ffffff 0%, #f8f5ee 30%, var(--stone-1) 58%, #c4bcab 100%);
-  color: var(--stone-1-ink);
-  box-shadow: inset 0 -0.12em 0.18em rgba(90, 76, 54, 0.45), 0 0.12em 0.2em rgba(0, 0, 0, 0.5);
+  animation: logo-in 0.6s var(--ease-out) both;
 }
 .menu-note {
   width: 100%;
@@ -407,7 +394,7 @@ body::after {
   letter-spacing: 0;
   color: var(--ink-dim);
 }
-/* まだ遊び方を始めていない: 進み具合の文字を琥珀にして控えめに勧める */
+/* まだ遊び方を始めていない: 進み具合の文字をシアンにして控えめに勧める */
 .menu-btn.fresh .menu-sub {
   color: var(--cyan-300);
 }
@@ -430,7 +417,7 @@ body::after {
   border: 0;
   background: var(--navy-900);
   color: var(--ink-muted);
-  clip-path: var(--d-slant-sm);
+  clip-path: var(--slant-sm);
 }
 .menu-rule strong {
   font-size: 1rem;
@@ -468,7 +455,7 @@ body::after {
   text-shadow: 0.05em 0.05em 0 rgba(2, 8, 23, 0.6);
   transform: none;
   transition: transform 0.2s var(--ease-snap), color 0.1s;
-  animation: d-menu-in 0.5s var(--ease-out) both;
+  animation: menu-in 0.5s var(--ease-out) both;
 }
 .menu-small,
 .menu-back {
@@ -561,6 +548,94 @@ body::after {
   }
 }
 
+
+@media (prefers-reduced-motion: reduce) {
+  .menu-logo,
+  .menu-btn {
+    animation: none;
+  }
+}
+
+/* ロゴの印（ヘッダーの .brand-mark とメニューの .logo-clock）: 時計の文字盤と水面。文字盤は塗らず、輪と目盛りと白い針 */
+.brand-mark,
+.logo-clock {
+  overflow: visible;
+}
+.brand-mark {
+  width: 1.6rem;
+  height: 1.6rem;
+}
+.brand-mark .ring,
+.logo-clock .ring {
+  fill: none;
+  stroke: rgba(190, 240, 255, 0.55);
+  stroke-width: 2;
+}
+.brand-mark .ticks,
+.logo-clock .ticks {
+  stroke: #fff;
+  stroke-width: 2.5;
+  stroke-linecap: square;
+}
+.brand-mark .hand,
+.logo-clock .hand {
+  fill: none;
+  stroke: #fff;
+  stroke-width: 4;
+  stroke-linecap: square;
+}
+.brand-mark .hand {
+  stroke-width: 3;
+}
+.logo-clock .water {
+  stroke: rgba(160, 235, 255, 0.7);
+  stroke-width: 2;
+}
+.logo-clock {
+  width: 4.6rem;
+  height: 4.6rem;
+}
+.logo-text {
+  display: grid;
+  justify-items: start;
+}
+.logo-kicker {
+  display: inline-block;
+  margin: 0 0 0.3rem;
+  padding: 0.12em 0.6em;
+  background: var(--cyan-400);
+  color: var(--navy-900);
+  font-size: 0.85rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  transform: skewX(var(--skew));
+}
+/* メニューの項目は地を持たない（白い板は ::before。鍵の .btn.ghost・:hover の地に負けないよう、パネルの中で指定する） */
+.menu-panel .menu-btn,
+.menu-panel .menu-btn:hover {
+  background: none;
+}
+/* 段々に右へずらす（サイトの margin-left: calc(i * step)） */
+#menu-cpu,
+.menu-level:nth-of-type(1),
+#menu-pvp {
+  margin-left: 0;
+}
+#menu-multi,
+.menu-level:nth-of-type(2),
+#menu-online {
+  margin-left: var(--step);
+  animation-delay: 0.08s;
+}
+#menu-learn,
+.menu-level:nth-of-type(3) {
+  margin-left: calc(var(--step) * 2);
+  animation-delay: 0.16s;
+}
+#menu-settings {
+  margin-left: calc(var(--step) * 3);
+  animation-delay: 0.24s;
+}
 @media (min-width: 900px) {
   .menu {
     padding-top: clamp(1.5rem, 12vh, 7rem);
@@ -606,11 +681,17 @@ body::after {
     font-size: 2.8rem;
   }
 }
-
-@media (prefers-reduced-motion: reduce) {
-  .menu-logo,
-  .menu-btn {
-    animation: none;
+/* ロゴは左から、項目は右から斜めに滑り込む */
+@keyframes logo-in {
+  from {
+    opacity: 0;
+    transform: rotate(var(--tilt)) translateX(-8%);
+  }
+}
+@keyframes menu-in {
+  from {
+    opacity: 0;
+    transform: translateX(30vw) skewX(-20deg);
   }
 }
 
@@ -658,7 +739,7 @@ body::after {
   border: 0;
 }
 
-/* ---- 名札（相手は盤の上、自分は盤の下。カードにせず細い帯） ---- */
+/* ---- 名札（相手は盤の上、自分は盤の下。紺の斜めの帯で、手番の人は白に反転） ---- */
 .seat {
   min-width: 0;
 }
@@ -734,7 +815,7 @@ body::after {
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
-/* 1 手の制限時間: 手番の人の名札に出す対局時計（残りの割合の文字盤＋秒）。残りが少ないと琥珀、わずかで赤く脈打つ */
+/* 1 手の制限時間: 手番の人の名札に出す対局時計（残りの割合の文字盤＋秒）。残りが少ないと黄、わずかで赤く脈打つ */
 .turn-clock {
   --left: 1;
   flex: none;
@@ -750,7 +831,7 @@ body::after {
   border-radius: 0;
   background: var(--navy-900);
   box-shadow: none;
-  clip-path: var(--d-slant-sm);
+  clip-path: var(--slant-sm);
   --clock: var(--cyan-300);
   font-size: 1.05rem;
   font-weight: 900;
@@ -845,7 +926,7 @@ body::after {
   border-radius: 0;
   background: var(--navy-950);
   box-shadow: none;
-  clip-path: var(--d-slant-sm);
+  clip-path: var(--slant-sm);
 }
 .hp-fill {
   position: absolute;
@@ -960,7 +1041,7 @@ body::after {
   min-width: 0.78rem;
   padding: 0 0.1rem;
   border-radius: 0.4rem;
-  background: #0b0a09;
+  background: var(--navy-950);
   color: var(--ink);
   font-size: 0.56rem;
   font-weight: 800;
@@ -974,42 +1055,80 @@ body::after {
 }
 @keyframes gain {
   0% {
-    box-shadow: 0 0 0 0 rgba(240, 181, 74, 0.85);
+    box-shadow: 0 0 0 0 rgba(122, 230, 255, 0.85);
     transform: scale(1);
   }
   40% {
-    box-shadow: 0 0 0 6px rgba(240, 181, 74, 0.35);
+    box-shadow: 0 0 0 6px rgba(122, 230, 255, 0.35);
     transform: scale(1.12);
   }
   100% {
-    box-shadow: 0 0 0 10px rgba(240, 181, 74, 0);
+    box-shadow: 0 0 0 10px rgba(122, 230, 255, 0);
     transform: scale(1);
   }
+}
+.player-card::before,
+.player-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  clip-path: var(--slant);
+  pointer-events: none;
+}
+.player-card::before {
+  z-index: -1;
+  background: rgba(4, 17, 46, 0.86);
+}
+.player-card::after {
+  z-index: -2;
+  inset: 0.3rem 0 -0.25rem 0.45rem;
+  background: var(--red-500);
+  opacity: 0;
+}
+.player-card.active::before {
+  background: #fff;
+}
+.player-card.active::after {
+  opacity: 1;
+}
+.player-card.active .player-name {
+  color: var(--navy-900);
+}
+.player-card.active .king-tag {
+  color: var(--navy-700);
+}
+.player-card.active .hand-mini {
+  color: var(--navy-700);
 }
 .plate-head .hand-mini {
   margin-left: auto;
 }
 
-/* ---- 盤（木枠・座標・緑の羅紗） ---- */
+/* ---- 盤（角を斜めに落とした紺の枠・座標・深い水の色のマス） ---- */
 .board-frame {
   position: relative;
   /* 座標の文字の幅と、下の縁（手番・手数）の高さ */
   --coord: clamp(0.85rem, 3.4vw, 1.2rem);
   --foot: clamp(1.45rem, 6vw, 1.75rem);
   padding: var(--coord) var(--coord) var(--foot);
-  box-shadow: var(--wood);
   transition: box-shadow 0.3s;
   --turn: var(--cyan-300);
-  --turn-glow: rgba(47, 211, 255, 0.45);
-  --wood: 0 0 0 0 transparent;
   /* 名札・駒台（isolation で重ねた斜めの帯）より上に置き、盤の外へ出る吹き出しを隠させない */
   z-index: 2;
   border-radius: 0;
   background: none;
 }
-/* 手番の側の縁を光らせる（操作できる手番は緑、待つ手番は琥珀） */
+/* 角を斜めに落とした紺の面は ::before だけに付ける（枠そのものを clip-path で切ると、盤の外に出る吹き出しまで切れる） */
+.board-frame::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: rgba(4, 17, 46, 0.9);
+  clip-path: polygon(1.1rem 0, 100% 0, 100% calc(100% - 1.1rem), calc(100% - 1.1rem) 100%, 0 100%, 0 1.1rem);
+}
+/* 手番の側の縁に線を引く（操作できる手番は白、待つ手番はシアン） */
 .board-frame.turn-act {
-  --turn-glow: rgba(134, 184, 79, 0.7);
   --turn: #fff;
 }
 .board-frame.turn-bottom {
@@ -1018,7 +1137,7 @@ body::after {
 .board-frame.turn-top {
   box-shadow: inset 0 3px 0 var(--turn);
 }
-/* 木枠の下の縁に彫った文字: 手番（中央）・手数（右）・オンラインの接続（左） */
+/* 枠の下の縁の文字: 手番（中央）・手数（右）・オンラインの接続（左） */
 .frame-foot {
   position: absolute;
   left: var(--coord);
@@ -1062,7 +1181,7 @@ body::after {
   pointer-events: none;
   user-select: none;
   color: var(--cyan-300);
-  font-family: var(--d-display);
+  font-family: var(--font-display);
   font-style: italic;
   font-weight: 800;
 }
@@ -1109,7 +1228,7 @@ body::after {
   border-radius: 0;
   cursor: default;
   -webkit-tap-highlight-color: transparent;
-  background: linear-gradient(160deg, #0d3c8f, #0a2f78);
+  background: linear-gradient(160deg, var(--cell), #0a2f78);
 }
 .cell.open {
   cursor: pointer;
@@ -1125,7 +1244,7 @@ body::after {
 }
 .cell.open:hover,
 .cell.focus {
-  background: radial-gradient(circle at 50% 40%, #46a56b, var(--felt-hi) 75%);
+  background: linear-gradient(160deg, var(--cell-hi), #11469e);
 }
 .cell.focus {
   box-shadow: inset 0 0 0 3px var(--amber);
@@ -1136,9 +1255,9 @@ body::after {
 .board.over .cell {
   cursor: default;
 }
-/* 直前の手: マスを黄色く染める（他の印は枠・角のバッジなので重なっても消えない） */
+/* 直前の手: マスを月明かりのように明るく染める（他の印は枠・角のバッジなので重なっても消えない） */
 .cell.last {
-  background: radial-gradient(circle at 50% 40%, #a7b84a, #8a9e36 75%);
+  background: linear-gradient(160deg, #3d77c9, #2b62b3);
 }
 /* 参考: 普通のオセロなら置けるマス（点線の枠。中央の丸・選択の枠とは形を変えて重ねても見分ける） */
 .cell.othello {
@@ -1488,14 +1607,6 @@ body::after {
     transform: translate(var(--pop-x, -50%), -60%) scale(1);
   }
 }
-.board-frame::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  background: rgba(4, 17, 46, 0.9);
-  clip-path: polygon(1.1rem 0, 100% 0, 100% calc(100% - 1.1rem), calc(100% - 1.1rem) 100%, 0 100%, 0 1.1rem);
-}
 /* ---- ダメージの段階の演出（ui/impact.ts の段階・ui/fx.ts） ---- */
 /* 中以上はダメージ数を大きく。暖色＝攻めた側、赤＝CPU から受けた */
 .dmg-pop.t-mid {
@@ -1801,49 +1912,6 @@ body::after {
     transform: none;
   }
 }
-.player-card::before,
-.player-card::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  clip-path: var(--d-slant);
-  pointer-events: none;
-}
-.player-card::before {
-  z-index: -1;
-  background: rgba(4, 17, 46, 0.86);
-}
-.player-card::after {
-  z-index: -2;
-  inset: 0.3rem 0 -0.25rem 0.45rem;
-  background: var(--red-500);
-  opacity: 0;
-}
-.player-card.active::before {
-  background: #fff;
-}
-.player-card.active::after {
-  opacity: 1;
-}
-.player-card.active .player-name {
-  color: var(--navy-900);
-}
-.player-card.active .king-tag {
-  color: var(--navy-700);
-}
-.player-card.active .hand-mini {
-  color: var(--navy-700);
-}
-.board .cell.open:hover,
-.board .cell.focus {
-  background: linear-gradient(160deg, #1656b8, #11469e);
-}
-.board .cell.focus {
-  box-shadow: inset 0 0 0 3px #fff;
-}
-.board .cell.last {
-  background: linear-gradient(160deg, #3d77c9, #2b62b3);
-}
 
 /* ---- 予測の吹き出し（狙っているマスの上。上の 2 行では下に出す） ---- */
 .pv-bubble {
@@ -1885,7 +1953,7 @@ body::after {
   top: auto;
   bottom: 100%;
   border-top-color: transparent;
-  border-bottom-color: #14120f;
+  border-bottom-color: var(--navy-950);
 }
 /*
  * 返す駒が上下の両方にあるときは、盤の外（上の縁か下の縁）に出して盤のマスを隠さない。
@@ -1902,7 +1970,7 @@ body::after {
   top: auto;
   bottom: 100%;
   border-top-color: transparent;
-  border-bottom-color: #14120f;
+  border-bottom-color: var(--navy-950);
 }
 /* 盤の左右の端の 2 列では、吹き出しを盤の内側に伸ばす（尾はマスの中央のまま） */
 .pv-bubble.to-r {
@@ -2014,7 +2082,7 @@ body::after {
   color: var(--ink-muted);
 }
 
-/* ---- 駒台（盤の木枠と同じ木。見出しの文字なしで駒を並べる） ---- */
+/* ---- 駒台（紺の斜めの帯。見出しの文字なしで駒を並べる） ---- */
 .tray {
   display: flex;
   flex-wrap: wrap;
@@ -2147,7 +2215,7 @@ body::after {
   inset: 0;
   z-index: -1;
   background: linear-gradient(90deg, rgba(4, 17, 46, 0.92), rgba(10, 31, 79, 0.85));
-  clip-path: var(--d-slant);
+  clip-path: var(--slant);
 }
 
 /* ---- 隠し王の操作（駒台の右端の王の駒） ---- */
@@ -2198,7 +2266,7 @@ body::after {
 .king-toggle.on .king-piece,
 .king-peek[aria-pressed="true"] .king-piece {
   transform: translateY(-6px);
-  filter: drop-shadow(0 0 7px rgba(240, 181, 74, 0.95)) drop-shadow(0 6px 3px rgba(0, 0, 0, 0.5));
+  filter: drop-shadow(0 0 7px rgba(122, 230, 255, 0.95)) drop-shadow(0 6px 3px rgba(0, 0, 0, 0.5));
 }
 .king-toggle.on .king-cap {
   color: #fff;
@@ -2387,7 +2455,7 @@ body::after {
   background: #fff;
   color: var(--navy-900);
   font-weight: 900;
-  clip-path: var(--d-slant-sm);
+  clip-path: var(--slant-sm);
   box-shadow: none;
 }
 /* rise と違い、中央寄せの translateX(-50%) を保ったまま出す */
@@ -2483,11 +2551,11 @@ body::after {
 /* 紙吹雪（上から舞い落ちる。色は基調ごと） */
 .fx-confetti {
   overflow: hidden;
-  --cf0: #ffd65a;
-  --cf1: #f08a24;
-  --cf2: #86b84f;
-  --cf3: #f6e2bd;
-  --cf4: #fff7de;
+  --cf0: #ffffff;
+  --cf1: #2fd3ff;
+  --cf2: #7ae6ff;
+  --cf3: #ff2d55;
+  --cf4: #e6f8ff;
 }
 .fx-confetti.tone-black {
   --cf0: #2a251c;
@@ -2733,7 +2801,7 @@ body::after {
 .fx-finale.reduce .fin-skip {
   color: var(--ink-muted);
 }
-/* ---- ダイアログ（設定・終局・オンライン・ルール詳細）。卓と同じ暗い面に、上の縁だけ木の色 ---- */
+/* ---- ダイアログ（設定・終局・オンライン・ルール詳細）。角を斜めに落とした紺の面に、太い斜体の見出しと右へ伸びる罫線 ---- */
 .modal {
   width: min(calc(100vw - 32px), 32rem);
   max-height: calc(100dvh - 32px);
@@ -2807,11 +2875,11 @@ body::after {
   margin: 0 0 0.85rem;
   padding: 0.4rem 0.65rem;
   border-left: 3px solid var(--amber);
-  background: rgba(240, 181, 74, 0.1);
+  background: rgba(122, 230, 255, 0.12);
   font-size: 0.82rem;
   font-weight: 600;
 }
-/* プリセットは名前だけの札（選んだ札は緑の縁で持ち上がる） */
+/* プリセットは名前だけの斜めの札（選んだ札は白に反転） */
 /* 札は名前の長さなりの幅で流し込み、行を埋める（同じ大きさの札を格子に並べない） */
 .presets {
   display: flex;
@@ -2829,7 +2897,7 @@ body::after {
 }
 .preset-main .preset-name {
   letter-spacing: 0.1em;
-  font-family: var(--d-display);
+  font-family: var(--font-display);
   font-style: italic;
   font-weight: 900;
   font-size: 1.3rem;
@@ -2864,7 +2932,7 @@ body::after {
 }
 .preset[aria-pressed="true"] {
   border-color: var(--go);
-  background: rgba(134, 184, 79, 0.16);
+  background: #fff;
   box-shadow: 0 0 0 1px var(--go), 0 4px 10px -4px rgba(0, 0, 0, 0.8);
   transform: translateY(-1px);
 }
@@ -2973,9 +3041,9 @@ body::after {
 }
 .seg input:checked + span {
   border-color: transparent;
-  background: var(--go);
-  box-shadow: 0 2px 0 #557a2c;
-  color: var(--go-ink);
+  background: #fff;
+  box-shadow: none;
+  color: var(--navy-900);
 }
 .seg input:focus-visible + span {
   outline: 2px solid var(--amber);
@@ -3133,7 +3201,7 @@ body::after {
   background: var(--navy-800);
   box-shadow: none;
   color: var(--ink-muted);
-  clip-path: var(--d-slant-sm);
+  clip-path: var(--slant-sm);
 }
 .preset:hover,
 .seg label:hover span {
@@ -3309,32 +3377,16 @@ body::after {
 }
 .btn.urge {
   animation: urge 1.4s ease-in-out infinite;
-  animation-name: urge-d;
 }
+/* 決定のボタンの後ろの赤い破片が、ずれを広げたり戻したりする */
 @keyframes urge {
   0%,
   100% {
-    box-shadow: 0 3px 0 #557a2c, 0 0 0 0 rgba(134, 184, 79, 0.6);
+    filter: drop-shadow(0.35rem 0.3rem 0 var(--red-500));
   }
   50% {
-    box-shadow: 0 3px 0 #557a2c, 0 0 0 7px rgba(134, 184, 79, 0);
+    filter: drop-shadow(0.55rem 0.45rem 0 var(--red-500));
   }
-}
-.btn,
-.icon-btn {
-  border: 0;
-  border-radius: 0;
-  background: var(--navy-900);
-  box-shadow: none;
-  color: #fff;
-  font-weight: 800;
-  clip-path: var(--d-slant-sm);
-  transition: background-color 0.1s, color 0.1s, transform 0.18s var(--ease-snap);
-}
-.btn:hover,
-.icon-btn:hover {
-  background: var(--cyan-400);
-  color: var(--navy-900);
 }
 
 /* ---- ルール詳細（?） ---- */
@@ -3368,7 +3420,7 @@ body::after {
   color: var(--ink-dim);
 }
 
-/* 印の見本（盤の印と同じ形・色。羅紗の小さなマスに描く） */
+/* 印の見本（盤の印と同じ形・色。盤と同じ色の小さなマスに描く） */
 .key-dot,
 .key-take,
 .key-anchor,
@@ -3378,18 +3430,18 @@ body::after {
   width: 1.15em;
   height: 1.15em;
   border-radius: 2px;
-  background: var(--felt);
+  background: var(--cell);
   vertical-align: -0.2em;
 }
 .key-dot {
-  background: radial-gradient(circle, rgba(8, 28, 15, 0.85) 0 26%, var(--felt) 30%);
+  background: radial-gradient(circle, rgba(8, 28, 15, 0.85) 0 26%, var(--cell) 30%);
 }
 .key-take {
-  background: radial-gradient(circle, #f4f0e6 0 34%, var(--felt) 37%);
+  background: radial-gradient(circle, #f4f0e6 0 34%, var(--cell) 37%);
   box-shadow: inset 0 0 0 2px var(--danger);
 }
 .key-anchor {
-  background: radial-gradient(circle, #161513 0 34%, var(--felt) 37%);
+  background: radial-gradient(circle, #161513 0 34%, var(--cell) 37%);
   box-shadow: inset 0 0 0 2px var(--anchor);
 }
 .key-othello {
@@ -3417,18 +3469,11 @@ body::after {
   .title-sub {
     display: none;
   }
-  .avatar {
-    width: 1.75rem;
-    height: 1.75rem;
-  }
   .player-card {
     gap: 0.45rem;
   }
   .plate-head {
     gap: 0.45rem;
-  }
-  .player-name {
-    font-size: 0.82rem;
   }
   .hand-mini {
     gap: 0.2rem 0.3rem;
@@ -3446,12 +3491,10 @@ body::after {
     font-size: 0.76rem;
     line-height: 1.4;
   }
-  .btn {
-    padding: 0.45rem 0.7rem;
+  /* メニューの大きな項目は縮めない */
+  .btn:not(.menu-btn) {
+    padding-block: 0.45rem;
     font-size: 0.85rem;
-  }
-  .tab {
-    padding: 0.5rem 0.55rem 0.45rem;
   }
   .presets {
     grid-template-columns: repeat(auto-fill, minmax(6.4rem, 1fr));
@@ -3544,7 +3587,7 @@ body::after {
   width: var(--toss-size);
   height: var(--toss-size);
   border-radius: 50%;
-  box-shadow: 0 0 0 3px var(--gold), 0 0 24px 4px color-mix(in srgb, var(--gold) 60%, transparent);
+  box-shadow: 0 0 0 3px #fff, 0 0 0 9px color-mix(in srgb, var(--cyan-300) 45%, transparent);
   opacity: 0;
   animation: toss-ring 0.6s ease-out var(--toss-land, 1.1s) both;
 }
@@ -3563,14 +3606,15 @@ body::after {
 }
 .toss-title {
   margin: 0;
-  font-family: var(--font-piece);
-  font-size: min(4rem, 15vw);
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: min(4.4rem, 16vw);
   font-weight: 900;
   line-height: 1.1;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.04em;
   white-space: nowrap;
-  color: var(--ink);
-  text-shadow: 0 0.06em 0 color-mix(in srgb, var(--bg), black 40%), 0 0 0.5em color-mix(in srgb, var(--gold) 55%, transparent);
+  color: #fff;
+  text-shadow: 0.05em 0.05em 0 var(--navy-950);
 }
 @keyframes toss-dim {
   0% {
@@ -3698,7 +3742,7 @@ body::after {
   font-size: 0.8em;
   vertical-align: 0.05em;
 }
-/* 木枠の下の縁（左）の接続表示: 色の点と短い文字 */
+/* 盤の枠の下の縁（左）の接続表示: 色の点と短い文字 */
 .net {
   grid-column: 1;
   justify-self: start;
@@ -3711,7 +3755,7 @@ body::after {
   white-space: nowrap;
   font-size: clamp(0.58rem, 2.4vw, 0.68rem);
   font-weight: 700;
-  color: rgba(244, 222, 186, 0.75);
+  color: var(--cyan-300);
 }
 .net::before {
   content: "";
@@ -3739,9 +3783,9 @@ body::after {
   gap: 0.5rem;
   margin: 0.2rem 0 1rem;
   padding: 0.9rem 0.5rem;
-  border-radius: 10px;
-  background: linear-gradient(160deg, var(--wood-1), var(--wood-2));
-  box-shadow: inset 0 1px 0 rgba(255, 220, 170, 0.25), inset 0 -2px 0 rgba(0, 0, 0, 0.35);
+  border-radius: 0;
+  background: linear-gradient(90deg, var(--navy-900), var(--navy-800));
+  clip-path: var(--slant);
 }
 .lobby-seat {
   display: grid;
@@ -3749,7 +3793,7 @@ body::after {
   gap: 0.25rem;
   min-width: 0;
   text-align: center;
-  color: #f6e2bd;
+  color: var(--ink);
 }
 .lobby-seat .avatar {
   width: 2.8rem;
@@ -3762,7 +3806,7 @@ body::after {
 /* 空いている席: 点線の丸が脈打つ */
 .avatar.empty {
   background: rgba(0, 0, 0, 0.25);
-  box-shadow: inset 0 0 0 2px rgba(244, 222, 186, 0.45);
+  box-shadow: inset 0 0 0 2px rgba(122, 230, 255, 0.55);
   animation: seat-wait 1.4s ease-in-out infinite;
 }
 @keyframes seat-wait {
@@ -3775,16 +3819,18 @@ body::after {
   font-weight: 800;
 }
 .lobby-vs {
-  font-family: var(--font-piece);
-  font-size: 1.2rem;
-  font-weight: 800;
-  letter-spacing: 0.05em;
-  color: rgba(244, 222, 186, 0.6);
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: 1.6rem;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  color: #fff;
+  text-shadow: 0.06em 0.06em 0 var(--navy-950);
 }
 .online-seat {
   font-size: 0.74rem;
   font-weight: 700;
-  color: rgba(244, 222, 186, 0.75);
+  color: var(--cyan-300);
 }
 .online-lead {
   margin: 0 0 0.6rem;
@@ -3816,7 +3862,7 @@ body::after {
   width: 0.95rem;
   height: 0.95rem;
   border-radius: 50%;
-  border: 2.5px solid rgba(240, 181, 74, 0.25);
+  border: 2.5px solid rgba(255, 255, 255, 0.25);
   border-top-color: var(--amber);
   animation: spin 0.9s linear infinite;
 }
@@ -3895,7 +3941,7 @@ body::after {
   font-family: var(--font-piece);
   font-size: 1.05rem;
 }
-/* ステップの石（終えたものは緑、今のステップは琥珀。まだ開いていないものは押せない） */
+/* ステップの石（終えたものはシアン、今のステップは白。まだ開いていないものは押せない） */
 .coach-steps {
   display: flex;
   gap: 0.3rem;
@@ -3922,7 +3968,7 @@ body::after {
 .coach-dot.current {
   border-color: var(--amber);
   background: var(--amber);
-  box-shadow: 0 0 0 2px rgba(240, 181, 74, 0.3);
+  box-shadow: 0 0 0 2px rgba(122, 230, 255, 0.45);
 }
 .coach-dot:disabled {
   cursor: default;
@@ -3930,7 +3976,7 @@ body::after {
 .coach-dot:disabled:not(.current):not(.done) {
   opacity: 0.4;
 }
-/* 覚えるルール（地の文）と課題（琥珀の三角を付けた太字） */
+/* 覚えるルール（地の文）と課題（白の三角を付けた太字） */
 .coach-goal {
   display: grid;
   gap: 0.3rem;
@@ -3959,7 +4005,7 @@ body::after {
   border-bottom: 0.32rem solid transparent;
   border-left: 0.5rem solid currentColor;
 }
-/* ヒント（黄の「!」）・できた（緑の「✓」） */
+/* ヒント（黄の「!」）・できた（シアンの「✓」） */
 .coach-msg {
   display: flex;
   align-items: baseline;
@@ -4023,9 +4069,9 @@ body::after {
   gap: 0.5rem;
 }
 
-/* 打つマス・選ぶ駒・押す王の誘導: 脈打つ琥珀の輪（1 マスだけなら上で弾む矢印も） */
+/* 打つマス・選ぶ駒・押す王の誘導: 脈打つ白の輪（1 マスだけなら上で弾む矢印も） */
 .cell.guide {
-  box-shadow: inset 0 0 0 2px rgba(240, 181, 74, 0.8);
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.85);
 }
 .cell.guide.focus {
   box-shadow: inset 0 0 0 3px var(--amber);
@@ -4103,102 +4149,5 @@ body::after {
   }
   .coach-msg {
     font-size: 0.84rem;
-  }
-}
-.brand-mark,
-.logo-clock {
-  overflow: visible;
-}
-.brand-mark {
-  width: 1.6rem;
-  height: 1.6rem;
-}
-.brand-mark .ring,
-.logo-clock .ring {
-  fill: none;
-  stroke: rgba(190, 240, 255, 0.55);
-  stroke-width: 2;
-}
-.brand-mark .ticks,
-.logo-clock .ticks {
-  stroke: #fff;
-  stroke-width: 2.5;
-  stroke-linecap: square;
-}
-.brand-mark .hand,
-.logo-clock .hand {
-  fill: none;
-  stroke: #fff;
-  stroke-width: 4;
-  stroke-linecap: square;
-}
-.brand-mark .hand {
-  stroke-width: 3;
-}
-.logo-clock .water {
-  stroke: rgba(160, 235, 255, 0.7);
-  stroke-width: 2;
-}
-.logo-clock {
-  width: 4.6rem;
-  height: 4.6rem;
-}
-.logo-text {
-  display: grid;
-  justify-items: start;
-}
-.logo-kicker {
-  display: inline-block;
-  margin: 0 0 0.3rem;
-  padding: 0.12em 0.6em;
-  background: var(--cyan-400);
-  color: var(--navy-900);
-  font-size: 0.85rem;
-  font-weight: 800;
-  letter-spacing: 0.14em;
-  transform: skewX(var(--skew));
-}
-#menu-cpu,
-.menu-level:nth-of-type(1),
-#menu-pvp {
-  margin-left: 0;
-}
-#menu-multi,
-.menu-level:nth-of-type(2),
-#menu-online {
-  margin-left: var(--step);
-  animation-delay: 0.08s;
-}
-#menu-learn,
-.menu-level:nth-of-type(3) {
-  margin-left: calc(var(--step) * 2);
-  animation-delay: 0.16s;
-}
-#menu-settings {
-  margin-left: calc(var(--step) * 3);
-  animation-delay: 0.24s;
-}
-
-@keyframes d-title-in {
-  from {
-    opacity: 0;
-    transform: rotate(var(--tilt)) translateX(-8%);
-  }
-}
-
-@keyframes d-menu-in {
-  from {
-    opacity: 0;
-    transform: translateX(30vw) skewX(-20deg);
-  }
-}
-
-@keyframes urge-d {
-  0%,
-  100% {
-    filter: drop-shadow(0.35rem 0.3rem 0 var(--red-500));
-  }
-  50% {
-    filter: drop-shadow(0.55rem 0.45rem 0 var(--red-500));
   }
 }
