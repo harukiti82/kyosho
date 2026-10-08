@@ -18,13 +18,13 @@ describe("再接続", () => {
 
     host.close();
     const offline = await guest.expect("state");
-    expect(offline.opponent).toEqual({ joined: true, online: false });
+    expect(offline.opponent).toEqual({ joined: true, online: false, left: false });
 
     const back = await Client.join(roomId, hostToken);
     expect(back.joined).toMatchObject({ you: 0, token: hostToken });
     expect(back.state.view.ply).toBe(1);
     expect(back.state.view.history).toEqual(afterMove.view.history);
-    expect(back.state.opponent).toEqual({ joined: true, online: true });
+    expect(back.state.opponent).toEqual({ joined: true, online: true, left: false });
     expect((await guest.expect("state")).opponent.online).toBe(true);
 
     // 後手が打ち、戻った先手にも届く。先手も続けて打てる

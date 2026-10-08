@@ -51,6 +51,8 @@
 |---|---|---|
 | `join` | `token?: string` | 接続直後に 1 回。`token` あり = その席に戻る（作成者の最初の接続もこちら）、なし = 空いている席に参加 |
 | `move` | `r`, `c`（0〜7 の整数）, `kind`（`PieceKind`）, `king?: boolean`, `seq?: number` | 自分の手番に 1 手。`king: true` で置いた駒を自分の王にする（隠し王）。`seq` は手を考えた局面の棋譜の長さ（`view.history.length`）で、サーバーの局面と違えば `stale_move`（制限時間切れの自動の手と入れ違った手を、次の局面に打たない）。省略すると調べない |
+| `rematch` | `action`（`request` / `cancel` / `decline`）, `gameNo`（終わった対局の番号 = `state.gameNo`） | 終局後だけ。`request` は申し込み（相手が申し込み済みなら受けたことになり、次の対局が始まる）、`cancel` は自分の申し込みの取り消し、`decline` は相手の申し込みを断る。下の「再戦」 |
+| `leave` | なし | 部屋を抜ける直前（メニューから別の対局を始めた・新しい部屋を作った）。相手に退室を知らせ、再戦の申し込みを取り下げる。送った後に接続を閉じる |
 | （ping） | `{"type":"ping"}` という文字列そのもの（`PING_TEXT`） | 任意。`{"type":"pong"}` が返る。部屋の寿命は延びない |
 
 - 1 メッセージは 1024 バイトまで（`MAX_MESSAGE_BYTES`）。バイナリは受け付けない
@@ -60,13 +62,16 @@
 | type | 中身 | いつ |
 |---|---|---|
 | `joined` | `roomId`, `you`（自分の手番）, `token` | join が通った直後（直後に `state` が続く）。`token` を保存する |
-| `state` | `roomId`, `phase`, `you`, `view`（`PlayerView`）, `opponent: { joined, online }`, `clock`（`TurnClockInfo \| null`） | 自分の join・相手の参加・どちらかの手（時間切れの自動の手を含む）・相手の切断／復帰・終局のたびに、各自に自分用の内容で |
+| `state` | `roomId`, `phase`, `gameNo`, `you`, `view`（`PlayerView`）, `opponent: { joined, online, left }`, `rematch`（`{ you, opponent } \| null`）, `clock`（`TurnClockInfo \| null`） | 自分の join・相手の参加・どちらかの手（時間切れの自動の手を含む）・相手の切断／復帰／退室・終局・再戦の申し込みと成立のたびに、各自に自分用の内容で |
 | `error` | `code`（`WsErrorCode`）, `message` | 送ったメッセージが拒否されたとき（拒否されたメッセージを送った人にだけ） |
 
 - `state` は毎回 `view` の全体を送る（差分ではない）。画面は受け取った `view` で描き直す。新しい手は `view.history` が伸びた分（`lastMoveOf(view)`）で分かるので、演出はそこから出す
 - `phase`: `waiting`（相手の参加待ち）/ `playing` / `finished`（`view.result` に勝敗）
 - `view` には engine の関数をそのまま使える: 手番は `view.turn === you`、自分の王は `view.myKing`、相手の王の公開情報は `view.oppKing`。合法手・予測（`legalCells` / `previewMove` など `GameState` を受ける関数）は `kings` を読まないので、`view` を渡してよい（型は `as unknown as GameState`。`kingInfo` だけは `kings` を読むので使わず、`view.myKing` を使う）
 - パスは自動（engine の `settleTurn`）。相手がパスしたら、`view.history` の末尾に `pass` が入った `state` が届き、続けて自分の手番になる
+- `gameNo`: この部屋の何局目か（1 始まり）。再戦が成立すると 1 増え、`you` は入れ替わった席、`view` は新しい対局になる
+- `opponent.left`: 相手が `leave` で抜けた（同じトークンで戻ると `false`）。`online: false`（切断）とは別
+- `rematch`: 終局中だけ `{ you, opponent }`（それぞれ `none` / `requested`（申し込み中）/ `declined`（相手の申し込みを断った））。対局中・待機中は `null`
 - `clock`: 制限時間のある部屋の対局中だけ `{ limitMs, remainingMs }`（手番の人の残り。送った時点の値で、猶予 `TURN_GRACE_MS` を含む）。制限なし・待機中・終局後は `null`。時間切れの自動の手は `view.history` の手に `timeout: true` が付く
 
 ### エラーの種類（`WsErrorCode`）
@@ -86,6 +91,8 @@
 | `illegal_move` | engine が拒否した（置けない・持ち駒にない・王を指定できない など。`message` は engine の例外文） | 残る |
 | `game_over` | 終局後に手を送った | 残る |
 | `stale_move` | 締め切りを過ぎてから手が届いた（先に自動の手を打って `state` を配った後に返す）・`seq` がサーバーの局面と違う | 残る |
+| `stale_rematch` | 終局していないのに `rematch` を送った・`gameNo` が今の対局と違う（再戦が成立した後に届いた二重押し） | 残る |
+| `opponent_left` | 退室した相手に再戦を申し込んだ | 残る |
 
 拒否されたとき、部屋の状態は変わらない（`state` も届かない）。
 
@@ -131,6 +138,20 @@ state{phase:finished, view.result} ◀──────────────
 
 観戦は作らず、拒否する。席が埋まった部屋にトークンなしで join すると `room_full` を送って閉じる（4003）。観戦にはどちらの王も含まない第三者用の見え方が要り、今回の範囲では作らない。
 
+## 再戦（同じ部屋で次の対局）
+
+終局後（`phase: "finished"`）、両者が同じ部屋のまま次の対局を始められる。
+
+- **成立**: 一方が `request` を送り、もう一方も `request`（画面の「受ける」）を送ると成立する。両者がほぼ同時に申し込んでも、サーバーは 1 つずつ処理するので、後に届いた方が「受けた」ことになって 1 局だけ始まる
+- **次の対局**: 同じルール（`rules`）・同じ制限時間（`turnMs`）で `createGame` し直す。**先手と後手を入れ替える**: 席はトークンの添字なので、`tokens` を `[後手, 先手]` に、接続ごとの席（attachment）を相手の席に入れ替え、作成者の席 `host` も入れ替える。トークンは変わらないので、保存したトークンで再接続すれば入れ替わった後の席に戻る（`joined.you` も新しい席）。`gameNo` を 1 増やし、申し込み・退室の印を消し、制限時間があれば新しい先手の時計を始める。両者に新しい `state`（`phase: "playing"`）が届く
+- **取り消す・断る**: `cancel` は自分の申し込みを消す。`decline` は相手の申し込みを消し、自分を `declined` にする（申し込んだ側には `rematch.opponent: "declined"` が届く）。どちらも次に誰かが申し込むまで残り、断った側・断られた側のどちらからでも申し込み直せる（申し込むと相手の `declined` は消える）
+- **二重押し**: 申し込み中の `request`・申し込みがないときの `cancel` / `decline`・2 回目の `leave` は何もしない（`state` も届かない）。成立した後に届いた古い `request`（`gameNo` が前の対局）は `stale_rematch`（画面は何も出さない）
+- **切断と再接続**: 申し込みは部屋の記録（`RoomRecord.rematch`）に保存するので、切断しても・オブジェクトが退避されても残る。トークンで戻ると、そのままの `rematch` が届く。相手が切断中でも申し込める
+- **退室**: 画面は部屋を抜けるとき（メニューから別の対局・新しい部屋）に `leave` を送ってから閉じる。サーバーは `left` の印を付け、両者の申し込みを消して相手に `opponent.left: true` を配る。退室した相手への `request` は `opponent_left`。タブを閉じた・回線が切れただけでは `leave` は届かず、切断（`online: false`）として扱う（戻ってくるかもしれないので申し込みは残す）
+- **隠し情報**: 前の対局の `GameState`（王の場所を含む）は新しい対局で置き換えて捨てる。各自に送るのは引き続き `viewFor(新しい対局, 自分)` だけ（`server/test/king.test.ts` が、前の対局と次の対局で相手の王の指定だけ違う 2 部屋で、自分に届くバイト列が一致することを検査）
+- **後片付け**: 申し込み・取り消しなどの操作のたびに alarm を張り直す（終局後は 1 時間）。次の対局が始まれば対局中の扱い（24 時間、または手番の締め切り）
+- **部屋の情報**: `GET /api/rooms/:id` の `phase` は次の対局が始まれば `playing`。席は埋まったまま（`open: false`）
+
 ## 1 手の制限時間
 
 部屋を作った人の `turnSeconds` で、手番が来るたびに（対局開始・どちらかの手・自動の手の後）サーバーが計り直す。
@@ -168,8 +189,10 @@ state{phase:finished, view.result} ◀──────────────
 - **隠し王**: 王の情報は `kingInfo` を使わず、自分の王は `view.myKing`、相手の王は `view.oppKing`（返されたか・候補）だけ。相手の王の候補には盤で「?」の印と、相手の名札の王の欄に「候補N」（`#king-cands`、説明は title）を出す
 - **接続の表示**: 木枠の下の縁の左（`#net`、色の点と短い文字）に「相手: 接続中」（緑）／「相手: 切断中」（赤。手番の表示 `#status` は「相手の接続が切れています」）／「相手を待っています」／「再接続中…」。相手の参加・切断・復帰はトーストでも知らせる
 - **終わり方**: 4001 → 別のタブで開かれた、4004 → 部屋が見つからない、4010 → 期限切れ、4003 は直前の `error.code` で満員／席に戻れない（`invalid_token` は保存したトークンを消す）。どれも案内のダイアログに出し、メニューへ戻れる。終局後に部屋が片付けられた（4004 / 4010）ときは何も出さず、盤と結果をそのまま見せる
-- **終局後**: 終局画面は CPU 対戦と同じく自分の目線（勝利／敗北の演出・自分の成績）。「新しい部屋で再戦」は同じルール・今の自分の席（先手なら `first`）で部屋を作り直し、招待リンクを出す（相手に送り直す）
-- **今のサーバーではできないこと**: 終局後の相手の王の答え合わせ（返されなかった相手の王は終局後も送られないので、終局画面では「非公開」）・同じ部屋での再戦の申し込み（相手に新しいリンクを送る必要がある）
+- **終局後**: 終局画面は CPU 対戦と同じく自分の目線（勝利／敗北の演出・自分の成績）。終局画面の下と、盤面を見ている間の駒台の場所に再戦のボタン（`App.rematchControls`、`data-rematch`）と状態の 1 文（`#result-rematch-note` / `#tray-rematch-note`）: 何もなし →「再戦」／申し込み中 →「再戦の返事待ち」と「取り消し」／申し込まれた →「相手から再戦の申し込み」と「断る」「受ける」／断られた →「再戦を断られました」と「再戦」／相手が退室 →「相手が退室しました」と「新しい部屋で再戦」（同じルール・今の自分の席（先手なら `first`）で部屋を作り直し、招待リンクを出す）。送ってから次の `state` が届くまでと、つながっていない間はボタンを押せない（二重押しを防ぐ）。終局画面を閉じているときは、申し込まれた・断られた・取り消された・退室をトーストでも知らせる
+- **再戦の成立**: `state.gameNo` が増えたら `App.startNextGame`: 前の対局の演出・終局画面・時計を片付けて、届いた `view` で描き直す（自分の名札は下のまま、席の色が入れ替わる）。トースト「再戦開始　あなたは先手」
+- **部屋を抜ける**: `OnlineSession.close()` は参加済みなら `leave` を送ってから閉じる。「メニュー」を開くだけでは抜けない（接続を保ち「対局に戻る」で戻れる）。メニューから別の対局を始めた・新しい部屋を作ったときに抜ける
+- **今のサーバーではできないこと**: 終局後の相手の王の答え合わせ（返されなかった相手の王は終局後も送られないので、終局画面では「非公開」）
 
 ## サーバーの設計
 
@@ -189,10 +212,10 @@ state{phase:finished, view.result} ◀──────────────
 | `web/src/net/protocol.ts` | 通信仕様の型と定数（画面・サーバー共通） |
 | `web/src/net/online.ts` | 画面の通信層（HTTP・WebSocket の接続・参加・トークン・つなぎ直し・ping）。テストは `web/test/online.test.ts` |
 | `web/src/ui/online.ts` | 案内のダイアログ（作成中・招待リンクと待機・参加の確認・エラー） |
-| `web/e2e/online/` | 2 つのブラウザで作成 → 参加 → 終局・再読み込み・隠し王の秘匿・エラー・切断・制限時間（`timer.spec.ts`）の e2e（`cd web && npm run e2e:online`、設定 `web/playwright.online.config.ts` が wrangler dev を :8790（`E2E_ONLINE_PORT` で変更可）で、`TEST_TURN_SECONDS` 付きで起こす） |
+| `web/e2e/online/` | 2 つのブラウザで作成 → 参加 → 終局・再読み込み・隠し王の秘匿・エラー・切断・制限時間（`timer.spec.ts`）・同じ部屋での再戦（`rematch.spec.ts`）の e2e（`cd web && npm run e2e:online`、設定 `web/playwright.online.config.ts` が wrangler dev を :8790（`E2E_ONLINE_PORT` で変更可）で、`TEST_TURN_SECONDS` 付きで起こす） |
 | `server/wrangler.jsonc` | Worker の設定: 静的アセット（`../web/dist`、`run_worker_first`）・Durable Object・`ALLOWED_ORIGINS`・独自ドメイン（`routes` の Custom Domain `kyosho.rukiharukichi.com`） |
 | `server/src/index.ts` | Worker: `/api` の下のルーティング・Origin・部屋の作成 |
-| `server/src/room.ts` | Durable Object `Room`: 参加・手の検証・配信・再接続・1 手の制限時間（締め切りと自動の手）・alarm |
+| `server/src/room.ts` | Durable Object `Room`: 参加・手の検証・配信・再接続・1 手の制限時間（締め切りと自動の手）・再戦（申し込み・成立で席の入れ替え）・退室・alarm |
 | `server/src/validate.ts` | 外部入力の検証（ルールは `ui/query.ts` の `encodeRules` / `decodeRules` を再利用） |
 | `server/test/` | Workers ランタイム上のテスト（`@cloudflare/vitest-pool-workers`） |
 | `server/scripts/play.mjs` | 動いている Worker に 2 クライアントで 1 局を通すスクリプト（引数はサイトのオリジン。`/` の画面も確かめる） |

@@ -3,10 +3,10 @@
 import { describe, expect, it } from "vitest";
 import { chooseLookahead } from "../../web/src/engine/cpu";
 import { isLegal, viewFor, type GameState, type PlayerView } from "../../web/src/engine/game";
-import { KIND_ORDER, type Player } from "../../web/src/engine/rules";
+import { KIND_ORDER, presetById, type Player, type RuleSet } from "../../web/src/engine/rules";
 import type { MoveMessage, StateMessage } from "../../web/src/net/protocol";
 import type { RoomRecord } from "../src/room";
-import { startedRoom, stubOf, type Client } from "./helpers";
+import { playOut, startedRoom, stubOf, type Client } from "./helpers";
 import { runInDurableObject } from "cloudflare:test";
 
 /** 盤の左上から走査して最初に打てる手（自分の王に左右されない決まった手） */
@@ -91,5 +91,51 @@ describe("隠し王の秘匿", () => {
     }
     expect(hs.view.result).not.toBeNull();
     for (const c of [room.host, room.guest]) for (const t of c.raw) expect(t).not.toContain('"kings"');
+  });
+
+  it("再戦: 前の対局の王の指定が違っても、次の対局で相手が王を指定した手が違っても、自分に届くメッセージは 1 バイトも変わらない", async () => {
+    // 体力を下げて、参加者の王が返される前に体力 0 で決着させる（firstLegal 同士。1 局目は 19 手、2 局目は 3 手で決着）
+    const rules: RuleSet = { ...presetById("king").rules, hp: [12, 12] };
+    /** 1 局目は後手（参加者）が自分の kingMove1 手目、2 局目は先手になった参加者が kingMove2 手目の駒を王にする。作成者は 1 手目 */
+    async function run(kingMove1: number, kingMove2: number) {
+      const room = await startedRoom(rules);
+      const pickFor = (guestKing: number, guestSeat: Player) => (s: StateMessage, own: number) => ({
+        ...firstLegal(s.view),
+        king: own === (s.you === guestSeat ? guestKing : 1),
+      });
+      const end1 = await playOut([room.host, room.guest], [room.hostState, room.guestState], pickFor(kingMove1, 1));
+      room.host.send({ type: "rematch", action: "request", gameNo: 1 });
+      await Promise.all([room.host.expect("state"), room.guest.expect("state")]);
+      room.guest.send({ type: "rematch", action: "request", gameNo: 1 });
+      const [h2, g2] = await Promise.all([room.host.expect("state"), room.guest.expect("state")]);
+      // 2 局目は参加者が先手（clients は [先手, 後手]）
+      const last2 = await playOut([room.guest, room.host], [g2, h2], pickFor(kingMove2, 0));
+      const stored = await runInDurableObject(stubOf(room.roomId), async (_i, s) => (await s.storage.get<RoomRecord>("room"))!);
+      return { ...room, end1, last2, stored };
+    }
+    const a = await run(3, 1);
+    const b = await run(4, 2);
+    for (const r of [a, b]) {
+      // 前提: 1 局目は体力 0 で終わり、どちらの王も返されていない。2 局目も参加者（先手）の王は返されていない
+      expect(r.end1[0].view.result?.reason).toBe("ko");
+      expect(r.end1[0].view.oppKing.revealed).toBe(false);
+      expect(r.end1[1].view.oppKing.revealed).toBe(false);
+      expect(r.last2[0].view.result).not.toBeNull();
+      expect(r.last2[1].view.oppKing.revealed).toBe(false);
+      // 新しい対局の記録に前の対局の王は残らず、届く view は新しい対局の viewFor そのもの
+      expect(r.stored.gameNo).toBe(2);
+      expect(r.last2[1].view).toEqual(viewFor(r.stored.game, 1));
+      for (const c of [r.host, r.guest]) for (const t of c.raw) expect(t).not.toContain('"kings"');
+    }
+    // 参加者は 1 局目・2 局目とも別のマスを王にしている
+    expect(a.end1[1].view.myKing.cell).not.toEqual(b.end1[1].view.myKing.cell);
+    expect(a.last2[0].view.myKing.cell).not.toEqual(b.last2[0].view.myKing.cell);
+
+    const ha = scrub(a.host, a.roomId, [a.hostToken, a.guestToken]);
+    const hb = scrub(b.host, b.roomId, [b.hostToken, b.guestToken]);
+    expect(ha.some((t) => t.includes('"gameNo":2'))).toBe(true);
+    expect(ha).toEqual(hb);
+    // 検査が効いていることの確認: 参加者自身に届く内容は違う
+    expect(scrub(a.guest, a.roomId, [a.hostToken, a.guestToken])).not.toEqual(scrub(b.guest, b.roomId, [b.hostToken, b.guestToken]));
   });
 });

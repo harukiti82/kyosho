@@ -4,6 +4,8 @@
 // 隠し王を守るため、各プレイヤーには viewFor(state, そのプレイヤー) だけを送る（GameState をそのまま送らない）。
 // 1 手ごとの制限時間はここで計る。締め切りに alarm を張り、切れたら置ける手から 1 手を自動で打つ（相手が切断中でも進む）。
 // alarm は 1 つしか張れないので、制限時間のある対局中は締め切り、それ以外は放置で消す時刻に張る。
+// 終局後は同じ部屋で再戦できる。両者が申し込む（片方の申し込みをもう一方が受ける）と、席のトークンを入れ替えて
+// （先手と後手を交代して）同じルール・同じ制限時間の新しい対局を始める。前の対局の GameState（王を含む）は捨てる。
 
 import { DurableObject } from "cloudflare:workers";
 import { createGame, playMove, playTimeout, viewFor, type GameState } from "../../web/src/engine/game";
@@ -18,6 +20,8 @@ import {
   type CreateRoomResponse,
   type HostSeat,
   type MoveMessage,
+  type RematchMessage,
+  type RematchStatus,
   type RoomInfoResponse,
   type RoomPhase,
   type StateMessage,
@@ -39,6 +43,12 @@ export interface RoomRecord {
   turnMs?: number;
   /** 手番の人の締め切り（エポックミリ秒。制限時間 + 猶予）。制限なし・対局中でないなら null（ないのも同じ） */
   deadline?: number | null;
+  /** 何局目か（1 始まり）。再戦の入る前に作った部屋にはない（= 1） */
+  gameNo?: number;
+  /** 席ごとの再戦の申し込み [先手, 後手]。終局後だけ意味を持ち、次の対局が始まると消す。ないのは両方 none */
+  rematch?: [RematchStatus, RematchStatus];
+  /** 席ごとに leave で抜けたか。同じトークンで戻ると false。ないのは両方 false */
+  left?: [boolean, boolean];
 }
 
 /** 接続ごとに保存する情報（退避しても残る） */
@@ -132,6 +142,8 @@ export class Room extends DurableObject<Env> {
     const msg = parsed.msg;
     if (msg.type === "join") return this.join(ws, att, room, msg.token);
     if (att.player === null) return reject("not_joined", "先に join を送ってください");
+    if (msg.type === "rematch") return this.rematch(ws, att.player, room, msg);
+    if (msg.type === "leave") return this.leave(att.player, room);
     return this.move(ws, att.player, room, msg);
   }
 
@@ -238,8 +250,11 @@ export class Room extends DurableObject<Env> {
       if (old !== ws && attachmentOf(old).player === player) closeQuietly(old, CLOSE.replaced, "replaced");
     }
     ws.serializeAttachment({ ...att, player } satisfies Attachment);
-    // 新しい参加なら席を保存する。復帰でも放置の期限は延ばす
-    if (token === undefined) await this.save();
+    // 抜けた人が同じトークンで戻った
+    const returned = room.left?.[player] === true;
+    if (returned) room.left![player] = false;
+    // 新しい参加・抜けた人の復帰なら保存する。復帰でも放置の期限は延ばす
+    if (token === undefined || returned) await this.save();
     else await this.touch();
     send(ws, { type: "joined", roomId: room.roomId, you: player, token: mine });
     this.broadcast();
@@ -271,6 +286,71 @@ export class Room extends DurableObject<Env> {
     this.broadcast();
   }
 
+  /**
+   * 再戦の申し込み・取り消し・断り（終局後だけ）。同じ操作の二重押しは何もしない。
+   * 相手が申し込み済みのところへ申し込む（受ける・同時に申し込んだ）と、次の対局を始める
+   */
+  private async rematch(ws: WebSocket, player: Player, room: RoomRecord, msg: RematchMessage): Promise<void> {
+    if (this.phase() !== "finished" || msg.gameNo !== (room.gameNo ?? 1)) {
+      return send(ws, errorMsg("stale_rematch", "再戦を申し込める対局ではありません（次の対局が始まっています）"));
+    }
+    const opp = other(player);
+    const r: [RematchStatus, RematchStatus] = room.rematch ?? ["none", "none"];
+    switch (msg.action) {
+      case "request":
+        if (room.left?.[opp]) return send(ws, errorMsg("opponent_left", "相手は部屋を抜けました"));
+        if (r[opp] === "requested") return this.nextGame();
+        if (r[player] === "requested") return;
+        r[player] = "requested";
+        // 断った相手にもう一度申し込んだ。相手の「断った」は消す
+        if (r[opp] === "declined") r[opp] = "none";
+        break;
+      case "cancel":
+        if (r[player] !== "requested") return;
+        r[player] = "none";
+        break;
+      case "decline":
+        if (r[opp] !== "requested") return;
+        r[opp] = "none";
+        r[player] = "declined";
+        break;
+    }
+    room.rematch = r;
+    await this.save();
+    this.broadcast();
+  }
+
+  /**
+   * 再戦が成立した。同じルール・同じ制限時間で新しい対局を作り、先手と後手を入れ替える。
+   * 席はトークンの添字なので、トークンと接続ごとの席（attachment）を入れ替える（トークンは変わらず、再接続もそのまま通る）
+   */
+  private async nextGame(): Promise<void> {
+    const room = this.room!;
+    room.game = createGame(room.game.rules);
+    room.tokens = [room.tokens[1], room.tokens[0]];
+    room.host = other(room.host);
+    room.gameNo = (room.gameNo ?? 1) + 1;
+    room.rematch = ["none", "none"];
+    room.left = [false, false];
+    for (const ws of this.ctx.getWebSockets()) {
+      const att = attachmentOf(ws);
+      if (att.player !== null) ws.serializeAttachment({ ...att, player: other(att.player) } satisfies Attachment);
+    }
+    this.restartClock();
+    await this.save();
+    this.broadcast();
+  }
+
+  /** 部屋を抜けた（接続はこの後クライアントが閉じる）。再戦の申し込みを取り下げ、相手に退室を知らせる */
+  private async leave(player: Player, room: RoomRecord): Promise<void> {
+    if (room.left?.[player]) return;
+    room.left = room.left ?? [false, false];
+    room.left[player] = true;
+    if (room.rematch) room.rematch = ["none", "none"];
+    await this.save();
+    this.broadcast();
+  }
+
   /** 接続が切れた。相手に「切断中」を知らせる */
   private async left(ws: WebSocket): Promise<void> {
     if (this.room && attachmentOf(ws).player !== null) this.broadcast(ws);
@@ -296,9 +376,11 @@ export class Room extends DurableObject<Env> {
         type: "state",
         roomId: room.roomId,
         phase,
+        gameNo: room.gameNo ?? 1,
         you,
         view: viewFor(room.game, you),
-        opponent: { joined: room.tokens[opp] !== null, online: online[opp] },
+        opponent: { joined: room.tokens[opp] !== null, online: online[opp], left: room.left?.[opp] ?? false },
+        rematch: phase === "finished" ? { you: room.rematch?.[you] ?? "none", opponent: room.rematch?.[opp] ?? "none" } : null,
         clock,
       };
       send(ws, msg);

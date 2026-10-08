@@ -1681,7 +1681,17 @@ button {
   min-width: 0;
 }
 .tray.over .hand-buttons {
+  flex-wrap: wrap;
   gap: 0.5rem;
+}
+/* オンライン対戦の終局後: 再戦の申し込みの状態を鍵の上に 1 行 */
+.tray-note {
+  flex-basis: 100%;
+  margin: 0;
+  text-align: center;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--ink);
 }
 /* 駒は台の上に立つ石。残り数は右下の角、選んだ駒は持ち上がる */
 .piece-btn {
@@ -2840,6 +2850,16 @@ button {
 }
 .result-body .modal-actions {
   justify-content: center;
+}
+/* オンライン対戦の再戦: ボタンは並びに混ぜ、申し込みの状態はボタンの上に 1 行 */
+.result-online {
+  display: contents;
+}
+.result-rematch-note {
+  margin: 0.75rem 0 0;
+  text-align: center;
+  font-weight: 700;
+  color: var(--amber);
 }
 .btn.urge {
   animation: urge 1.4s ease-in-out infinite;

@@ -150,3 +150,17 @@ export function moverOf(a: Player, b: Player): Player {
 export async function waitResult(p: Player) {
   await expect(p.page.locator("#result")).toBeVisible({ timeout: 20_000 });
 }
+
+/** 終局まで打つ。each は各手の後に呼ぶ（手数ごとの確認・スクリーンショット） */
+export async function playToEnd(a: Player, b: Player, opts: { designate?: boolean; each?: (ply: number) => Promise<void> } = {}) {
+  for (let i = 0; i < 400; i++) {
+    if (a.last!.view.result) return;
+    const mover = moverOf(a, b);
+    await playTurn(mover, opts.designate);
+    // 相手にも同じ局面が届くのを待つ
+    const other = mover === a ? b : a;
+    await expect.poll(() => other.last!.view.history.length, { timeout: 15_000 }).toBe(mover.last!.view.history.length);
+    await opts.each?.(mover.last!.view.ply);
+  }
+  throw new Error("終局しなかった");
+}

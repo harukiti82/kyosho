@@ -11,6 +11,7 @@ import {
   joinFromInvite,
   moverOf,
   newPlayer,
+  playToEnd,
   playTurn,
   prefix,
   SHOT,
@@ -19,20 +20,6 @@ import {
   watch,
   type Player,
 } from "./net";
-
-/** 終局まで打つ。each は各手の後に呼ぶ（手数ごとの確認・スクリーンショット） */
-async function playToEnd(a: Player, b: Player, opts: { designate?: boolean; each?: (ply: number) => Promise<void> } = {}) {
-  for (let i = 0; i < 400; i++) {
-    if (a.last!.view.result) return;
-    const mover = moverOf(a, b);
-    await playTurn(mover, opts.designate);
-    // 相手にも同じ局面が届くのを待つ
-    const other = mover === a ? b : a;
-    await expect.poll(() => other.last!.view.history.length, { timeout: 15_000 }).toBe(mover.last!.view.history.length);
-    await opts.each?.(mover.last!.view.ply);
-  }
-  throw new Error("終局しなかった");
-}
 
 const resultText = (p: Page) => p.locator("#result-winner").textContent();
 
@@ -114,7 +101,9 @@ test("作成 → 招待リンクで参加 → 終局。途中の再読み込み�
   const [h, g] = [await resultText(host.page), await resultText(guest.page)];
   if (r.winner === null) expect([h, g]).toEqual(["引き分け", "引き分け"]);
   else expect([h, g]).toEqual(r.winner === 0 ? ["あなたの勝ち", "相手の勝ち"] : ["相手の勝ち", "あなたの勝ち"]);
-  await expect(host.page.locator("#result-rematch")).toHaveText("新しい部屋で再戦");
+  // 同じ部屋での再戦の申し込み（流れは rematch.spec.ts）
+  await expect(host.page.locator("#result [data-rematch=request]")).toHaveText("再戦");
+  await expect(host.page.locator("#result-rematch")).toBeHidden();
   await host.page.screenshot({ path: `${SHOT}/${pre}-online-result.png` });
   await guest.page.screenshot({ path: `${SHOT}/${pre}-online-result-guest.png` });
 
@@ -125,13 +114,8 @@ test("作成 → 招待リンクで参加 → 終局。途中の再読み込み�
   await host.page.locator("#result-view").click();
   await expect(host.page.locator("#status")).toContainText("終局");
   await host.page.screenshot({ path: `${SHOT}/${pre}-online-result-reload.png` });
-
-  // 新しい部屋で再戦: 同じルールで部屋を作り直し、新しい招待リンクを出す
-  await host.page.locator("#btn-rematch").click();
-  await expect(host.page.locator("#online")).toHaveAttribute("data-view", "invite");
-  const url2 = await host.page.locator("#invite-url").inputValue();
-  expect(url2).not.toBe(url);
-  await expect(host.page.locator(".online-seat")).toHaveText("先手");
+  // 盤面を見ている間も、駒台の場所に再戦の鍵
+  await expect(host.page.locator("#hand [data-rematch=request]")).toBeVisible();
 });
 
 test("隠し王: 自分の王の指定と相手の王の候補。相手に届くメッセージに王の場所が入らない", async ({ browser }, info) => {

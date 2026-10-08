@@ -306,10 +306,14 @@
         <!-- 対局者を列にした成績表（体力・石数・王）と、手数・ルール -->
         <div class="result-detail" id="result-detail"></div>
         <div class="result-stats" id="result-stats"></div>
+        <!-- オンライン対戦の再戦の申し込みの状態（申し込まれた・返事待ち・断られた・相手の退室） -->
+        <p class="result-rematch-note" id="result-rematch-note" role="status" hidden></p>
         <div class="modal-actions">
           <button type="button" class="btn ghost" id="result-view">盤面を見る</button>
           <button type="button" class="btn ghost" id="result-menu">メニュー</button>
           <button type="button" class="btn primary" id="result-rematch" autofocus>再戦</button>
+          <!-- オンライン対戦の再戦のボタン（app.ts の rematchControls） -->
+          <span class="result-online" id="result-online"></span>
         </div>
       </div>
     </dialog>

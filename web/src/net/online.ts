@@ -18,6 +18,8 @@ import {
   type HttpErrorCode,
   type JoinedMessage,
   type MoveMessage,
+  type RematchAction,
+  type RematchMessage,
   type RoomInfoResponse,
   type ServerMessage,
   type StateMessage,
@@ -281,6 +283,16 @@ export class OnlineSession {
     return true;
   }
 
+  /**
+   * 終局後の再戦の申し込み（request。相手が申し込み済みなら受けたことになる）・取り消し（cancel）・断り（decline）。
+   * gameNo は終わった対局の番号（state.gameNo）。つながっていなければ false
+   */
+  sendRematch(action: RematchAction, gameNo: number): boolean {
+    if (!this.ready) return false;
+    this.ws!.send(JSON.stringify({ type: "rematch", action, gameNo } satisfies RematchMessage));
+    return true;
+  }
+
   /** つなぎ直しの待ち時間を飛ばして今すぐつなぐ（画面に戻った・ネットにつながったとき） */
   wake() {
     if (this.state !== "reconnecting" || (this.ws && this.ws.readyState <= OPEN)) return;
@@ -296,14 +308,19 @@ export class OnlineSession {
     this.open();
   }
 
-  /** 自分から抜ける（つなぎ直さない。部屋と席はサーバーに残る） */
+  /**
+   * 自分から抜ける（つなぎ直さない。部屋と席はサーバーに残る）。
+   * つながっていれば leave を送り、相手に退室を知らせて再戦の申し込みを取り下げる（同じトークンで戻れば取り消される）
+   */
   close() {
+    const leaving = this.ready;
     this.stopTimers();
     this.state = "closed";
     const ws = this.ws;
     this.ws = null;
     if (ws) {
       detach(ws);
+      if (leaving) ws.send(JSON.stringify({ type: "leave" }));
       if (ws.readyState <= OPEN) ws.close(1000, "leave");
     }
   }
