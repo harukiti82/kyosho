@@ -4,8 +4,8 @@
 
 ## 現在の対象
 
-- 何を / どこを: 見た目をペルソナ3風（試作 D）に本番化。ユーザーが試作 4 案（`?theme=a|b|c|d`）から選び、「月マークいらないかも」で月のモチーフを外した。D を `web/src/style.css` の本体に移し（試作の `themes.css`・`ui/theme.ts`・切り替えは持ち込まない）、AGENTS.md の「デザイン規約」を書き換え。ブランチ `style/persona3`（worktree `../kyosho-persona3`）。依頼元セッション経由
-- ステータス: 実装・検証中 → PR・squash merge・本番デプロイの確認。終わったら試作ブランチ `proto/visual-themes` と worktree `../kyosho-themes` を消す
+- 何を / どこを: 見た目をペルソナ3風（試作 D）に本番化。ユーザーが試作 4 案（`?theme=a|b|c|d`）から選び、「月マークいらないかも」で月のモチーフを外した。D を `web/src/style.css` の本体に移し（試作の `themes.css`・`ui/theme.ts`・切り替えは持ち込まない）、AGENTS.md の「デザイン規約」を書き換え。依頼元セッション経由
+- ステータス: 本番化済み（PR #33、b704227。本番 https://kyosho.rukiharukichi.com/ で確認）。試作ブランチ `proto/visual-themes`・worktree `../kyosho-themes`・`style/persona3` は削除済み
 - 最終更新: 2026-10-08
 
 ## 遊び方（チュートリアル）の要点
