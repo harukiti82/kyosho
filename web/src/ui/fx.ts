@@ -5,6 +5,7 @@
 import { TIER_RANK, type Tier } from "./impact";
 import { h } from "./dom";
 import type { Outcome, OutcomeTone } from "./outcome";
+import type { Player } from "../engine/rules";
 
 /** 演出の長さ（ミリ秒）。step: 返す駒を順にめくる間隔 / burstAt: 文言・粒を出す時刻 / hold: 入力と CPU を待たせる長さ */
 export interface FxTiming {
@@ -63,9 +64,35 @@ export interface FinaleOptions {
   onSkip: () => void;
 }
 
+/**
+ * 先手・後手の抽選の演出の長さ（ミリ秒）。石が回りながら上がって落ちる（TOSS_LAND_MS）→ 上を向いた色と結果を見せる。
+ * 動きを減らす設定では回さず、結果を読める間だけ。サーバーが最初の締め切りに足す TOSS_GRACE_MS（net/protocol.ts）を超えない
+ */
+export const TOSS_MS = 1900;
+export const TOSS_REDUCED_MS = 900;
+export const TOSS_LAND_MS = 1100;
+export const tossMs = (reduce: boolean) => (reduce ? TOSS_REDUCED_MS : TOSS_MS);
+/** 石が回る回数（決まった数。結果の色に半回転を足す） */
+export const TOSS_TURNS = 4;
+/** 石の最後の角度（X 軸の回転）。表（0 度）が黒 = 先手、裏（180 度）が白 = 後手 */
+export const tossAngle = (up: Player) => TOSS_TURNS * 360 + (up === 1 ? 180 : 0);
+
+export interface TossOptions {
+  /** 上を向く色（0: 黒 = 先手 / 1: 白 = 後手） */
+  up: Player;
+  /** 結果の上に添える主語（「あなた」） */
+  who: string;
+  /** 結果の語（「先手」「後手」） */
+  title: string;
+  reduce: boolean;
+  /** 演出をタップ／クリックした（対局へ進める） */
+  onSkip: () => void;
+}
+
 export class Fx {
   private timers: number[] = [];
   private finaleEl: HTMLElement | null = null;
+  private tossEl: HTMLElement | null = null;
 
   constructor(private readonly layer: HTMLElement) {}
 
@@ -74,7 +101,41 @@ export class Fx {
     for (const t of this.timers) window.clearTimeout(t);
     this.timers = [];
     this.finaleEl = null;
+    this.tossEl = null;
     this.layer.replaceChildren();
+  }
+
+  /**
+   * 先手・後手の抽選の演出。盤の石（表が黒・裏が白）をコインのように投げ、回りながら落ちて上を向いた色と結果の語を出す。
+   * 画面全体を覆ってタップ／クリックを受け、対局へ進める。動きを減らす設定では回さず、上を向いた石と結果だけ
+   */
+  toss(o: TossOptions) {
+    this.clear();
+    const root = h("div", { class: `fx-toss${o.reduce ? " reduce" : ""}`, attrs: { "data-up": String(o.up) } });
+    root.style.setProperty("--toss-end", `${tossAngle(o.up)}deg`);
+    root.style.setProperty("--toss-ms", `${TOSS_MS}ms`);
+    root.style.setProperty("--toss-land", `${TOSS_LAND_MS}ms`);
+    root.append(
+      h("div", { class: "toss-stage" }, [
+        h("div", { class: "toss-shadow" }),
+        h("div", { class: "toss-ring" }),
+        h("div", { class: "toss-flight" }, [
+          h("div", { class: "toss-coin" }, [h("span", { class: "toss-face p0" }), h("span", { class: "toss-face p1" })]),
+        ]),
+      ]),
+      h("div", { class: "toss-card" }, [h("p", { class: "toss-who", text: o.who }), h("p", { class: "toss-title", text: o.title })]),
+    );
+    // Enter・Esc・スペースでも飛ばせる（App.endToss）。画面の文は出さず、キーは title に置く
+    root.title = "クリック・Enter で飛ばす";
+    root.addEventListener("click", () => o.onSkip());
+    this.layer.append(root);
+    this.tossEl = root;
+  }
+
+  /** 抽選の演出を消す */
+  endToss() {
+    this.tossEl?.remove();
+    this.tossEl = null;
   }
 
   /**

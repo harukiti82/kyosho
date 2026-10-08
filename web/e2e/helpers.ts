@@ -122,6 +122,18 @@ export async function stubDraws(page: Page, values: number[]) {
   }, values);
 }
 
+/**
+ * 先手・後手の抽選の演出（.fx-toss）が出ていて、上を向いた石の色と結果の語が up（0: 黒・先手 / 1: 白・後手）であることを確かめ、
+ * タップ／クリックで飛ばす（演出を最後まで待たない）
+ */
+export async function skipToss(page: Page, up: 0 | 1) {
+  const toss = page.locator(".fx-toss");
+  await expect(toss).toHaveAttribute("data-up", String(up));
+  await expect(toss.locator(".toss-title")).toHaveText(up === 0 ? "先手" : "後手");
+  await toss.click();
+  await expect(toss).toHaveCount(0);
+}
+
 /** stubDraws で差し替えた抽選を引いた回数 */
 export const draws = (page: Page) => page.evaluate(() => (window as unknown as { __seatDraws: number }).__seatDraws);
 

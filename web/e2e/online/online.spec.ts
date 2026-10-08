@@ -44,6 +44,10 @@ test("作成 → 招待リンクで参加 → 終局。途中の再読み込み�
   await waitPlaying(host, guest);
   expect(host.last!.you).toBe(0);
   expect(guest.last!.you).toBe(1);
+  // 作成者が手番を選んだ部屋は抽選の演出を出さない
+  expect(host.last!.seatDraw).toBe(false);
+  await expect(host.page.locator(".fx-toss")).toHaveCount(0);
+  await expect(guest.page.locator(".fx-toss")).toHaveCount(0);
   await expect(host.page.locator("#net")).toHaveText("相手: 接続中");
   // 名札は短い名前で、正式な名前（先手・後手）は読み上げ（aria-label）と title。自分が下、相手が上
   await expect(guest.page.locator("#player-1 .player-name")).toHaveText("あなた");

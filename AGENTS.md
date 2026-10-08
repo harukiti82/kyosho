@@ -12,7 +12,7 @@
 - 目的: ルールを詰め、人間の試遊で面白さを確かめる
 - 対象: 作者と試遊する人（ブラウザ版は起動時のメニューから CPU 対戦（強さ 3 段階）・マルチ（同じ端末での 2 人対戦・招待リンクでのオンライン対戦）・遊び方（盤で打ちながら標準ルールを覚えるチュートリアル）。ルールは設定メニューで組み合わせて保存し、変えなければ標準）
 - 状況: v0.4 は「難しい」「普通のオセロと変わらない」、v1.0 は「オセロじゃなくてもよくなって悪化」。読み合いを足すため「隠し王」（相手に見えない王）、戦略性を足すため「方向駒」（駒ごとに挟める方向が違う）、駒を置くリスクとリターンを足すため「端の駒の力」（挟んだ端の自分の駒の数字もダメージに足す。プリセット「拠点」）を設定項目とプリセットに追加した。ユーザーが遊び比べて選んだ組み合わせ（方向駒＋端の駒の力＋隠し王−30）をプリセット「標準」として既定にした。その後ユーザーの指定で王の指定期限を 7 手・回復を低い方−1 にし、体力は 2 手読み同士で先手勝率が 50% に最も近い 129・130 にした（経緯は RULES.md「Web 試遊版」節）（RULES.md 本文の改稿はまだ。ルールの決定はユーザーがする）
-- 手応え: 大ダメージほど段階的に派手な演出・効果音、終局画面の前に勝ち・負け・引き分けの決着の演出、終局画面に成績（ルール上のボーナスではない。`ui/impact.ts` / `ui/outcome.ts` / `ui/fx.ts` / `ui/sound.ts`）
+- 手応え: 手番が抽選のときは対局の始めに盤の石を投げる演出、大ダメージほど段階的に派手な演出・効果音、終局画面の前に勝ち・負け・引き分けの決着の演出、終局画面に成績（ルール上のボーナスではない。`ui/impact.ts` / `ui/outcome.ts` / `ui/fx.ts` / `ui/sound.ts`）
 - 最重要要件: **ルールが一目で分かること**。ルールはいつでも 1 タップで見られる（設定から生成するルールカードは引き出しの「ルール 名前」のタブ。見出しは常に表示、PC は開いて始め、スマホは閉じて始める）。盤では返せる駒とダメージ・回復の予測（マスのバッジと吹き出し）・返されうる駒の警告・普通のオセロなら置けるマスの点線の枠（参考）・方向駒のアイコン・端の駒の青枠とダメージの内訳で示す
 - 見た目: ボードゲームアプリ風（ユーザーの依頼「AI 感をなくしてゲームらしく」）。説明の文を常に出さず、形と動きで伝える（下の「デザイン規約」）
 
@@ -42,10 +42,10 @@ kyosho/
 │   └── kyosho.py ほか    ← v0.4 のシミュレーター（履歴。ロジックは変更しない）
 └── web/
     ├── src/engine/   ← ルールエンジン（DOM に依存しない。RuleSet で全組み合わせを扱う。ここだけでゲームが完結する）
-    ├── src/ui/       ← 画面の表示と入力（app.ts: 対局画面（CPU・2 人・オンライン）と画面の切り替え / menu.ts: 起動時のメニュー / setup.ts: 設定メニュー（保存は localStorage） / online.ts: オンライン対戦の案内のダイアログ / query.ts: URL ⇔ 設定 / ruletext.ts: ルール文 / diricon.ts: 方向のアイコン / impact.ts: ダメージの段階と成績（DOM なし） / lessons.ts: 遊び方のステップ（局面・正解・誘導・ヒント・進み具合。DOM なし） / coach.ts: 遊び方のコーチ（覚えるルール・課題・ヒント・次へ） / outcome.ts: 決着の演出の中身（DOM なし） / clock.ts: 1 手の制限時間の時計と既定（DOM なし） / fx.ts: 段階・決着の演出 / sound.ts: 効果音）
+    ├── src/ui/       ← 画面の表示と入力（app.ts: 対局画面（CPU・2 人・オンライン）と画面の切り替え / menu.ts: 起動時のメニュー / setup.ts: 設定メニュー（保存は localStorage） / online.ts: オンライン対戦の案内のダイアログ / query.ts: URL ⇔ 設定 / ruletext.ts: ルール文 / diricon.ts: 方向のアイコン / impact.ts: ダメージの段階と成績（DOM なし） / lessons.ts: 遊び方のステップ（局面・正解・誘導・ヒント・進み具合。DOM なし） / coach.ts: 遊び方のコーチ（覚えるルール・課題・ヒント・次へ） / outcome.ts: 決着の演出の中身（DOM なし） / clock.ts: 1 手の制限時間の時計と既定（DOM なし） / fx.ts: 抽選・段階・決着の演出 / sound.ts: 効果音）
     ├── src/net/      ← オンライン対戦（protocol.ts: 通信仕様の型と定数。画面とサーバーが共通で import する / online.ts: 画面の通信層（HTTP・WebSocket・トークン・つなぎ直し。DOM なし））
     ├── test/         ← Vitest（engine・URL・ルール文のユニットテスト + Python 棋譜の再生テスト）
-    ├── e2e/          ← Playwright（ヘッドレスで実際に終局まで打つ。king.spec.ts / direction.spec.ts / anchor.spec.ts は種付き乱数の鏡の対局で隠し王・方向駒・拠点を確かめる。impact.spec.ts は段階の演出・効果音・成績、result.spec.ts は決着の演出、seat.spec.ts は CPU 対戦の手番の抽選、othello.spec.ts は普通のオセロなら置けるマスの枠、timer.spec.ts は 1 手の制限時間（page.clock で時間を進める）、online-hidden.spec.ts は /api がない公開先で入口を出さないこと、menu.spec.ts はメニューからの開始・CPU の強さ・設定の保存と反映、tutorial.spec.ts は遊び方の全ステップ（違う手のヒント・正解）と実戦・再開・localStorage なし・CPU と時計が割り込まないこと。e2e/online/ はサーバーを起こして 2 つのブラウザで対局する（`npm run e2e:online`））
+    ├── e2e/          ← Playwright（ヘッドレスで実際に終局まで打つ。king.spec.ts / direction.spec.ts / anchor.spec.ts は種付き乱数の鏡の対局で隠し王・方向駒・拠点を確かめる。impact.spec.ts は段階の演出・効果音・成績、result.spec.ts は決着の演出、seat.spec.ts は CPU 対戦の手番の抽選、othello.spec.ts は普通のオセロなら置けるマスの枠、timer.spec.ts は 1 手の制限時間（page.clock で時間を進める）、online-hidden.spec.ts は /api がない公開先で入口を出さないこと、menu.spec.ts はメニューからの開始・CPU の強さ・設定の保存と反映、toss.spec.ts は手番の抽選の演出（page.clock で止める・CSS の動きは途中で止めて撮る）、tutorial.spec.ts は遊び方の全ステップ（違う手のヒント・正解）と実戦・再開・localStorage なし・CPU と時計が割り込まないこと。e2e/online/ はサーバーを起こして 2 つのブラウザで対局する（`npm run e2e:online`））
     ├── scripts/      ← バランス確認（balance.ts を Vite の runnerImport で Node 実行。`npm run balance`）
     └── screenshots/  ← e2e が保存するスクリーンショット
 server/               ← 画面（web/dist の静的アセット）と /api（オンライン対戦）を同じオリジンで配信する 1 つの Worker（設定 wrangler.jsonc、Worker の入口 src/index.ts、1 部屋 = 1 Durable Object の src/room.ts、入力検証 src/validate.ts、Workers 上のテスト test/、2 クライアントで 1 局を通す scripts/play.mjs）
@@ -59,6 +59,7 @@ server/               ← 画面（web/dist の静的アセット）と /api（�
 - ダメージは `board.ts` の `damageOf`（返した駒の `baseDamageOf` ＋ 端の駒の `anchorBonusOf`）に集約する。予測・警告・CPU はこれを通すので、ダメージの計算を別に書かない
 - 動的な文字列は `textContent` / `ui/dom.ts` の `h()` で入れる。`innerHTML` は使わない
 - 演出の段階は `ui/impact.ts` の `tierOf`（閾値は `TIER_THRESHOLDS` の 1 か所。合計 ÷ 受けた側の `RuleSet.hp`、王を返した手は特大）。成績は `statsOf` で棋譜から集計する。演出は transform / opacity と画面固定の `#fx` 層だけで、レイアウトを動かさない。大・特大の演出中は `App.fxLock` で入力と CPU を待たせる（`fx.ts` の `fxTiming`、最大 1.5 秒）
+- 手番の抽選の演出は `App.playToss`（`fx.ts` の `toss` / `tossMs` 最大 1.9 秒・`sound.ts` の `toss`）: 盤の石を投げ、上を向いた色が自分の手番（表の黒 = 先手・裏の白 = 後手、`tossAngle`）。出すのは CPU 対戦の「ランダム」（`App.start` の `drawSeat` の後。再戦・新しい対局でも）と、オンラインで `state.seatDraw` の部屋の 1 局目の始め（`App.claimToss`。結果はサーバーの `you`）だけ。手番を選んだとき・2 人対戦・遊び方・オンラインの再戦では出さない。演出中は `fxLock` で盤・CPU・時計を止め、`App.endToss`（時間・タップ／クリック／Enter・メニューへ）で動かす。動きを減らす設定では回さない。e2e は `helpers.ts` の `skipToss` で確かめて飛ばす
 - 終局の流れは「最後の一手の演出 → 決着の演出（`App.playFinale`、`fx.ts` の `finaleMs`、最大 2.5 秒・タップ／クリック／Enter で飛ばす）→ 終局画面」。勝ち・負け・引き分け・副題・接戦の励まし（`CLOSE_PERCENT`）は `ui/outcome.ts` の `outcomeOf`。2 人対戦は敗北にしない
 - オンライン対戦の終局後の再戦は同じ部屋で: `rematch` の申し込み（`request`。相手が申し込み済みなら成立）・`cancel`・`decline` をサーバー（`room.ts` の `rematch` / `nextGame`）が受け、成立したら席のトークンと接続の席を入れ替えて（先手と後手を交代）同じルール・同じ制限時間の新しい `GameState` を作る。前の対局の `GameState`（王を含む）は捨てる（`server/test/king.test.ts` が検査する）。画面は `state.gameNo` が増えたら `App.startNextGame`、ボタンは `rematchControls`（`data-rematch`）。部屋を抜けるときは `leave` を送る（`OnlineSession.close`）。通算の戦績は席でなく人（作成者・参加者）ごとに数え（`room.ts` の `tallyOf` / `recordFor`、`host` で席を人に直す）、`state.record` で各自の目線で送る。画面は終局画面の成績表の「通算」と、2 局目からの名札（`.plate-record`）
 - オンライン対戦の画面は手を送るだけで、盤はサーバーから届いた `view`（`PlayerView`）で描く（画面で `playMove` しない）。王の情報は `App.kingOf`（オンラインでは `view.myKing` / `view.oppKing`。`kingInfo` は view に使えない）。トークンは `sessionStorage`（`kyosho:token:<roomId>`）。通信層は `net/online.ts` に分け、DOM を入れない

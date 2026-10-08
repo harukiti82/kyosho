@@ -4,9 +4,9 @@ import { runDurableObjectAlarm, runInDurableObject } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import { legalCells } from "../../web/src/engine/game";
 import { presetById } from "../../web/src/engine/rules";
-import { FINISHED_TTL_MS, TURN_GRACE_MS, type StateMessage } from "../../web/src/net/protocol";
+import { FINISHED_TTL_MS, TOSS_GRACE_MS, TURN_GRACE_MS, type StateMessage } from "../../web/src/net/protocol";
 import type { Room, RoomRecord } from "../src/room";
-import { call, Client, createRoom, startedRoom, stubOf } from "./helpers";
+import { call, Client, createRoom, playOut, quickRules, startedRoom, stubOf } from "./helpers";
 
 /** 部屋の記録を読む */
 const recordOf = (roomId: string) => runInDurableObject(stubOf(roomId), async (_i, s) => (await s.storage.get<RoomRecord>("room"))!);
@@ -178,5 +178,65 @@ describe("時間切れ", () => {
     expect(hs.view.myKing).toMatchObject({ status: "hidden", cell: [m.r, m.c], auto: true });
     expect(gs.view.oppKing.revealed).toBe(false);
     expect(gs.view.myKing.status).not.toBe("hidden");
+  });
+});
+
+describe("先手・後手の抽選（画面の演出）", () => {
+  /** hostSeat で部屋を作って 2 人が参加する。clients と states は [先手, 後手] の順 */
+  async function seated(hostSeat: "first" | "second" | "random", rules: Parameters<typeof createRoom>[0], turnSeconds?: number) {
+    const created = await createRoom(rules, hostSeat, turnSeconds);
+    const host = await Client.join(created.roomId, created.token);
+    const guest = await Client.join(created.roomId);
+    const hostState = await host.client.expect("state");
+    const clients: [Client, Client] = created.you === 0 ? [host.client, guest.client] : [guest.client, host.client];
+    const states: [StateMessage, StateMessage] = created.you === 0 ? [hostState, guest.state] : [guest.state, hostState];
+    return { roomId: created.roomId, clients, states, waiting: host.state };
+  }
+
+  it("random の部屋は 1 局目の state に seatDraw が載り、先手の最初の締め切りに演出の分を足す。2 手目からは足さない", async () => {
+    const { roomId, clients, states, waiting } = await seated("random", "v10", 20);
+    // 待機中は手番が決まっていても演出しない（画面は対局が始まった state で出す）
+    expect(waiting.phase).toBe("waiting");
+    for (const s of states) {
+      expect(s.seatDraw).toBe(true);
+      expect(s.clock!.remainingMs).toBeGreaterThan(20_000 + TURN_GRACE_MS + TOSS_GRACE_MS - 5_000);
+      expect(s.clock!.remainingMs).toBeLessThanOrEqual(20_000 + TURN_GRACE_MS + TOSS_GRACE_MS);
+    }
+    expect(await alarmIn(roomId)).toBeGreaterThan(20_000 + TURN_GRACE_MS);
+    expect((await recordOf(roomId)).drawn).toBe(true);
+    clients[0].send(firstMove(states[0]));
+    const [a, b] = await Promise.all([clients[0].expect("state"), clients[1].expect("state")]);
+    for (const s of [a, b]) {
+      expect(s.view.ply).toBe(1);
+      expect(s.clock!.remainingMs).toBeLessThanOrEqual(20_000 + TURN_GRACE_MS);
+    }
+  });
+
+  it("作成者が手番を指定した部屋は seatDraw が false で、締め切りも足さない", async () => {
+    for (const seat of ["first", "second"] as const) {
+      const { states } = await seated(seat, "v10", 20);
+      for (const s of states) {
+        expect(s.seatDraw).toBe(false);
+        expect(s.clock!.remainingMs).toBeLessThanOrEqual(20_000 + TURN_GRACE_MS);
+      }
+    }
+  });
+
+  it("random の部屋でも再戦（先手と後手の入れ替え）では seatDraw が false", async () => {
+    const { clients, states } = await seated("random", quickRules(), 20);
+    await playOut(clients, states);
+    for (const c of clients) c.send({ type: "rematch", action: "request", gameNo: 1 });
+    // 申し込み（片方）→ 成立の順に届く。成立した state を読む
+    const next = async (c: Client) => {
+      for (;;) {
+        const s = await c.expect("state");
+        if (s.gameNo === 2) return s;
+      }
+    };
+    for (const s of await Promise.all(clients.map(next))) {
+      expect(s.phase).toBe("playing");
+      expect(s.seatDraw).toBe(false);
+      expect(s.clock!.remainingMs).toBeLessThanOrEqual(20_000 + TURN_GRACE_MS);
+    }
   });
 });
