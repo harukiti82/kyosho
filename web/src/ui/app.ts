@@ -63,7 +63,7 @@ import { clockLevel, clockText, cpuTurnSeconds, turnSecondsText, TurnClock } fro
 import { byId, h } from "./dom";
 import { finaleMs, Fx, fxTiming, speakerIcon, type FxTiming } from "./fx";
 import { OnlineDialog } from "./online";
-import { hitOf, statsOf, tierOf, tierText, type HitBreakdown, type PlayerStats, type Tier } from "./impact";
+import { hitOf, shownHp, statsOf, tierOf, tierText, type HitBreakdown, type PlayerStats, type Tier } from "./impact";
 import { outcomeOf, type Outcome } from "./outcome";
 import { dirMark, endDetails, handText, hpText, kingPenaltyText, pieceLabel, ruleDetails, ruleLines, verb } from "./ruletext";
 import { Coach } from "./coach";
@@ -1558,18 +1558,19 @@ export class App {
     const onTray = g.result ? null : this.viewer(g);
     for (const p of [0, 1] as const) {
       const el = this.el.players[p];
-      const hp = g.hp[p];
+      const hp = shownHp(g.hp[p]);
       const max = g.rules.hp[p];
-      const pct = Math.max(0, Math.min(100, (hp / max) * 100));
+      const pct = Math.min(100, (hp / max) * 100);
       // 直前の手で減った・増えた量（新しい手の直後だけアニメーションさせる）
       let delta: HTMLElement | null = null;
       const lost = last && last.player !== p ? last.damage + (last.king?.penalty ?? 0) : 0;
       if (lost > 0) delta = h("span", { class: `delta${fresh ? " fresh" : ""}`, text: `−${lost}` });
       if (last && last.player === p && last.heal > 0) delta = h("span", { class: `delta heal${fresh ? " fresh" : ""}`, text: `+${last.heal}` });
-      // 減った分はゲージに赤く残してから縮める（格闘ゲームの体力ゲージのように。新しい手の直後だけ）
+      // 減った分はゲージに赤く残してから縮める（格闘ゲームの体力ゲージのように。新しい手の直後だけ）。
+      // 幅は手の前の体力（0 で止める前の値に減った分を足す）から今の体力まで
       const ghost =
         fresh && lost > 0
-          ? h("span", { class: "hp-ghost", attrs: { style: `left:${pct}%;width:${Math.min(100 - pct, (lost / max) * 100)}%` } })
+          ? h("span", { class: "hp-ghost", attrs: { style: `left:${pct}%;width:${Math.min(100, ((g.hp[p] + lost) / max) * 100) - pct}%` } })
           : null;
       const turn = !g.result && g.turn === p;
       el.className = `player-card p${p}`;
@@ -1594,7 +1595,7 @@ export class App {
                 "aria-label": `${PLAYER_NAME[p]}の体力`,
                 "aria-valuemin": "0",
                 "aria-valuemax": String(Math.max(max, hp)),
-                "aria-valuenow": String(Math.max(0, hp)),
+                "aria-valuenow": String(hp),
               },
             },
             [
@@ -2202,7 +2203,7 @@ export class App {
     byId("result-detail").replaceChildren(
       h("table", { class: "score" }, [
         h("thead", {}, [h("tr", {}, [h("td"), head(0), head(1)])]),
-        h("tbody", {}, [row("体力", [String(g.hp[0]), String(g.hp[1])]), row("石数", [String(discs[0]), String(discs[1])]), king]),
+        h("tbody", {}, [row("体力", [String(shownHp(g.hp[0])), String(shownHp(g.hp[1]))]), row("石数", [String(discs[0]), String(discs[1])]), king]),
       ]),
       h("p", { class: "score-foot", text: `${g.ply} 手・ルール ${ruleName(g.rules)}${this.levelText()}${this.timeText()}` }),
     );

@@ -5,7 +5,7 @@ import type { GameEvent, MoveEvent } from "../src/engine/game";
 import { createGame, lastMoveOf, playMove } from "../src/engine/game";
 import type { RuleSet } from "../src/engine/rules";
 import { fxTiming, MAX_HOLD_MS } from "../src/ui/fx";
-import { hitOf, statsOf, TIER_THRESHOLDS, tierOf, tierText } from "../src/ui/impact";
+import { hitOf, shownHp, statsOf, TIER_THRESHOLDS, tierOf, tierText } from "../src/ui/impact";
 import { boardOf, rulesOf, stateOf } from "./helpers";
 
 /** 先手（player 0）が後手を攻めた手 */
@@ -147,5 +147,14 @@ describe("演出の長さ", () => {
   it("動きを減らす設定では溜めを省く", () => {
     expect(fxTiming("huge", 8, true)).toMatchObject({ step: 0, burstAt: 0 });
     expect(fxTiming("big", 8, true).hold).toBeLessThanOrEqual(MAX_HOLD_MS);
+  });
+});
+
+describe("画面に出す体力", () => {
+  it("決着の一手で 0 を下回った体力は 0 と出し、0 以上はそのまま", () => {
+    expect(shownHp(-2)).toBe(0);
+    expect(shownHp(-35)).toBe(0);
+    expect(shownHp(0)).toBe(0);
+    expect(shownHp(129)).toBe(129);
   });
 });
