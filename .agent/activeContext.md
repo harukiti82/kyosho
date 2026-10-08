@@ -6,6 +6,7 @@
 
 - 何を / どこを: (1) 決着の一手で体力が 0 未満になったとき、成績表・名札に 0 と出す（`ui/impact.ts` の `shownHp`。エンジンの値は sim と揃えて負のまま）。(2) オンラインの同じ部屋での再戦の通算の戦績（`state.record`、`room.ts` の `tallyOf` / `recordFor`、終局画面の「通算」と 2 局目からの名札 `.plate-record`）。依頼元セッション経由（ユーザー「どっちも採用して」）。ブランチ `feat/online-record`（worktree `../kyosho-record`）
 - ステータス: 実装・テスト済み、PR・本番デプロイの確認中
+- 何を / どこを: 先手・後手の抽選で盤の石を投げる演出（ユーザー要望「先行後攻が決まる演出が欲しいです．コイントスみたいなを」。依頼元セッション経由）。ブランチ `feat/coin-toss`（worktree `../kyosho-coin`）。実装・テスト済み、PR・本番の確認中
 - 最終更新: 2026-10-08
 
 ## 遊び方（チュートリアル）の要点
@@ -13,6 +14,10 @@
 - ステップは `ui/lessons.ts` の `LESSONS`（挟む → ダメージ → 駒の向き → 持ち駒 → 反対側の駒 → 回復 → 王を決める → 王を裏返す → 予測を読む → 実戦）。局面は engine の `gameFrom`、文はエンジンの棋譜の値。画面は `App.lesson`（`openLesson` / `inStep` / `lessonNeed`）と `ui/coach.ts`（`#coach`、引き出しの先頭 = スマホは駒台の下・PC は盤の横の上）。進み具合は localStorage `kyosho:tutorial`
 - 文の書き方: 内部の用語（端の駒・上乗せ・期限・低い方−1・返す）を使わず、盤の物を指して言う（「置いた駒の反対側にある自分の駒」）。できたの文はそのとき盤で起きた数字（「飛3と金5で挟んだ。小さいほうの 3 から 1 を引いた 2 だけ…」）。覚えるルール 2 文まで・課題と合わせて 3 文まで。`test/lesson.test.ts` が用語・文の数を検査する。足し算の＋は `PLUS`（WORD JOINER で折り返さない）
 - 「予測を読む」より前のステップは始めの局面で自分の駒に「!」が出ない（`test/lesson.test.ts`）。e2e は `tutorial.spec.ts`（スクリーンショット *-tutorial-*）
+
+## 抽選の演出の要点
+
+- `App.playToss` / `endToss`（`fx.ts` の `toss`・`tossMs` 1.9 秒・`tossAngle`、`sound.ts` の `toss`、CSS `.fx-toss`）。CPU 対戦の「ランダム」は `App.start`、オンラインは `state.seatDraw`（サーバーの `RoomRecord.drawn`、1 局目だけ）を `App.claimToss` が見る（sessionStorage `kyosho:toss:<roomId>` で再読み込みでは出し直さない）。演出中は `fxLock`。サーバーは最初の締め切りに `TOSS_GRACE_MS`。e2e は `toss.spec.ts`・`online/toss.spec.ts`・`helpers.ts` の `skipToss`
 
 ## 1 手の制限時間の要点
 
