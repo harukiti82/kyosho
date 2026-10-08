@@ -185,3 +185,10 @@ export function discCount(b: Board): [number, number] {
 const COLS = "abcdefgh";
 /** 棋譜表記（列 a〜h + 行 1〜8。例: d3） */
 export const cellName = (r: number, c: number) => `${COLS[c]}${r + 1}`;
+
+/** 棋譜表記のマス（例: "d3" → [2, 3]）。cellName の逆。形式が違えば例外 */
+export function parseCell(name: string): Cell {
+  const m = /^([a-h])([1-8])$/.exec(name);
+  if (!m) throw new Error(`マスの表記が違います: ${name}`);
+  return [Number(m[2]) - 1, COLS.indexOf(m[1])];
+}
