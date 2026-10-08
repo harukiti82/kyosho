@@ -6,6 +6,7 @@
 // alarm は 1 つしか張れないので、制限時間のある対局中は締め切り、それ以外は放置で消す時刻に張る。
 // 終局後は同じ部屋で再戦できる。両者が申し込む（片方の申し込みをもう一方が受ける）と、席のトークンを入れ替えて
 // （先手と後手を交代して）同じルール・同じ制限時間の新しい対局を始める。前の対局の GameState（王を含む）は捨てる。
+// 部屋での通算の戦績は、席でなく人（作成者・参加者）ごとに数える。席は再戦で入れ替わるが、作成者の席 host も一緒に入れ替える。
 
 import { DurableObject } from "cloudflare:workers";
 import { createGame, playMove, playTimeout, viewFor, type GameState } from "../../web/src/engine/game";
@@ -19,6 +20,7 @@ import {
   TURN_GRACE_MS,
   type CreateRoomResponse,
   type HostSeat,
+  type MatchRecord,
   type MoveMessage,
   type RematchMessage,
   type RematchStatus,
@@ -49,6 +51,33 @@ export interface RoomRecord {
   rematch?: [RematchStatus, RematchStatus];
   /** 席ごとに leave で抜けたか。同じトークンで戻ると false。ないのは両方 false */
   left?: [boolean, boolean];
+  /** 前の対局までの通算（今の対局は含まない）。wins は人ごと [作成者, 参加者]。再戦の入る前に作った部屋にはない（= 0） */
+  record?: Tally;
+}
+
+/** 人ごとの勝ち数 [作成者, 参加者] と引き分けの数 */
+export interface Tally {
+  wins: [number, number];
+  draws: number;
+}
+
+/** 席にいる人（0: 作成者 / 1: 参加者） */
+const personOf = (room: Pick<RoomRecord, "host">, seat: Player): 0 | 1 => (seat === room.host ? 0 : 1);
+
+/** 通算（終局していれば今の対局も含む） */
+export function tallyOf(room: Pick<RoomRecord, "host" | "game" | "record">): Tally {
+  const t: Tally = { wins: [room.record?.wins[0] ?? 0, room.record?.wins[1] ?? 0], draws: room.record?.draws ?? 0 };
+  const r = room.game.result;
+  if (r && r.winner === null) t.draws++;
+  else if (r && r.winner !== null) t.wins[personOf(room, r.winner)]++;
+  return t;
+}
+
+/** 席 seat の人から見た通算 */
+export function recordFor(room: Pick<RoomRecord, "host" | "game" | "record">, seat: Player): MatchRecord {
+  const t = tallyOf(room);
+  const me = personOf(room, seat);
+  return { wins: t.wins[me], losses: t.wins[1 - me], draws: t.draws };
 }
 
 /** 接続ごとに保存する情報（退避しても残る） */
@@ -326,6 +355,8 @@ export class Room extends DurableObject<Env> {
    */
   private async nextGame(): Promise<void> {
     const room = this.room!;
+    // 終わった対局を通算に入れてから捨てる（host を入れ替える前に、勝った席を人に直す）
+    room.record = tallyOf(room);
     room.game = createGame(room.game.rules);
     room.tokens = [room.tokens[1], room.tokens[0]];
     room.host = other(room.host);
@@ -381,6 +412,7 @@ export class Room extends DurableObject<Env> {
         view: viewFor(room.game, you),
         opponent: { joined: room.tokens[opp] !== null, online: online[opp], left: room.left?.[opp] ?? false },
         rematch: phase === "finished" ? { you: room.rematch?.[you] ?? "none", opponent: room.rematch?.[opp] ?? "none" } : null,
+        record: recordFor(room, you),
         clock,
       };
       send(ws, msg);

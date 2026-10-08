@@ -177,8 +177,17 @@ export interface StateMessage {
   };
   /** 終局後の再戦の申し込みの状態（自分・相手）。終局していなければ null */
   rematch: { you: RematchStatus; opponent: RematchStatus } | null;
+  /** この部屋での通算の戦績（自分から見た数）。今の対局は終局してから数える。再戦で席が入れ替わっても人ごとに数える */
+  record: MatchRecord;
   /** 手番の制限時間。制限なし・対局中でない（待機中・終局）なら null */
   clock: TurnClockInfo | null;
+}
+
+/** 部屋での通算の戦績（勝ち・負け・引き分けの局数） */
+export interface MatchRecord {
+  wins: number;
+  losses: number;
+  draws: number;
 }
 
 /** none: 何もしていない / requested: 再戦を申し込んでいる / declined: 相手の申し込みを断った（次に誰かが申し込むまで） */
