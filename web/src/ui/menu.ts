@@ -1,4 +1,4 @@
-// メニュー画面: CPU対戦（強さを選ぶとそのまま始まる）・マルチ（この端末で 2 人・オンライン）・設定。
+// メニュー画面: CPU対戦（強さを選ぶとそのまま始まる）・マルチ（この端末で 2 人・オンライン）・遊び方（チュートリアル）・設定。
 // どの対局も設定メニューで保存したルール（変えなければ標準）で始まる。表示と入力だけで、対局は App が始める。
 
 import { CPU_LEVELS, type CpuLevel } from "../engine/cpu";
@@ -8,6 +8,8 @@ export interface MenuActions {
   cpu: (level: CpuLevel) => void;
   pvp: () => void;
   online: () => void;
+  /** 遊び方（チュートリアル）を前回の位置から始める */
+  learn: () => void;
   settings: () => void;
   rules: () => void;
   /** 対局中に開いたメニューから、その対局へ戻る */
@@ -22,6 +24,8 @@ export class Menu {
     note: byId("menu-note"),
     resume: byId("menu-resume"),
     online: byId("menu-online"),
+    learn: byId("menu-learn"),
+    learnState: byId("menu-learn-state"),
     ruleName: byId("menu-rule-name"),
     panels: { main: byId("menu-main"), levels: byId("menu-levels"), modes: byId("menu-modes") } as Record<Panel, HTMLElement>,
   };
@@ -29,6 +33,7 @@ export class Menu {
   constructor(act: MenuActions) {
     byId("menu-cpu").addEventListener("click", () => this.panel("levels"));
     byId("menu-multi").addEventListener("click", () => this.panel("modes"));
+    this.el.learn.addEventListener("click", () => act.learn());
     byId("menu-settings").addEventListener("click", () => act.settings());
     byId("menu-rule").addEventListener("click", () => act.rules());
     this.el.resume.addEventListener("click", () => act.resume());
@@ -88,6 +93,13 @@ export class Menu {
       el.textContent = ` ${text(level)}`;
       el.title = "1 手の制限時間";
     }
+  }
+
+  /** 「遊び方」に添える進み具合（例: 「はじめての方に」「つづき 4/10」）。fresh（まだ始めていない）なら目立たせる */
+  setLearnState(text: string, fresh: boolean) {
+    // 先頭の空白は読み上げで「遊び方」と区切るため（表示は改行するので見えない）
+    this.el.learnState.textContent = ` ${text}`;
+    this.el.learn.classList.toggle("fresh", fresh);
   }
 
   /** オンライン対戦の入口を出す（サーバーに届く公開先だけ） */

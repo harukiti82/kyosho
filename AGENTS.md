@@ -10,7 +10,7 @@
 ## 概要
 
 - 目的: ルールを詰め、人間の試遊で面白さを確かめる
-- 対象: 作者と試遊する人（ブラウザ版は起動時のメニューから CPU 対戦（強さ 3 段階）・マルチ（同じ端末での 2 人対戦・招待リンクでのオンライン対戦）。ルールは設定メニューで組み合わせて保存し、変えなければ標準）
+- 対象: 作者と試遊する人（ブラウザ版は起動時のメニューから CPU 対戦（強さ 3 段階）・マルチ（同じ端末での 2 人対戦・招待リンクでのオンライン対戦）・遊び方（盤で打ちながら標準ルールを覚えるチュートリアル）。ルールは設定メニューで組み合わせて保存し、変えなければ標準）
 - 状況: v0.4 は「難しい」「普通のオセロと変わらない」、v1.0 は「オセロじゃなくてもよくなって悪化」。読み合いを足すため「隠し王」（相手に見えない王）、戦略性を足すため「方向駒」（駒ごとに挟める方向が違う）、駒を置くリスクとリターンを足すため「端の駒の力」（挟んだ端の自分の駒の数字もダメージに足す。プリセット「拠点」）を設定項目とプリセットに追加した。ユーザーが遊び比べて選んだ組み合わせ（方向駒＋端の駒の力＋隠し王−30）をプリセット「標準」として既定にした。その後ユーザーの指定で王の指定期限を 7 手・回復を低い方−1 にし、体力は 2 手読み同士で先手勝率が 50% に最も近い 129・130 にした（経緯は RULES.md「Web 試遊版」節）（RULES.md 本文の改稿はまだ。ルールの決定はユーザーがする）
 - 手応え: 大ダメージほど段階的に派手な演出・効果音、終局画面の前に勝ち・負け・引き分けの決着の演出、終局画面に成績（ルール上のボーナスではない。`ui/impact.ts` / `ui/outcome.ts` / `ui/fx.ts` / `ui/sound.ts`）
 - 最重要要件: **ルールが一目で分かること**。ルールはいつでも 1 タップで見られる（設定から生成するルールカードは引き出しの「ルール — 名前」のタブ。見出しは常に表示、PC は開いて始め、スマホは閉じて始める）。盤では返せる駒とダメージ・回復の予測（マスのバッジと吹き出し）・返されうる駒の警告・普通のオセロなら置けるマスの点線の枠（参考）・方向駒のアイコン・端の駒の青枠とダメージの内訳で示す
@@ -42,10 +42,10 @@ kyosho/
 │   └── kyosho.py ほか    ← v0.4 のシミュレーター（履歴。ロジックは変更しない）
 └── web/
     ├── src/engine/   ← ルールエンジン（DOM に依存しない。RuleSet で全組み合わせを扱う。ここだけでゲームが完結する）
-    ├── src/ui/       ← 画面の表示と入力（app.ts: 対局画面（CPU・2 人・オンライン）と画面の切り替え / menu.ts: 起動時のメニュー / setup.ts: 設定メニュー（保存は localStorage） / online.ts: オンライン対戦の案内のダイアログ / query.ts: URL ⇔ 設定 / ruletext.ts: ルール文 / diricon.ts: 方向のアイコン / impact.ts: ダメージの段階と成績（DOM なし） / outcome.ts: 決着の演出の中身（DOM なし） / clock.ts: 1 手の制限時間の時計と既定（DOM なし） / fx.ts: 段階・決着の演出 / sound.ts: 効果音）
+    ├── src/ui/       ← 画面の表示と入力（app.ts: 対局画面（CPU・2 人・オンライン）と画面の切り替え / menu.ts: 起動時のメニュー / setup.ts: 設定メニュー（保存は localStorage） / online.ts: オンライン対戦の案内のダイアログ / query.ts: URL ⇔ 設定 / ruletext.ts: ルール文 / diricon.ts: 方向のアイコン / impact.ts: ダメージの段階と成績（DOM なし） / lessons.ts: 遊び方のステップ（局面・正解・誘導・ヒント・進み具合。DOM なし） / coach.ts: 遊び方のコーチ（目標・ヒント・次へ） / outcome.ts: 決着の演出の中身（DOM なし） / clock.ts: 1 手の制限時間の時計と既定（DOM なし） / fx.ts: 段階・決着の演出 / sound.ts: 効果音）
     ├── src/net/      ← オンライン対戦（protocol.ts: 通信仕様の型と定数。画面とサーバーが共通で import する / online.ts: 画面の通信層（HTTP・WebSocket・トークン・つなぎ直し。DOM なし））
     ├── test/         ← Vitest（engine・URL・ルール文のユニットテスト + Python 棋譜の再生テスト）
-    ├── e2e/          ← Playwright（ヘッドレスで実際に終局まで打つ。king.spec.ts / direction.spec.ts / anchor.spec.ts は種付き乱数の鏡の対局で隠し王・方向駒・拠点を確かめる。impact.spec.ts は段階の演出・効果音・成績、result.spec.ts は決着の演出、seat.spec.ts は CPU 対戦の手番の抽選、othello.spec.ts は普通のオセロなら置けるマスの枠、timer.spec.ts は 1 手の制限時間（page.clock で時間を進める）、online-hidden.spec.ts は /api がない公開先で入口を出さないこと、menu.spec.ts はメニューからの開始・CPU の強さ・設定の保存と反映。e2e/online/ はサーバーを起こして 2 つのブラウザで対局する（`npm run e2e:online`））
+    ├── e2e/          ← Playwright（ヘッドレスで実際に終局まで打つ。king.spec.ts / direction.spec.ts / anchor.spec.ts は種付き乱数の鏡の対局で隠し王・方向駒・拠点を確かめる。impact.spec.ts は段階の演出・効果音・成績、result.spec.ts は決着の演出、seat.spec.ts は CPU 対戦の手番の抽選、othello.spec.ts は普通のオセロなら置けるマスの枠、timer.spec.ts は 1 手の制限時間（page.clock で時間を進める）、online-hidden.spec.ts は /api がない公開先で入口を出さないこと、menu.spec.ts はメニューからの開始・CPU の強さ・設定の保存と反映、tutorial.spec.ts は遊び方の全ステップ（違う手のヒント・正解）と実戦・再開・localStorage なし・CPU と時計が割り込まないこと。e2e/online/ はサーバーを起こして 2 つのブラウザで対局する（`npm run e2e:online`））
     ├── scripts/      ← バランス確認（balance.ts を Vite の runnerImport で Node 実行。`npm run balance`）
     └── screenshots/  ← e2e が保存するスクリーンショット
 server/               ← 画面（web/dist の静的アセット）と /api（オンライン対戦）を同じオリジンで配信する 1 つの Worker（設定 wrangler.jsonc、Worker の入口 src/index.ts、1 部屋 = 1 Durable Object の src/room.ts、入力検証 src/validate.ts、Workers 上のテスト test/、2 クライアントで 1 局を通す scripts/play.mjs）
@@ -65,6 +65,7 @@ server/               ← 画面（web/dist の静的アセット）と /api（�
 - API と WebSocket は画面と同じオリジンの `/api` の下（`protocol.ts` の `API_PATH`。変えたら `server/wrangler.jsonc` の `assets.run_worker_first` も）。画面はサーバーの URL を持たず絶対パスで呼ぶ。サーバーは同一オリジン（＋ `ALLOWED_ORIGINS`、本番は `https://kyosho.rukiharukichi.com`）だけを受け、CORS のヘッダーは返さない。静的アセットへのリクエストで Worker・Durable Object を起こさない
 - 画面の流れは「メニュー（`ui/menu.ts`）→ 対局」。対局前に設定メニューを挟まない。ルールの優先は URL のクエリ（共有された URL。保存は書き換えない）＞ 設定メニューで保存した設定（localStorage `kyosho:settings`。`ui/setup.ts` の `loadSaved` が検証し、読めなければ標準）＞ 既定（`DEFAULT_PRESET`）。招待リンク（`?room=`）はメニューを出さず部屋へ
 - 1 手の制限時間はルール（`RuleSet`）に入れない（URL・`QUERY_BASE`・`PRESETS` に載せない）。対局の設定 `PlaySettings.turnSeconds`（秒、0 は制限なし）で、設定メニューの `Saved.timeCpu`（`auto` = 強さに合わせる `CPU_TURN_SECONDS`: イージー 0・ノーマル 45・ハード 20）・`timeMulti`（既定 45）から決める。選択肢は `net/protocol.ts` の `TURN_SECONDS`。時間切れの手は engine の `playTimeout(state, rng)`（置ける手から一様に 1 つ、棋譜の手に `timeout: true`、王はルールどおりの自動指定だけ）。画面の時計は `ui/clock.ts` の `TurnClock`（`Date.now` の差で数える）を `App.syncClock` が描き直しのたびに合わせ、操作できる手番だけ進める（演出 `fxLock`・決着の演出・メニュー・CPU の手番では止める）。乱数は `cryptoRandom`（`Math.random` は使わない）。オンラインはサーバー（`server/src/room.ts`）が締め切りの alarm で打ち、画面は `state.clock` を見せるだけ（`.agent/online-protocol.md`「1 手の制限時間」）。e2e は `page.clock` で時間を進め、オンラインは `TEST_TURN_SECONDS` の短い秒数を使う
+- 遊び方（チュートリアル）のステップは `ui/lessons.ts` の `LESSONS`（DOM なし）。局面は engine の `gameFrom(rules, position)` で作り、ダメージ・回復・王の罰・予測はエンジンの `playMove` / `previewMove` の結果（棋譜の `MoveEvent`）を文にする（チュートリアル側で計算し直さない）。ステップのルールは標準から習っていない要素を外したもの、最後の実戦は標準・CPU イージー・制限時間なし。画面は `App.lesson`（`openLesson` / `inStep`）: ステップ中は CPU・制限時間・トーストを止め、違う手は打たずに `judgeMove` / `illegalHint` のヒントをコーチ（`ui/coach.ts`、`#coach`）に出し、正解なら `solved` で盤を止めて `done` の 1 文と「次へ」。誘導は盤の `.cell.guide`（`.guide-ring` / 1 マスなら `.guide-arrow`）と駒台・王の駒の `.guide`（`nextNeed`）。決着の演出は体力 0 の手だけで、終局画面は出さない。進み具合は localStorage `kyosho:tutorial`（`loadProgress` が検証し、読めなければ「はじめて」）。標準の値を変えたら `test/lesson.test.ts`（局面・文）と `e2e/tutorial.spec.ts` を確かめる
 - CPU の強さは `engine/cpu.ts` の `chooseMove(view, level, rng)`（`CpuLevel` = easy / normal / hard。`PlaySettings.level`）。ノーマルは `chooseLookahead` と同じ手（sim と全手一致させる候補手・e2e の鏡の対局はこれを使う）。強さを変えたら `npm run balance -- vs 400 std normal hard` などで勝率を測り、`test/level.test.ts` の下限を確かめる
 - `src/ui/` で `Math.random` を使わない（CPU の乱数と共有で、e2e は Math.random を種付きにして CPU の手を再現する。CPU に打たせる e2e は `e2e/helpers.ts` の `seedPage` で種を固定する。種がないと終局の形が実行ごとに変わり、ときどき落ちる）。CPU 対戦の手番の抽選（「ランダム」）は `ui/setup.ts` の `drawSeat`（既定は `crypto.getRandomValues`。e2e `seat.spec.ts` は crypto を差し替える）で、`App.start` が対局を始めるたびに引く（`PlaySettings.randomSeat`）。効果音の AudioContext は最初のユーザー操作の後にだけ作る
 
@@ -86,6 +87,7 @@ server/               ← 画面（web/dist の静的アセット）と /api（�
 
 ## ルール・設定項目を変えるとき
 
+- 標準（`std`）の値を変える: `PRESETS` と RULES.md に加え、遊び方の局面・文（`ui/lessons.ts`。`npm test` の `test/lesson.test.ts` が確かめる）
 - 既定を変える: `web/src/engine/rules.ts` の `DEFAULT_PRESET` だけ（`ui/query.ts` の `QUERY_BASE` は変えない。変えると共有済みの URL の意味が変わる）
 - プリセットの値を変える: `web/src/engine/rules.ts` の `PRESETS` と `RULES.md` の「Web 試遊版」節。v0.4 / v1.0 / v2 案は対応するシミュレーターの `Rules`（`sim/export_replays.py` が渡す値）も揃える
 - 設定項目を足す: `RuleSet`（`engine/rules.ts`）→ エンジン（`board.ts` / `game.ts` / `cpu.ts`）→ `ui/query.ts`（URL の検証）→ `ui/ruletext.ts`（ルールカード・詳細の文）→ `index.html` の設定フォームと `ui/setup.ts`
@@ -96,7 +98,7 @@ server/               ← 画面（web/dist の静的アセット）と /api（�
 
 - ルール: `RULES.md`（必要時に Read）
 - オンライン対戦の通信仕様と設計（エンドポイント・メッセージ・流れ・エラー・再接続）: `.agent/online-protocol.md`（必要時に Read）
-- エンジンの公開関数: `web/src/engine/game.ts`（`createGame(rules)` / `playMove(state, r, c, kind, { king })` / 時間切れの `randomMove` / `playTimeout(state, rng)` / `legalCells` / `playableKinds` / `previewMove`（`base` / `anchors` で内訳） / `threatenedPieces` / `canMove` / `judge` / 隠し王の `kingInfo` / `kingCandidates` / `viewFor`）と `cpu.ts`（`chooseLookahead(viewFor(state, turn))`）。返せる列は `board.ts` の `rawLines`（8 方向。反対端の自駒 `end` / `endAt` を持つ）→ `pieceLines`（駒の方向 `dirs` と強さ制限で絞る）。設定の型とプリセットは `rules.ts`（`RuleSet`（`dirs` / `values` / `anchor` を含む） / `PRESETS` / `NO_KING` / `KIND_ORDER` / `kindsByValue`）
+- エンジンの公開関数: `web/src/engine/game.ts`（`createGame(rules)` / 指定した局面から始める `gameFrom(rules, position)`（チュートリアル） / `playMove(state, r, c, kind, { king })` / 時間切れの `randomMove` / `playTimeout(state, rng)` / `legalCells` / `playableKinds` / `previewMove`（`base` / `anchors` で内訳） / `threatenedPieces` / `canMove` / `judge` / 隠し王の `kingInfo` / `kingCandidates` / `viewFor`）と `cpu.ts`（`chooseLookahead(viewFor(state, turn))`）。返せる列は `board.ts` の `rawLines`（8 方向。反対端の自駒 `end` / `endAt` を持つ）→ `pieceLines`（駒の方向 `dirs` と強さ制限で絞る）。設定の型とプリセットは `rules.ts`（`RuleSet`（`dirs` / `values` / `anchor` を含む） / `PRESETS` / `NO_KING` / `KIND_ORDER` / `kindsByValue`）
 
 ### 作業履歴メモ（毎ターン参照・更新）
 

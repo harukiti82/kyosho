@@ -140,13 +140,13 @@ describe("チュートリアルの各ステップ", () => {
     expect(lesson("flank").done(m, g)).toBe("相手の歩 2 つを挟んで、自分の駒に裏返した。");
   });
 
-  it("ダメージ: 正解は 6 ダメージで白の体力が 0 になって勝ち。もう一方は 2 ダメージでヒント", () => {
+  it("ダメージ: 正解は 6 ダメージで相手の体力が 0 になって勝ち。もう一方は 2 ダメージでヒント", () => {
     const l = lesson("damage");
     const { g, next, m } = solve(l);
     expect(g.hp[1]).toBe(6);
     expect(m.damage).toBe(6);
     expect(next.result).toEqual({ winner: 0, reason: "ko", byDiscs: false });
-    expect(l.done(m, g)).toBe("歩1＋金5で 6 ダメージ。白の体力が 0 になって勝ち。");
+    expect(l.done(m, g)).toBe("歩1＋金5で 6 ダメージ。相手の体力が 0 になって勝ち。");
     expect(judgeMove(l, g, { r: 4, c: 1, kind: "fu", king: false })).toBe("そこは 2 ダメージ。マスに触れると、置く前に数字が出る。");
   });
 
@@ -210,14 +210,14 @@ describe("チュートリアルの各ステップ", () => {
     expect(l.goal).toContain("最初の 7 手");
   });
 
-  it("王を返す: 「?」の金が白の王で、返すと 6 ダメージ＋体力−30", () => {
+  it("王を返す: 「?」の金が相手の王で、返すと 6 ダメージ＋体力−30", () => {
     const l = lesson("kingHit");
     const { g, next, m } = solve(l);
     expect(l.marks?.map((x) => cellName(...x.at))).toEqual(["c7"]);
     expect(kingInfo(g, 0).status).toBe("hidden");
     expect(m.king).toMatchObject({ r: 6, c: 2, kind: "kin", penalty: 30, lose: false });
     expect(next.hp[1]).toBe(g.hp[1] - m.damage - 30);
-    expect(l.done(m, g)).toBe("白の王を返して、6 ダメージに −30 が上乗せされた。");
+    expect(l.done(m, g)).toBe("相手の王を返して、6 ダメージに −30 が上乗せされた。");
     expect(l.goal).toContain("体力−30");
   });
 

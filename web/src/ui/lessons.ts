@@ -108,7 +108,7 @@ export const LESSONS: readonly Lesson[] = [
   {
     id: "damage",
     title: "ダメージ",
-    goal: "挟んだ駒の数字の合計が、相手へのダメージになる。白の残り体力 6 を削り切れるマスに置こう。",
+    goal: "挟んだ駒の数字の合計が、相手へのダメージになる。相手の残り体力 6 を削り切れるマスに置こう。",
     rules: rulesWith({}),
     start() {
       return gameFrom(this.rules, {
@@ -123,7 +123,7 @@ export const LESSONS: readonly Lesson[] = [
       const pv = previewMove(g, m.r, m.c, m.kind);
       return pv ? `そこは ${pv.damage} ダメージ。マスに触れると、置く前に数字が出る。` : pickHint;
     },
-    done: (m, g) => `${targetsText(g, m)}で ${m.damage} ダメージ。白の体力が 0 になって勝ち。`,
+    done: (m, g) => `${targetsText(g, m)}で ${m.damage} ダメージ。相手の体力が 0 になって勝ち。`,
   },
   {
     id: "dirs",
@@ -220,7 +220,7 @@ export const LESSONS: readonly Lesson[] = [
   {
     id: "kingHit",
     title: "王を返す",
-    goal: `相手の王はふつう見えないが、ここでは「?」の駒が白の王。挟んで返すと、ダメージに加えて${kingPenaltyText(STD)}。`,
+    goal: `相手の王はふつう見えないが、ここでは「?」の駒が相手の王。挟んで返すと、ダメージに加えて${kingPenaltyText(STD)}。`,
     rules: std(),
     start() {
       return gameFrom(this.rules, {
@@ -231,9 +231,9 @@ export const LESSONS: readonly Lesson[] = [
     },
     answers: [{ at: parseCell("c6"), kind: "fu" }],
     guide: cells("c6"),
-    marks: [{ at: parseCell("c7"), text: "?", label: "白の王" }],
+    marks: [{ at: parseCell("c7"), text: "?", label: "相手の王" }],
     hint: () => "光っているマスに置いて、「?」の駒を挟もう。",
-    done: (m) => `白の王を返して、${m.damage} ダメージに −${m.king?.penalty ?? 0} が上乗せされた。`,
+    done: (m) => `相手の王を返して、${m.damage} ダメージに −${m.king?.penalty ?? 0} が上乗せされた。`,
   },
   {
     id: "read",
