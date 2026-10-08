@@ -7,7 +7,7 @@ import { createGame, viewFor } from "../src/engine/game";
 import { defaultRules, PIECES, presetById, type RuleSet } from "../src/engine/rules";
 import { encodeRules } from "../src/ui/query";
 import { ruleLines, sentenceText } from "../src/ui/ruletext";
-import { cellAt, draws, noHorizontalScroll, openSettings, rng, saveSettings, seedPage, startGame, stubDraws } from "./helpers";
+import { cellAt, draws, noHorizontalScroll, openSettings, rng, saveSettings, seedPage, skipToss, startGame, stubDraws } from "./helpers";
 
 const SHOT = "screenshots";
 const prefix = (page: Page) => ((page.viewportSize()?.width ?? 1280) < 600 ? "sp" : "pc");
@@ -48,7 +48,7 @@ test("開くとメニュー。CPU対戦 → 強さを選ぶと、設定画面を
   await expect(page.locator("#game")).toBeVisible();
   await ruleCardIs(page, defaultRules());
   await expect(page.locator("#rules4-name")).toHaveText("ルール 標準");
-  await expect(page.locator("#toast")).toHaveText("抽選で先手になりました");
+  await skipToss(page, 0);
   expect(await draws(page)).toBe(1);
   await expect(page.locator("#player-1")).toContainText("CPU");
   await expect(page.locator(".board.acting")).toBeVisible();
@@ -65,7 +65,7 @@ test("設定を保存していなければ CPU 対戦の手番は対局ごとに
   await page.locator("#setup-cancel").click();
   await page.locator("#menu-cpu").click();
   await page.locator("#menu-levels [data-level=normal]").click();
-  await expect(page.locator("#toast")).toHaveText("抽選で後手になりました");
+  await skipToss(page, 1);
   await expect(page.locator("#player-1")).toContainText("あなた");
   await expect(page.locator("#log .log-item.move")).toHaveCount(1, { timeout: 10_000 });
   await expect(page.locator(".board.acting")).toBeVisible();
@@ -73,7 +73,7 @@ test("設定を保存していなければ CPU 対戦の手番は対局ごとに
   await page.locator("#btn-menu").click();
   await page.locator("#menu-cpu").click();
   await page.locator("#menu-levels [data-level=easy]").click();
-  await expect(page.locator("#toast")).toHaveText("抽選で先手になりました");
+  await skipToss(page, 0);
   await expect(page.locator("#player-0")).toContainText("あなた");
   await expect(page.locator("#log .log-item.move")).toHaveCount(0);
   expect(await draws(page)).toBe(2);

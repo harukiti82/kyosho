@@ -176,6 +176,23 @@ export class Sound {
     if (tier === "huge") this.tone({ freq: 90, to: 35, type: "sine", dur: 0.8, gain: 0.6 }, delay);
   }
 
+  /**
+   * 先手・後手の抽選の音。石を弾く高い音 → 回る風切り → landAt 秒後に盤に落ちる木の音（小さく 1 回跳ねる）→ 結果の 1 音。
+   * 動きを減らす設定（landAt 0）では落ちる音と結果の音だけ
+   */
+  toss(landAt: number) {
+    if (this.muted) return;
+    if (landAt > 0) {
+      this.tone({ freq: 1400, to: 2100, type: "triangle", dur: 0.05, gain: 0.16 });
+      this.noise(0.04, 0.12, 4200);
+      this.noise(landAt * 0.8, 0.05, 900, 0.05);
+    }
+    this.tone({ freq: 320, to: 140, type: "triangle", dur: 0.1, gain: 0.35 }, landAt);
+    this.noise(0.05, 0.16, 1800, landAt);
+    if (landAt > 0) this.tone({ freq: 300, to: 150, type: "triangle", dur: 0.06, gain: 0.14 }, landAt + 0.09);
+    this.tone({ freq: 784, type: "sine", dur: 0.4, gain: 0.12 }, landAt + 0.12);
+  }
+
   /** 決着の音。win: 短いファンファーレ / lose: 低く短い下降音 / draw: 落ち着いた 2 音 */
   finale(kind: OutcomeKind) {
     if (this.muted) return;

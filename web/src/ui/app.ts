@@ -61,7 +61,7 @@ import { TURN_SECONDS, type ErrorMessage, type MatchRecord, type RematchAction, 
 import { dirIcon } from "./diricon";
 import { clockLevel, clockText, cpuTurnSeconds, turnSecondsText, TurnClock } from "./clock";
 import { byId, h } from "./dom";
-import { finaleMs, Fx, fxTiming, speakerIcon, type FxTiming } from "./fx";
+import { finaleMs, Fx, fxTiming, speakerIcon, TOSS_LAND_MS, tossMs, type FxTiming } from "./fx";
 import { OnlineDialog } from "./online";
 import { hitOf, shownHp, statsOf, tierOf, tierText, type HitBreakdown, type PlayerStats, type Tier } from "./impact";
 import { flipRecord, outcomeOf, recordText, type Outcome } from "./outcome";
@@ -135,6 +135,9 @@ export class App {
   /** 決着の演出中の対局（終われば終局画面を出す）。演出中でなければ null */
   private finale: GameState | null = null;
   private finaleTimer: number | undefined;
+  /** 先手・後手の抽選の演出中（終われば対局を動かす） */
+  private tossing = false;
+  private tossTimer: number | undefined;
   /** トースト通知済みのイベント数 */
   private seenEvents = 0;
   /** 取った・減ったのアニメーションを再生する手数（新しい手の直後の描画だけ） */
@@ -395,25 +398,28 @@ export class App {
       this.tickClock();
     });
     window.addEventListener("online", () => this.net?.wake());
-    // 決着の演出は Enter / Esc（押した時）・スペース（離した時。ボタンの起動と同じ）で飛ばす。
+    // 決着の演出・抽選の演出は Enter / Esc（押した時）・スペース（離した時。ボタンの起動と同じ）で飛ばす。
     // 下のボタンが一緒に反応しないよう、演出中のこれらのキーは既定の動作を止める
+    const skip = () => (this.finale ? () => this.endFinale() : this.tossing ? () => this.endToss() : null);
     document.addEventListener(
       "keydown",
       (e) => {
-        if (!this.finale || !["Enter", "Escape", " "].includes(e.key)) return;
+        const end = skip();
+        if (!end || !["Enter", "Escape", " "].includes(e.key)) return;
         e.preventDefault();
         e.stopPropagation();
-        if (e.key !== " " && !e.repeat) this.endFinale();
+        if (e.key !== " " && !e.repeat) end();
       },
       true,
     );
     document.addEventListener(
       "keyup",
       (e) => {
-        if (!this.finale || e.key !== " ") return;
+        const end = skip();
+        if (!end || e.key !== " ") return;
         e.preventDefault();
         e.stopPropagation();
-        this.endFinale();
+        end();
       },
       true,
     );
@@ -444,7 +450,8 @@ export class App {
     this.renderLegend(settings.rules);
     this.showCoach();
     this.afterChange();
-    if (drawn) this.showToast(`抽選で${PLAYER_NAME[settings.human]}になりました`);
+    // 抽選の結果は石を投げる演出で見せる（終わるまで盤・CPU・時計を止める）
+    if (drawn) this.playToss(settings.human);
   }
 
   /** 対局の途中の状態（タイマー・演出・選択）を捨てる */
@@ -453,10 +460,12 @@ export class App {
     window.clearTimeout(this.resultTimer);
     window.clearTimeout(this.fxTimer);
     window.clearTimeout(this.finaleTimer);
+    window.clearTimeout(this.tossTimer);
     window.clearTimeout(this.clockTimer);
     this.clock.clear();
     this.fxLock = false;
     this.finale = null;
+    this.tossing = false;
     this.fx.clear();
     this.hideToast();
     document.querySelectorAll(".flyer").forEach((f) => f.remove());
@@ -775,6 +784,8 @@ export class App {
 
   /** メニューを出す。対局は止めて残し、「対局に戻る」で続ける（新しい対局を始めたら捨てる） */
   private showMenu() {
+    // 抽選の演出は飛ばして結果のままにする（メニューの上に残さない）
+    this.endToss();
     window.clearTimeout(this.cpuTimer);
     window.clearTimeout(this.resultTimer);
     if (this.el.result.open) this.el.result.close();
@@ -955,6 +966,7 @@ export class App {
     this.room = { id: m.roomId, phase: m.phase, gameNo: m.gameNo, opponent: m.opponent, rematch: m.rematch, record: m.record };
     s.human = m.you;
     s.rules = m.view.rules;
+    const toss = !next && this.claimToss(m, prevRoom, first);
 
     if (next) {
       this.startNextGame(m);
@@ -962,18 +974,19 @@ export class App {
     }
 
     if (!first && !grew) {
-      this.notifyRoom(prevRoom, first);
+      this.notifyRoom(prevRoom, first, toss);
       // 局面は同じ（相手の接続・切断・復帰・自分の復帰・再戦の申し込み）
       if (!this.finale) this.render();
       this.renderResultActions();
       this.syncLobby();
+      if (toss) this.playToss(m.you);
       return;
     }
     // view は GameState から隠し王の真の状態（kings）を除いたもの。合法手・予測の関数は kings を読まないので、そのまま渡せる
     this.game = m.view as unknown as GameState;
     this.sending = false;
     this.kingOn = false;
-    this.notifyRoom(prevRoom, first);
+    this.notifyRoom(prevRoom, first, toss);
     if (first) {
       // 接続・再読み込み直後: 過去の手は演出しない。終局済みなら結果をそのまま出す
       this.seenEvents = m.view.history.length;
@@ -984,6 +997,7 @@ export class App {
       this.render();
       this.syncLobby();
       if (m.view.result) this.showResult(m.view.result);
+      else if (toss) this.playToss(m.you);
       return;
     }
     this.syncLobby();
@@ -1026,16 +1040,30 @@ export class App {
     }
   }
 
-  /** 相手の参加・切断・復帰を知らせる */
-  private notifyRoom(prev: App["room"], first: boolean) {
+  /**
+   * オンライン: 席を抽選した部屋の 1 局目が始まった（まだ手がない）ところを、このタブで初めて見たら true（抽選の演出を出す）。
+   * 見たことは sessionStorage に残し、再読み込みでは出し直さない。メニューを開いている間に始まったら出さない
+   */
+  private claimToss(m: StateMessage, prev: App["room"], first: boolean): boolean {
+    if (!m.seatDraw || m.phase !== "playing" || m.view.history.length > 0 || m.view.result) return false;
+    if (!first && prev?.phase !== "waiting") return false;
+    if (this.menu.visible) return false;
+    const key = `kyosho:toss:${m.roomId}`;
+    if (this.tokens.getItem(key)) return false;
+    this.tokens.setItem(key, "1");
+    return true;
+  }
+
+  /** 相手の参加・切断・復帰を知らせる。toss（抽選の演出を出す）なら、手番は演出で見せるので知らせに書かない */
+  private notifyRoom(prev: App["room"], first: boolean, toss = false) {
     const now = this.room!;
-    const me = PLAYER_NAME[this.settings!.human];
+    const seat = toss ? "" : `　あなたは${PLAYER_NAME[this.settings!.human]}`;
     if (first || !prev) {
       // 招待リンクから参加した人
-      if (now.phase === "playing" && this.game?.ply === 0) this.showToast(`対局開始　あなたは${me}`);
+      if (now.phase === "playing" && this.game?.ply === 0 && !toss) this.showToast(`対局開始${seat}`);
       return;
     }
-    if (prev.phase === "waiting" && now.phase === "playing") this.showToast(`相手が参加しました　あなたは${me}`);
+    if (prev.phase === "waiting" && now.phase === "playing") this.showToast(`相手が参加しました${seat}`);
     else if (now.phase === "playing" && prev.opponent.online && !now.opponent.online) this.showToast("相手の接続が切れました");
     else if (now.phase === "playing" && !prev.opponent.online && now.opponent.online) this.showToast("相手が戻りました");
     else if (now.phase === "finished" && prev.phase === "finished") {
@@ -1692,6 +1720,9 @@ export class App {
     if (this.lesson?.solved) {
       // 遊び方のステップは小さな局面なので、正解の後にどちらも打てず終局することがある。終局とは言わない
       text = "クリア";
+    } else if (this.tossing && this.settings) {
+      // 抽選の演出中（#fx は読み上げないので、結果はここで伝える）
+      text = `抽選で${PLAYER_NAME[this.settings.human]}`;
     } else if (g.result) {
       text = `終局 ${this.resultHeadline(g.result)}・${this.reasonShort(g)}`;
     } else if (this.online && this.room?.phase === "waiting") {
@@ -2089,6 +2120,37 @@ export class App {
     this.fx.finale({ outcome: o, reduce, onSkip: () => this.endFinale() });
     this.sound.finale(o.kind);
     this.finaleTimer = window.setTimeout(() => this.endFinale(), finaleMs(reduce));
+  }
+
+  /**
+   * 先手・後手の抽選の演出（盤の石を投げ、上を向いた色が me の手番）。CPU 対戦の「ランダム」と、オンラインで席を抽選した部屋の 1 局目。
+   * 演出の間は fxLock で盤・CPU・時計を止め、終わってから（タップ・Enter で飛ばしても）対局を動かす
+   */
+  private playToss(me: Player) {
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    window.clearTimeout(this.cpuTimer);
+    window.clearTimeout(this.tossTimer);
+    this.tossing = true;
+    this.fxLock = true;
+    this.render();
+    this.fx.toss({ up: me, who: "あなた", title: PLAYER_NAME[me], reduce, onSkip: () => this.endToss() });
+    this.sound.toss(reduce ? 0 : TOSS_LAND_MS / 1000);
+    this.tossTimer = window.setTimeout(() => this.endToss(), tossMs(reduce));
+  }
+
+  private endToss() {
+    if (!this.tossing) return;
+    this.tossing = false;
+    this.fxLock = false;
+    window.clearTimeout(this.tossTimer);
+    this.fx.endToss();
+    if (!this.game) return;
+    this.render();
+    this.scheduleCpu(CPU_DELAY_MS);
+    // 演出の間に届いた相手の手を反映する（オンライン）
+    const q = this.queued;
+    this.queued = null;
+    if (q) this.onState(q);
   }
 
   private endFinale() {

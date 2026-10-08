@@ -17,6 +17,7 @@ import {
   PING_TEXT,
   PONG_TEXT,
   ROOM_TTL_MS,
+  TOSS_GRACE_MS,
   TURN_GRACE_MS,
   type CreateRoomResponse,
   type HostSeat,
@@ -40,6 +41,8 @@ export interface RoomRecord {
   tokens: [string | null, string | null];
   /** 作成者の席 */
   host: Player;
+  /** 作成者の席を抽選で決めた（hostSeat: random）。抽選の入る前に作った部屋にはない（= false） */
+  drawn?: boolean;
   game: GameState;
   /** 1 手ごとの制限時間（ミリ秒。0 は制限なし）。制限時間の入る前に作った部屋にはない（= 0） */
   turnMs?: number;
@@ -122,7 +125,16 @@ export class Room extends DurableObject<Env> {
     const token = randomId(32);
     const tokens: [string | null, string | null] = [null, null];
     tokens[host] = token;
-    this.room = { roomId, createdAt: Date.now(), tokens, host, game: createGame(rules), turnMs: turnSeconds * 1000, deadline: null };
+    this.room = {
+      roomId,
+      createdAt: Date.now(),
+      tokens,
+      host,
+      drawn: hostSeat === "random",
+      game: createGame(rules),
+      turnMs: turnSeconds * 1000,
+      deadline: null,
+    };
     await this.save();
     return { roomId, token, you: host };
   }
@@ -227,11 +239,20 @@ export class Room extends DurableObject<Env> {
     await this.ctx.storage.setAlarm(Date.now() + (this.phase() === "finished" ? FINISHED_TTL_MS : ROOM_TTL_MS));
   }
 
-  /** 手番が変わった（対局が始まった・手が打たれた）。制限時間があり対局中なら締め切りを今から数え直す */
-  private restartClock(): void {
+  /**
+   * 手番が変わった（対局が始まった・手が打たれた）。制限時間があり対局中なら締め切りを今から数え直す。
+   * extraMs は締め切りに足す時間（抽選の演出の間）
+   */
+  private restartClock(extraMs = 0): void {
     const room = this.room!;
     const turnMs = room.turnMs ?? 0;
-    room.deadline = turnMs > 0 && this.phase() === "playing" ? Date.now() + turnMs + TURN_GRACE_MS : null;
+    room.deadline = turnMs > 0 && this.phase() === "playing" ? Date.now() + turnMs + TURN_GRACE_MS + extraMs : null;
+  }
+
+  /** 今の対局の先手・後手を抽選で決めたか（再戦では入れ替えなので false） */
+  private seatDraw(): boolean {
+    const room = this.room!;
+    return room.drawn === true && (room.gameNo ?? 1) === 1;
   }
 
   /** 締め切りを過ぎた手番の人の手を、置ける手から自動で 1 手打つ（棋譜に timeout の印） */
@@ -271,8 +292,8 @@ export class Room extends DurableObject<Env> {
       player = seat as Player;
       mine = randomId(32);
       room.tokens[player] = mine;
-      // 2 人目が入って対局が始まった。先手の時計を動かす
-      this.restartClock();
+      // 2 人目が入って対局が始まった。先手の時計を動かす（抽選なら、画面が演出を見せる間を足す）
+      this.restartClock(this.seatDraw() ? TOSS_GRACE_MS : 0);
     }
     // 同じ席の古い接続（再読み込み前のタブなど）は閉じる
     for (const old of this.ctx.getWebSockets()) {
@@ -414,6 +435,7 @@ export class Room extends DurableObject<Env> {
         rematch: phase === "finished" ? { you: room.rematch?.[you] ?? "none", opponent: room.rematch?.[opp] ?? "none" } : null,
         record: recordFor(room, you),
         clock,
+        seatDraw: this.seatDraw(),
       };
       send(ws, msg);
     }

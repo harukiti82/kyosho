@@ -40,6 +40,11 @@ export type TurnSeconds = (typeof TURN_SECONDS)[number];
  * 通信の遅れもあるので、サーバーの締め切りは「手番が来た時刻 + 制限時間 + 猶予」にする
  */
 export const TURN_GRACE_MS = 1500;
+/**
+ * 先手・後手を抽選で決めた部屋（hostSeat: random）の 1 局目で、先手の最初の締め切りに足す時間（ミリ秒）。
+ * 画面は対局の始めに抽選の演出（石を投げる。ui/fx.ts の tossMs、最大 1.9 秒）を出し、その間は時計を止めて見せる
+ */
+export const TOSS_GRACE_MS = 2000;
 
 // ---- HTTP ----
 
@@ -181,6 +186,11 @@ export interface StateMessage {
   record: MatchRecord;
   /** 手番の制限時間。制限なし・対局中でない（待機中・終局）なら null */
   clock: TurnClockInfo | null;
+  /**
+   * この対局の先手・後手を抽選で決めた（作成者の hostSeat が random の部屋の 1 局目）。画面は手が 0 のときに抽選の演出を出す。
+   * 再戦（先手と後手の入れ替え）と、作成者が手番を指定した部屋では false
+   */
+  seatDraw: boolean;
 }
 
 /** 部屋での通算の戦績（勝ち・負け・引き分けの局数） */

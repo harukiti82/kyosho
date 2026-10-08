@@ -107,6 +107,7 @@ function stateMsg(over: Partial<StateMessage> = {}): StateMessage {
     rematch: null,
     record: { wins: 0, losses: 0, draws: 0 },
     clock: null,
+    seatDraw: false,
     ...over,
   };
 }

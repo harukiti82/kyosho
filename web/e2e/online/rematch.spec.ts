@@ -102,6 +102,9 @@ test("申し込む → 断る → もう一度申し込む（二重押しは 1 �
   }
   await expect(guest.page.locator("#toast")).toHaveText("再戦開始　あなたは先手");
   await expect(host.page.locator("#toast")).toHaveText("再戦開始　あなたは後手");
+  // 再戦は抽選でなく入れ替えなので、抽選の演出は出さない
+  await expect(guest.page.locator(".fx-toss")).toHaveCount(0);
+  await expect(host.page.locator(".fx-toss")).toHaveCount(0);
   // 自分は下の名札のまま（作成者は後手の席）。新しい先手（参加者）が操作でき、同じ制限時間の時計が先手の名札に出る
   await expect(host.page.locator("#seat-bottom #player-1")).toHaveCount(1);
   await expect(guest.page.locator("#seat-bottom #player-0")).toHaveCount(1);
