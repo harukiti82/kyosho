@@ -3,7 +3,7 @@
 import { SIZE } from "../../web/src/engine/board";
 import { cloneRules, PIECES, PRESETS, sameRules, type PieceKind, type RuleSet } from "../../web/src/engine/rules";
 import type { ClientMessage, HostSeat, WsErrorCode } from "../../web/src/net/protocol";
-import { MAX_MESSAGE_BYTES, TOKEN_PATTERN } from "../../web/src/net/protocol";
+import { MAX_MESSAGE_BYTES, TOKEN_PATTERN, TURN_SECONDS } from "../../web/src/net/protocol";
 import { decodeRules, encodeRules } from "../../web/src/ui/query";
 
 const isObject = (x: unknown): x is Record<string, unknown> => typeof x === "object" && x !== null && !Array.isArray(x);
@@ -24,7 +24,11 @@ export function parseRules(x: unknown): RuleSet | null {
   }
 }
 
-export function parseCreate(x: unknown): { rules: RuleSet; hostSeat: HostSeat } | null {
+/**
+ * POST /api/rooms の本文。turnSeconds は TURN_SECONDS のどれか（省略は 0 = 制限なし）。
+ * testSeconds は e2e 用に追加で受ける秒数（wrangler dev の --var TEST_TURN_SECONDS。本番の設定にはない）
+ */
+export function parseCreate(x: unknown, testSeconds?: number): { rules: RuleSet; hostSeat: HostSeat; turnSeconds: number } | null {
   if (!isObject(x)) return null;
   // rules と preset はどちらか一方
   if ((x.rules === undefined) === (x.preset === undefined)) return null;
@@ -33,7 +37,10 @@ export function parseCreate(x: unknown): { rules: RuleSet; hostSeat: HostSeat } 
   if (!rules) return null;
   const seat = x.hostSeat ?? "random";
   if (seat !== "first" && seat !== "second" && seat !== "random") return null;
-  return { rules, hostSeat: seat };
+  const turnSeconds = x.turnSeconds === undefined ? 0 : x.turnSeconds;
+  const allowed: readonly unknown[] = testSeconds ? [...TURN_SECONDS, testSeconds] : TURN_SECONDS;
+  if (!allowed.includes(turnSeconds)) return null;
+  return { rules, hostSeat: seat, turnSeconds: turnSeconds as number };
 }
 
 export type Parsed = { ok: true; msg: ClientMessage } | { ok: false; code: WsErrorCode; message: string };
@@ -63,7 +70,10 @@ export function parseClientMessage(data: string | ArrayBuffer): Parsed {
       if (!isCoord(x.r) || !isCoord(x.c)) return bad(`r・c は 0〜${SIZE - 1} の整数です`);
       if (typeof x.kind !== "string" || !Object.hasOwn(PIECES, x.kind)) return bad("kind が駒の種類ではありません");
       if (x.king !== undefined && typeof x.king !== "boolean") return bad("king は true / false です");
-      return { ok: true, msg: { type: "move", r: x.r, c: x.c, kind: x.kind as PieceKind, king: x.king === true } };
+      if (x.seq !== undefined && (!Number.isInteger(x.seq) || (x.seq as number) < 0)) return bad("seq は 0 以上の整数です");
+      const msg: ClientMessage = { type: "move", r: x.r, c: x.c, kind: x.kind as PieceKind, king: x.king === true };
+      if (x.seq !== undefined) msg.seq = x.seq as number;
+      return { ok: true, msg };
     }
     default:
       return bad("type は join / move です");

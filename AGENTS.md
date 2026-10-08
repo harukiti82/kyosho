@@ -42,10 +42,10 @@ kyosho/
 │   └── kyosho.py ほか    ← v0.4 のシミュレーター（履歴。ロジックは変更しない）
 └── web/
     ├── src/engine/   ← ルールエンジン（DOM に依存しない。RuleSet で全組み合わせを扱う。ここだけでゲームが完結する）
-    ├── src/ui/       ← 画面の表示と入力（app.ts: 対局画面（CPU・2 人・オンライン）と画面の切り替え / menu.ts: 起動時のメニュー / setup.ts: 設定メニュー（保存は localStorage） / online.ts: オンライン対戦の案内のダイアログ / query.ts: URL ⇔ 設定 / ruletext.ts: ルール文 / diricon.ts: 方向のアイコン / impact.ts: ダメージの段階と成績（DOM なし） / outcome.ts: 決着の演出の中身（DOM なし） / fx.ts: 段階・決着の演出 / sound.ts: 効果音）
+    ├── src/ui/       ← 画面の表示と入力（app.ts: 対局画面（CPU・2 人・オンライン）と画面の切り替え / menu.ts: 起動時のメニュー / setup.ts: 設定メニュー（保存は localStorage） / online.ts: オンライン対戦の案内のダイアログ / query.ts: URL ⇔ 設定 / ruletext.ts: ルール文 / diricon.ts: 方向のアイコン / impact.ts: ダメージの段階と成績（DOM なし） / outcome.ts: 決着の演出の中身（DOM なし） / clock.ts: 1 手の制限時間の時計と既定（DOM なし） / fx.ts: 段階・決着の演出 / sound.ts: 効果音）
     ├── src/net/      ← オンライン対戦（protocol.ts: 通信仕様の型と定数。画面とサーバーが共通で import する / online.ts: 画面の通信層（HTTP・WebSocket・トークン・つなぎ直し。DOM なし））
     ├── test/         ← Vitest（engine・URL・ルール文のユニットテスト + Python 棋譜の再生テスト）
-    ├── e2e/          ← Playwright（ヘッドレスで実際に終局まで打つ。king.spec.ts / direction.spec.ts / anchor.spec.ts は種付き乱数の鏡の対局で隠し王・方向駒・拠点を確かめる。impact.spec.ts は段階の演出・効果音・成績、result.spec.ts は決着の演出、seat.spec.ts は CPU 対戦の手番の抽選、othello.spec.ts は普通のオセロなら置けるマスの枠、online-hidden.spec.ts は /api がない公開先で入口を出さないこと、menu.spec.ts はメニューからの開始・CPU の強さ・設定の保存と反映。e2e/online/ はサーバーを起こして 2 つのブラウザで対局する（`npm run e2e:online`））
+    ├── e2e/          ← Playwright（ヘッドレスで実際に終局まで打つ。king.spec.ts / direction.spec.ts / anchor.spec.ts は種付き乱数の鏡の対局で隠し王・方向駒・拠点を確かめる。impact.spec.ts は段階の演出・効果音・成績、result.spec.ts は決着の演出、seat.spec.ts は CPU 対戦の手番の抽選、othello.spec.ts は普通のオセロなら置けるマスの枠、timer.spec.ts は 1 手の制限時間（page.clock で時間を進める）、online-hidden.spec.ts は /api がない公開先で入口を出さないこと、menu.spec.ts はメニューからの開始・CPU の強さ・設定の保存と反映。e2e/online/ はサーバーを起こして 2 つのブラウザで対局する（`npm run e2e:online`））
     ├── scripts/      ← バランス確認（balance.ts を Vite の runnerImport で Node 実行。`npm run balance`）
     └── screenshots/  ← e2e が保存するスクリーンショット
 server/               ← 画面（web/dist の静的アセット）と /api（オンライン対戦）を同じオリジンで配信する 1 つの Worker（設定 wrangler.jsonc、Worker の入口 src/index.ts、1 部屋 = 1 Durable Object の src/room.ts、入力検証 src/validate.ts、Workers 上のテスト test/、2 クライアントで 1 局を通す scripts/play.mjs）
@@ -64,6 +64,7 @@ server/               ← 画面（web/dist の静的アセット）と /api（�
 - サーバーは engine をコピーせず `../web/src/engine` を import する。各プレイヤーには `viewFor(state, そのプレイヤー)` だけを送り、`GameState`（`kings` を含む）をそのまま送らない（`server/test/king.test.ts` が検査する）。通信の型を変えたら `web/src/net/protocol.ts` と `.agent/online-protocol.md` を揃える
 - API と WebSocket は画面と同じオリジンの `/api` の下（`protocol.ts` の `API_PATH`。変えたら `server/wrangler.jsonc` の `assets.run_worker_first` も）。画面はサーバーの URL を持たず絶対パスで呼ぶ。サーバーは同一オリジン（＋ `ALLOWED_ORIGINS`、本番は `https://kyosho.rukiharukichi.com`）だけを受け、CORS のヘッダーは返さない。静的アセットへのリクエストで Worker・Durable Object を起こさない
 - 画面の流れは「メニュー（`ui/menu.ts`）→ 対局」。対局前に設定メニューを挟まない。ルールの優先は URL のクエリ（共有された URL。保存は書き換えない）＞ 設定メニューで保存した設定（localStorage `kyosho:settings`。`ui/setup.ts` の `loadSaved` が検証し、読めなければ標準）＞ 既定（`DEFAULT_PRESET`）。招待リンク（`?room=`）はメニューを出さず部屋へ
+- 1 手の制限時間はルール（`RuleSet`）に入れない（URL・`QUERY_BASE`・`PRESETS` に載せない）。対局の設定 `PlaySettings.turnSeconds`（秒、0 は制限なし）で、設定メニューの `Saved.timeCpu`（`auto` = 強さに合わせる `CPU_TURN_SECONDS`: イージー 0・ノーマル 45・ハード 20）・`timeMulti`（既定 45）から決める。選択肢は `net/protocol.ts` の `TURN_SECONDS`。時間切れの手は engine の `playTimeout(state, rng)`（置ける手から一様に 1 つ、棋譜の手に `timeout: true`、王はルールどおりの自動指定だけ）。画面の時計は `ui/clock.ts` の `TurnClock`（`Date.now` の差で数える）を `App.syncClock` が描き直しのたびに合わせ、操作できる手番だけ進める（演出 `fxLock`・決着の演出・メニュー・CPU の手番では止める）。乱数は `cryptoRandom`（`Math.random` は使わない）。オンラインはサーバー（`server/src/room.ts`）が締め切りの alarm で打ち、画面は `state.clock` を見せるだけ（`.agent/online-protocol.md`「1 手の制限時間」）。e2e は `page.clock` で時間を進め、オンラインは `TEST_TURN_SECONDS` の短い秒数を使う
 - CPU の強さは `engine/cpu.ts` の `chooseMove(view, level, rng)`（`CpuLevel` = easy / normal / hard。`PlaySettings.level`）。ノーマルは `chooseLookahead` と同じ手（sim と全手一致させる候補手・e2e の鏡の対局はこれを使う）。強さを変えたら `npm run balance -- vs 400 std normal hard` などで勝率を測り、`test/level.test.ts` の下限を確かめる
 - `src/ui/` で `Math.random` を使わない（CPU の乱数と共有で、e2e は Math.random を種付きにして CPU の手を再現する。CPU に打たせる e2e は `e2e/helpers.ts` の `seedPage` で種を固定する。種がないと終局の形が実行ごとに変わり、ときどき落ちる）。CPU 対戦の手番の抽選（「ランダム」）は `ui/setup.ts` の `drawSeat`（既定は `crypto.getRandomValues`。e2e `seat.spec.ts` は crypto を差し替える）で、`App.start` が対局を始めるたびに引く（`PlaySettings.randomSeat`）。効果音の AudioContext は最初のユーザー操作の後にだけ作る
 
@@ -75,8 +76,8 @@ server/               ← 画面（web/dist の静的アセット）と /api（�
 | build | `cd web && npm run build`（`tsc --noEmit` 込み、`base: "./"`） |
 | typecheck | `cd web && npm run typecheck` |
 | test | `cd web && npm test` |
-| e2e | `cd web && npm run e2e`（ビルド → `vite preview :4179` を自動起動。`/api` なし） |
-| オンライン対戦の e2e | `cd web && npm run e2e:online`（ビルド → `wrangler dev :8790`（server/ の依存が要る）を自動起動し、2 つのブラウザコンテキストで対局。desktop / mobile） |
+| e2e | `cd web && npm run e2e`（ビルド → `vite preview :4179` を自動起動。`/api` なし。別の作業ツリーと並べるなら `E2E_PORT=4189`） |
+| オンライン対戦の e2e | `cd web && npm run e2e:online`（ビルド → `wrangler dev :8790`（server/ の依存が要る。`E2E_ONLINE_PORT` で変更可。`--var TEST_TURN_SECONDS:3` 付き）を自動起動し、2 つのブラウザコンテキストで対局。desktop / mobile） |
 | バランス確認 | `cd web && npm run balance -- 400 king`（2 手読み同士。方向駒は `400 dir`、拠点は `400 anchor`、標準は `400 std`。第 3 引数で体力 "先手,後手"）。CPU の強さ同士は `npm run balance -- vs 400 std easy normal`（先手・後手を 1 局ごとに入れ替え） |
 | 棋譜の再生成 | `python3 sim/export_replays.py`（v0.4 / v1.0 / v2 案、約 30 秒） |
 | 公開 | main への merge で自動デプロイ → https://harukiti82.github.io/kyosho/ （GitHub Pages、移行が済むまで残す）と Cloudflare https://kyosho.rukiharukichi.com/ （`deploy.yml`、Secret 登録後。手順は README「独自ドメイン（kyosho.rukiharukichi.com）」。ルートの rukiharukichi.com は使わない）。workflow は main 直 push せず PR 経由で変更 |
@@ -95,7 +96,7 @@ server/               ← 画面（web/dist の静的アセット）と /api（�
 
 - ルール: `RULES.md`（必要時に Read）
 - オンライン対戦の通信仕様と設計（エンドポイント・メッセージ・流れ・エラー・再接続）: `.agent/online-protocol.md`（必要時に Read）
-- エンジンの公開関数: `web/src/engine/game.ts`（`createGame(rules)` / `playMove(state, r, c, kind, { king })` / `legalCells` / `playableKinds` / `previewMove`（`base` / `anchors` で内訳） / `threatenedPieces` / `canMove` / `judge` / 隠し王の `kingInfo` / `kingCandidates` / `viewFor`）と `cpu.ts`（`chooseLookahead(viewFor(state, turn))`）。返せる列は `board.ts` の `rawLines`（8 方向。反対端の自駒 `end` / `endAt` を持つ）→ `pieceLines`（駒の方向 `dirs` と強さ制限で絞る）。設定の型とプリセットは `rules.ts`（`RuleSet`（`dirs` / `values` / `anchor` を含む） / `PRESETS` / `NO_KING` / `KIND_ORDER` / `kindsByValue`）
+- エンジンの公開関数: `web/src/engine/game.ts`（`createGame(rules)` / `playMove(state, r, c, kind, { king })` / 時間切れの `randomMove` / `playTimeout(state, rng)` / `legalCells` / `playableKinds` / `previewMove`（`base` / `anchors` で内訳） / `threatenedPieces` / `canMove` / `judge` / 隠し王の `kingInfo` / `kingCandidates` / `viewFor`）と `cpu.ts`（`chooseLookahead(viewFor(state, turn))`）。返せる列は `board.ts` の `rawLines`（8 方向。反対端の自駒 `end` / `endAt` を持つ）→ `pieceLines`（駒の方向 `dirs` と強さ制限で絞る）。設定の型とプリセットは `rules.ts`（`RuleSet`（`dirs` / `values` / `anchor` を含む） / `PRESETS` / `NO_KING` / `KIND_ORDER` / `kindsByValue`）
 
 ### 作業履歴メモ（毎ターン参照・更新）
 

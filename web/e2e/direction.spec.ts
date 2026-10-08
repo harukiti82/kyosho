@@ -216,7 +216,7 @@ test.describe("PC 幅", () => {
     expect(usedKinds.size).toBeGreaterThanOrEqual(4);
     await expect(page.locator("#result-winner")).toHaveText(s.result!.winner === 0 ? "あなたの勝ち" : "CPU の勝ち");
     await expect(page.locator("#result-detail")).toContainText("ルール 方向駒");
-    await expect(page.locator("#result-detail .score-foot")).toHaveText(`${s.ply} 手・ルール 方向駒・CPU ノーマル`);
+    await expect(page.locator("#result-detail .score-foot")).toHaveText(`${s.ply} 手・ルール 方向駒・CPU ノーマル・1 手 45 秒`);
     await page.screenshot({ path: `${SHOT}/pc-dir-result.png` });
     await page.locator("#result-view").click();
     await dirIconsMatch(page, s);

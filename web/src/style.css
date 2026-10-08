@@ -247,6 +247,14 @@ button {
   font-size: 1.05rem;
   letter-spacing: 0.06em;
 }
+/* 強さのボタンに添える、その強さでの 1 手の制限時間 */
+.menu-time {
+  margin-left: 0.6rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  color: var(--ink-dim);
+}
 .menu-back {
   margin-top: 0.3rem;
   padding: 0.55rem 1rem;
@@ -376,6 +384,61 @@ button {
 }
 .player-card:not(.active) .player-name {
   color: var(--ink-muted);
+}
+/* 1 手の制限時間: 手番の人の名札に出す対局時計（残りの割合の文字盤＋秒）。残りが少ないと琥珀、わずかで赤く脈打つ */
+.turn-clock {
+  --left: 1;
+  --clock: var(--ink);
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+  padding: 0.08rem 0.4rem 0.08rem 0.22rem;
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.6), 0 1px 0 rgba(255, 255, 255, 0.06);
+  color: var(--clock);
+  font-size: 0.82rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+.turn-clock.warn {
+  --clock: var(--amber);
+}
+.turn-clock.danger {
+  --clock: var(--danger);
+}
+.turn-clock.danger .clock-num {
+  animation: clock-beat 1s ease-in-out infinite;
+}
+/* 演出中・メニューを開いている間は止まっている */
+.turn-clock.paused {
+  opacity: 0.6;
+}
+.turn-clock.paused .clock-num {
+  animation: none;
+}
+.clock-dial {
+  width: 0.95rem;
+  height: 0.95rem;
+  border-radius: 50%;
+  background: conic-gradient(var(--clock) calc(var(--left) * 360deg), var(--surface-3) 0);
+  box-shadow: 0 0 0 1.5px var(--bg), 0 0 0 2.5px var(--clock);
+}
+.clock-num {
+  display: inline-block;
+  min-width: 1.4em;
+  text-align: right;
+}
+@keyframes clock-beat {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.18);
+  }
 }
 /* 王の状態: 王の駒の形とマス名 */
 .king-tag {
@@ -1714,6 +1777,10 @@ button {
 .log-item.king {
   color: #ff8a7f;
 }
+/* 時間切れで自動で打った手 */
+.log-item.timeout {
+  color: var(--amber);
+}
 .king-sub {
   display: grid;
   gap: 0.45rem;
@@ -2902,6 +2969,12 @@ button {
   to {
     transform: rotate(360deg);
   }
+}
+.online-time {
+  margin: 0;
+  font-size: 0.84rem;
+  font-weight: 700;
+  color: var(--ink-muted);
 }
 .online-rules {
   border-top: 1px solid var(--line);

@@ -2,9 +2,11 @@
 // WebSocket は Hibernation API で受ける（待っている間は課金されず、オブジェクトが退避されても接続は残る）。
 // 部屋の状態は storage の "room" に保存し、退避後はコンストラクタで読み直す。
 // 隠し王を守るため、各プレイヤーには viewFor(state, そのプレイヤー) だけを送る（GameState をそのまま送らない）。
+// 1 手ごとの制限時間はここで計る。締め切りに alarm を張り、切れたら置ける手から 1 手を自動で打つ（相手が切断中でも進む）。
+// alarm は 1 つしか張れないので、制限時間のある対局中は締め切り、それ以外は放置で消す時刻に張る。
 
 import { DurableObject } from "cloudflare:workers";
-import { createGame, playMove, viewFor, type GameState } from "../../web/src/engine/game";
+import { createGame, playMove, playTimeout, viewFor, type GameState } from "../../web/src/engine/game";
 import { other, type Player, type RuleSet } from "../../web/src/engine/rules";
 import {
   CLOSE,
@@ -12,12 +14,14 @@ import {
   PING_TEXT,
   PONG_TEXT,
   ROOM_TTL_MS,
+  TURN_GRACE_MS,
   type CreateRoomResponse,
   type HostSeat,
   type MoveMessage,
   type RoomInfoResponse,
   type RoomPhase,
   type StateMessage,
+  type TurnClockInfo,
 } from "../../web/src/net/protocol";
 import { closeQuietly, errorMsg, randomId, randomInt, rejectSocket, send } from "./util";
 import { parseClientMessage } from "./validate";
@@ -31,6 +35,10 @@ export interface RoomRecord {
   /** 作成者の席 */
   host: Player;
   game: GameState;
+  /** 1 手ごとの制限時間（ミリ秒。0 は制限なし）。制限時間の入る前に作った部屋にはない（= 0） */
+  turnMs?: number;
+  /** 手番の人の締め切り（エポックミリ秒。制限時間 + 猶予）。制限なし・対局中でないなら null（ないのも同じ） */
+  deadline?: number | null;
 }
 
 /** 接続ごとに保存する情報（退避しても残る） */
@@ -69,20 +77,21 @@ export class Room extends DurableObject<Env> {
   // ---- Worker から呼ぶ RPC ----
 
   /** 部屋を作る。同じ ID の部屋がすでにあれば null（ID の衝突。Worker が別の ID で作り直す） */
-  async create(roomId: string, rules: RuleSet, hostSeat: HostSeat): Promise<CreateRoomResponse | null> {
+  async create(roomId: string, rules: RuleSet, hostSeat: HostSeat, turnSeconds = 0): Promise<CreateRoomResponse | null> {
     if (this.room) return null;
     const host: Player = hostSeat === "first" ? 0 : hostSeat === "second" ? 1 : (randomInt(2) as Player);
     const token = randomId(32);
     const tokens: [string | null, string | null] = [null, null];
     tokens[host] = token;
-    this.room = { roomId, createdAt: Date.now(), tokens, host, game: createGame(rules) };
+    this.room = { roomId, createdAt: Date.now(), tokens, host, game: createGame(rules), turnMs: turnSeconds * 1000, deadline: null };
     await this.save();
     return { roomId, token, you: host };
   }
 
   async info(): Promise<RoomInfoResponse | null> {
     if (!this.room) return null;
-    return { roomId: this.room.roomId, phase: this.phase(), rules: this.room.game.rules, open: this.room.tokens.includes(null) };
+    const { roomId, game, tokens, turnMs } = this.room;
+    return { roomId, phase: this.phase(), rules: game.rules, turnSeconds: (turnMs ?? 0) / 1000, open: tokens.includes(null) };
   }
 
   /** WebSocket の受け口（Worker が /api/rooms/:id/ws をそのまま渡す。Upgrade の確認は Worker 側で済んでいる） */
@@ -137,8 +146,18 @@ export class Room extends DurableObject<Env> {
 
   // ---- 後片付け ----
 
-  /** 最後の操作から TTL が経った（alarm は操作のたびに張り直すので、ここに来たら放置されている）。接続を閉じて部屋を消す */
+  /**
+   * 制限時間のある対局中なら手番の締め切り: 切れていれば自動で 1 手打つ。
+   * それ以外は最後の操作から TTL が経った（alarm は操作のたびに張り直すので、ここに来たら放置されている）。接続を閉じて部屋を消す
+   */
   async alarm(): Promise<void> {
+    const deadline = this.room?.deadline;
+    if (deadline != null && this.phase() === "playing") {
+      // 締め切りの前に起きた（張り直しの入れ違いなど）なら張り直すだけ
+      if (Date.now() >= deadline) await this.timeout();
+      else await this.touch();
+      return;
+    }
     for (const ws of this.ctx.getWebSockets()) closeQuietly(ws, CLOSE.expired, "room_expired");
     this.room = null;
     await this.ctx.storage.deleteAll();
@@ -159,7 +178,35 @@ export class Room extends DurableObject<Env> {
   }
 
   private async touch(): Promise<void> {
+    const deadline = this.room?.deadline;
+    if (deadline != null && this.phase() === "playing") {
+      await this.ctx.storage.setAlarm(deadline);
+      return;
+    }
     await this.ctx.storage.setAlarm(Date.now() + (this.phase() === "finished" ? FINISHED_TTL_MS : ROOM_TTL_MS));
+  }
+
+  /** 手番が変わった（対局が始まった・手が打たれた）。制限時間があり対局中なら締め切りを今から数え直す */
+  private restartClock(): void {
+    const room = this.room!;
+    const turnMs = room.turnMs ?? 0;
+    room.deadline = turnMs > 0 && this.phase() === "playing" ? Date.now() + turnMs + TURN_GRACE_MS : null;
+  }
+
+  /** 締め切りを過ぎた手番の人の手を、置ける手から自動で 1 手打つ（棋譜に timeout の印） */
+  private async timeout(): Promise<void> {
+    const room = this.room!;
+    room.game = playTimeout(room.game, () => randomInt(2 ** 32) / 2 ** 32);
+    this.restartClock();
+    await this.save();
+    this.broadcast();
+  }
+
+  /** 手番の人の残り時間（制限なし・対局中でなければ null） */
+  private clockInfo(): TurnClockInfo | null {
+    const room = this.room!;
+    if (room.deadline == null || this.phase() !== "playing") return null;
+    return { limitMs: room.turnMs ?? 0, remainingMs: Math.max(0, room.deadline - Date.now()) };
   }
 
   private async join(ws: WebSocket, att: Attachment, room: RoomRecord, token: string | undefined): Promise<void> {
@@ -183,6 +230,8 @@ export class Room extends DurableObject<Env> {
       player = seat as Player;
       mine = randomId(32);
       room.tokens[player] = mine;
+      // 2 人目が入って対局が始まった。先手の時計を動かす
+      this.restartClock();
     }
     // 同じ席の古い接続（再読み込み前のタブなど）は閉じる
     for (const old of this.ctx.getWebSockets()) {
@@ -200,7 +249,15 @@ export class Room extends DurableObject<Env> {
     const phase = this.phase();
     if (phase === "waiting") return send(ws, errorMsg("waiting_opponent", "相手の参加を待っています"));
     if (phase === "finished") return send(ws, errorMsg("game_over", "対局は終了しています"));
+    // 締め切りを過ぎていれば（alarm より先に手が届いた）、送られた手より先に自動の手を打つ
+    if (room.deadline != null && Date.now() >= room.deadline) {
+      await this.timeout();
+      return send(ws, errorMsg("stale_move", "制限時間が切れたため、自動で手を打ちました"));
+    }
     if (room.game.turn !== player) return send(ws, errorMsg("not_your_turn", "相手の手番です"));
+    if (msg.seq !== undefined && msg.seq !== room.game.history.length) {
+      return send(ws, errorMsg("stale_move", "局面が進んでいます（制限時間切れの自動の手と入れ違いになりました）"));
+    }
     let next: GameState;
     try {
       next = playMove(room.game, msg.r, msg.c, msg.kind, { king: msg.king });
@@ -209,6 +266,7 @@ export class Room extends DurableObject<Env> {
       return send(ws, errorMsg("illegal_move", e instanceof Error ? e.message : "その手は打てません"));
     }
     room.game = next;
+    this.restartClock();
     await this.save();
     this.broadcast();
   }
@@ -229,6 +287,7 @@ export class Room extends DurableObject<Env> {
       if (p !== null) online[p] = true;
     }
     const phase = this.phase();
+    const clock = this.clockInfo();
     for (const ws of sockets) {
       const you = attachmentOf(ws).player;
       if (you === null) continue;
@@ -240,6 +299,7 @@ export class Room extends DurableObject<Env> {
         you,
         view: viewFor(room.game, you),
         opponent: { joined: room.tokens[opp] !== null, online: online[opp] },
+        clock,
       };
       send(ws, msg);
     }

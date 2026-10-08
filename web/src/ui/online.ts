@@ -2,6 +2,7 @@
 // 表示だけを受け持ち、通信と対局の進行は app.ts（通信層は net/online.ts）が行う。
 
 import { PLAYER_NAME, type Player, type RuleSet } from "../engine/rules";
+import { turnSecondsText } from "./clock";
 import { byId, h } from "./dom";
 import { ruleLines } from "./ruletext";
 import { fillSentences } from "./setup";
@@ -20,6 +21,12 @@ function roomRules(rules: RuleSet, name: string, open = false) {
   const box = h("details", { class: "online-rules" }, [h("summary", { text: `ルール — ${name}` }), list]);
   box.open = open;
   return box;
+}
+
+/** この部屋の 1 手の制限時間 */
+function roomTime(turnSeconds: number) {
+  const text = turnSeconds > 0 ? `1 手 ${turnSecondsText(turnSeconds)}（切れたら自動で 1 手）` : "1 手の制限時間なし";
+  return h("p", { class: "online-time", attrs: { id: "room-time" }, text });
 }
 
 /** 先手（黒）・後手（白） */
@@ -50,7 +57,7 @@ export class OnlineDialog {
   }
 
   /** 招待リンクと相手の待機（作成者） */
-  invite(o: { url: string; rules: RuleSet; ruleName: string; you: Player; onLeave: () => void }) {
+  invite(o: { url: string; rules: RuleSet; ruleName: string; turnSeconds: number; you: Player; onLeave: () => void }) {
     const input = h("input", { class: "share-url invite-url", attrs: { type: "text", readonly: "", id: "invite-url", "aria-label": "招待リンク" } });
     input.value = o.url;
     input.addEventListener("focus", () => input.select());
@@ -95,6 +102,7 @@ export class OnlineDialog {
         h("p", { class: "online-lead", text: "このリンクを相手に送ってください。開いて「参加する」を押すと始まります" }),
         input,
         h("div", { class: "share invite-actions" }, [...buttons, status]),
+        roomTime(o.turnSeconds),
         roomRules(o.rules, o.ruleName),
       ],
       [{ label: "やめてメニューへ", id: "invite-leave", onClick: o.onLeave }],
@@ -102,7 +110,7 @@ export class OnlineDialog {
   }
 
   /** 招待リンクから開いたときの参加の確認 */
-  join(o: { rules: RuleSet; ruleName: string; createdHere: boolean; onJoin: () => void; onCancel: () => void }) {
+  join(o: { rules: RuleSet; ruleName: string; turnSeconds: number; createdHere: boolean; onJoin: () => void; onCancel: () => void }) {
     this.show(
       "join",
       "対戦の招待",
@@ -127,6 +135,7 @@ export class OnlineDialog {
               text: "この部屋はこのブラウザで作られました。ここで参加すると、あなたが相手の席に座ります。相手と遊ぶなら、参加せずにリンクを相手に送ってください。",
             })
           : null,
+        roomTime(o.turnSeconds),
         roomRules(o.rules, o.ruleName, true),
       ],
       [

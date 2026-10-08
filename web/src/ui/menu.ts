@@ -2,7 +2,7 @@
 // どの対局も設定メニューで保存したルール（変えなければ標準）で始まる。表示と入力だけで、対局は App が始める。
 
 import { CPU_LEVELS, type CpuLevel } from "../engine/cpu";
-import { byId } from "./dom";
+import { byId, h } from "./dom";
 
 export interface MenuActions {
   cpu: (level: CpuLevel) => void;
@@ -72,6 +72,22 @@ export class Menu {
   showNote(text: string) {
     this.el.note.textContent = text;
     this.el.note.hidden = false;
+  }
+
+  /** CPU の強さのボタンに、その強さで始めたときのあなたの 1 手の制限時間を添える（例: 「45秒」「なし」） */
+  setLevelTimes(text: (level: CpuLevel) => string) {
+    for (const b of this.el.root.querySelectorAll<HTMLElement>("[data-level]")) {
+      const level = b.dataset.level as CpuLevel;
+      if (!CPU_LEVELS.includes(level)) continue;
+      let el = b.querySelector<HTMLElement>(".menu-time");
+      if (!el) {
+        el = h("span", { class: "menu-time" });
+        b.append(el);
+      }
+      // 先頭の空白は読み上げで強さの名前と区切るため（表示は改行するので見えない）
+      el.textContent = ` ${text(level)}`;
+      el.title = "1 手の制限時間";
+    }
   }
 
   /** オンライン対戦の入口を出す（サーバーに届く公開先だけ） */

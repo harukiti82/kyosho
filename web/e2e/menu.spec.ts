@@ -29,7 +29,8 @@ test("開くとメニュー。CPU対戦 → 強さを選ぶと、設定画面を
   await page.screenshot({ path: `${SHOT}/${prefix(page)}-menu.png` });
 
   await page.locator("#menu-cpu").click();
-  await expect(page.locator("#menu-levels [data-level]")).toHaveText(["イージー", "ノーマル", "ハード"]);
+  // 強さの名前の右に、その強さでのあなたの 1 手の制限時間
+  await expect(page.locator("#menu-levels [data-level]")).toHaveText(["イージー 時間なし", "ノーマル 45秒", "ハード 20秒"]);
   await page.screenshot({ path: `${SHOT}/${prefix(page)}-menu-levels.png` });
   // 戻る・Esc で 1 つ前へ
   await page.locator("#menu-levels .menu-back").click();

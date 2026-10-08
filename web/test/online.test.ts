@@ -103,6 +103,7 @@ function stateMsg(over: Partial<StateMessage> = {}): StateMessage {
     you: 0,
     view: viewFor(createGame(defaultRules()), 0),
     opponent: { joined: true, online: true },
+    clock: null,
     ...over,
   };
 }
@@ -180,9 +181,12 @@ describe("参加とトークン", () => {
     last().serverSend({ type: "joined", roomId: ROOM, you: 0, token: TOKEN });
     expect(s.sendMove(2, 3, "fu")).toBe(true);
     expect(s.sendMove(2, 4, "kin", true)).toBe(true);
+    // 考えた局面の棋譜の長さ（seq）は渡したときだけ載せる
+    expect(s.sendMove(5, 4, "fu", false, 7)).toBe(true);
     expect(sentOf(last()).slice(1)).toEqual([
       { type: "move", r: 2, c: 3, kind: "fu" },
       { type: "move", r: 2, c: 4, kind: "kin", king: true },
+      { type: "move", r: 5, c: 4, kind: "fu", seq: 7 },
     ]);
   });
 

@@ -30,7 +30,7 @@ describe("部屋の作成", () => {
     const res = await call(`/rooms/${roomId}`);
     expect(res.status).toBe(200);
     const info: RoomInfoResponse = await res.json();
-    expect(info).toEqual({ roomId, phase: "waiting", rules: presetById("dir").rules, open: true });
+    expect(info).toEqual({ roomId, phase: "waiting", rules: presetById("dir").rules, turnSeconds: 0, open: true });
   });
 
   it("全プリセットで作れる", async () => {

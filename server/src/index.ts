@@ -52,6 +52,15 @@ async function readCapped(req: Request, max: number): Promise<string | null> {
 const roomStub = (env: Env, roomId: string) =>
   (env.ROOMS as DurableObjectNamespace<Room>).get(env.ROOMS.idFromName(roomId));
 
+/**
+ * e2e 用に追加で受ける制限時間（秒）。wrangler dev の --var TEST_TURN_SECONDS:2 のように渡したときだけ（本番の wrangler.jsonc にはない）。
+ * 時間切れの自動の手を、待ち時間を長くせずに 2 つのブラウザで確かめるため
+ */
+function testTurnSeconds(env: Env): number | undefined {
+  const n = Number((env as unknown as { TEST_TURN_SECONDS?: string }).TEST_TURN_SECONDS);
+  return Number.isInteger(n) && n > 0 && n <= 90 ? n : undefined;
+}
+
 async function createRoom(req: Request, env: Env): Promise<Response> {
   const text = await readCapped(req, MAX_CREATE_BYTES);
   if (text === null) return httpError(413, "too_large", `本文は ${MAX_CREATE_BYTES} バイトまでです`);
@@ -61,12 +70,12 @@ async function createRoom(req: Request, env: Env): Promise<Response> {
   } catch {
     return httpError(400, "bad_request", "本文が JSON として読めません");
   }
-  const parsed = parseCreate(body);
-  if (!parsed) return httpError(400, "bad_rules", "rules（RuleSet）・preset・hostSeat のどれかが不正です");
+  const parsed = parseCreate(body, testTurnSeconds(env));
+  if (!parsed) return httpError(400, "bad_rules", "rules（RuleSet）・preset・hostSeat・turnSeconds のどれかが不正です");
   // 部屋 ID は 128 ビットの乱数なので衝突はまず起きないが、起きたら作り直す
   for (let i = 0; i < 3; i++) {
     const roomId = randomId(16);
-    const res: CreateRoomResponse | null = await roomStub(env, roomId).create(roomId, parsed.rules, parsed.hostSeat);
+    const res: CreateRoomResponse | null = await roomStub(env, roomId).create(roomId, parsed.rules, parsed.hostSeat, parsed.turnSeconds);
     if (res) return json(res, 201);
   }
   return httpError(500, "internal", "部屋を作れませんでした");
