@@ -2,8 +2,9 @@
 
 import { runDurableObjectAlarm, runInDurableObject } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
-import { FINISHED_TTL_MS, TURN_GRACE_MS, type RematchAction, type StateMessage } from "../../web/src/net/protocol";
-import type { RoomRecord } from "../src/room";
+import { createGame } from "../../web/src/engine/game";
+import { FINISHED_TTL_MS, TURN_GRACE_MS, type MatchRecord, type RematchAction, type StateMessage } from "../../web/src/net/protocol";
+import { recordFor, tallyOf, type RoomRecord } from "../src/room";
 import { call, Client, finishedRoom, firstLegal, playOut, quickRules, startedRoom, stubOf } from "./helpers";
 
 const recordOf = (roomId: string) => runInDurableObject(stubOf(roomId), async (_i, s) => (await s.storage.get<RoomRecord>("room"))!);
@@ -277,5 +278,71 @@ describe("制限時間・後片付け", () => {
     expect(await info()).toMatchObject({ phase: "playing", open: false });
     host.close();
     guest.close();
+  });
+});
+
+describe("通算の戦績", () => {
+  /** 席 seat の人から見て、勝った席 winner の 1 局を足す */
+  const add = (r: MatchRecord, seat: number, winner: number | null): MatchRecord =>
+    winner === null ? { ...r, draws: r.draws + 1 } : winner === seat ? { ...r, wins: r.wins + 1 } : { ...r, losses: r.losses + 1 };
+
+  it("終局で今の対局が入り、再戦で席が入れ替わっても人ごとに数える。2 局目の途中は 1 局目の分だけ", async () => {
+    const { host, guest, roomId, hostEnd, guestEnd, hostState } = await finishedRoom();
+    const zero: MatchRecord = { wins: 0, losses: 0, draws: 0 };
+    expect(hostState.record).toEqual(zero);
+    const w1 = hostEnd.view.result!.winner;
+    // 1 局目: 作成者が先手（席 0）
+    const host1 = add(zero, 0, w1);
+    expect(hostEnd.record).toEqual(host1);
+    expect(guestEnd.record).toEqual(add(zero, 1, w1));
+
+    ask(host, "request");
+    await both(host, guest);
+    ask(guest, "request");
+    const [h2, g2] = await both(host, guest);
+    expect(h2.record).toEqual(host1);
+    expect(g2.record).toEqual({ wins: host1.losses, losses: host1.wins, draws: host1.draws });
+    expect((await recordOf(roomId)).record).toBeDefined();
+
+    // 2 局目: 作成者が後手（席 1）。両者が同じ打ち方なので、同じ席が勝ち、人としては 1 勝 1 敗になる
+    const [gEnd, hEnd] = await playOut([guest, host], [g2, h2]);
+    const w2 = hEnd.view.result!.winner;
+    expect(w2).toBe(w1);
+    const host2 = add(host1, 1, w2);
+    expect(hEnd.record).toEqual(host2);
+    expect(gEnd.record).toEqual({ wins: host2.losses, losses: host2.wins, draws: host2.draws });
+    expect(w1).not.toBeNull();
+    expect([hEnd.record, gEnd.record]).toEqual([{ wins: 1, losses: 1, draws: 0 }, { wins: 1, losses: 1, draws: 0 }]);
+    host.close();
+    guest.close();
+  });
+
+  it("切断してトークンで戻っても通算は残る（部屋の記録から読み直す）", async () => {
+    const { host, guest, hostToken, roomId, hostEnd } = await finishedRoom();
+    ask(host, "request");
+    await both(host, guest);
+    ask(guest, "request");
+    const [h2] = await both(host, guest);
+    host.close();
+    await guest.expect("state");
+    const back = await Client.join(roomId, hostToken);
+    expect(back.state).toMatchObject({ gameNo: 2, you: 1, record: hostEnd.record });
+    expect(back.state.record).toEqual(h2.record);
+    back.client.close();
+    guest.close();
+  });
+
+  it("引き分けも数え、勝った席は作成者の席（host）で人に直す", () => {
+    const g = createGame(quickRules());
+    const draw = { ...g, result: { winner: null, reason: "limit" as const, byDiscs: false } };
+    const seat0 = { ...g, result: { winner: 0 as const, reason: "ko" as const, byDiscs: false } };
+    // 対局中は前の対局までの分だけ
+    expect(tallyOf({ host: 0, game: g })).toEqual({ wins: [0, 0], draws: 0 });
+    expect(tallyOf({ host: 0, game: draw })).toEqual({ wins: [0, 0], draws: 1 });
+    // 作成者が後手（host 1）のとき、先手の勝ちは参加者の勝ち
+    const room = { host: 1 as const, game: seat0, record: { wins: [2, 0] as [number, number], draws: 1 } };
+    expect(tallyOf(room)).toEqual({ wins: [2, 1], draws: 1 });
+    expect(recordFor(room, 1)).toEqual({ wins: 2, losses: 1, draws: 1 });
+    expect(recordFor(room, 0)).toEqual({ wins: 1, losses: 2, draws: 1 });
   });
 });

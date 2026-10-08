@@ -4,6 +4,7 @@
 
 import { expect, test, type Browser, type Page, type TestInfo } from "@playwright/test";
 import { presetById, type RuleSet } from "../../src/engine/rules";
+import { flipRecord, recordText } from "../../src/ui/outcome";
 import { createRoomFromSetup, joinFromInvite, newPlayer, playToEnd, prefix, SHOT, waitPlaying, waitResult, type Player } from "./net";
 
 /** 裏返すルールは毎手 1 枚以上返すので、体力 5（下限）・回復なしなら数手で決着する */
@@ -33,6 +34,14 @@ async function finishedPair(browser: Browser, info: TestInfo, turnSeconds = 0) {
 
 const note = (p: Page) => p.locator("#result-rematch-note");
 const key = (p: Page, action: string) => p.locator(`#result [data-rematch=${action}]`);
+/** 終局画面の成績表の「通算」の行（先手・後手の列の順） */
+const recordRow = (p: Page) => p.locator("#result-detail .score tbody tr").filter({ has: p.locator("th", { hasText: "通算" }) }).locator("td");
+/** 届いた state から、成績表の「通算」の行に出るはずの文（先手・後手の列の順） */
+function recordCells(p: Player): string[] {
+  const mine = p.last!.record;
+  const seats = p.last!.you === 0 ? [mine, flipRecord(mine)] : [flipRecord(mine), mine];
+  return seats.map(recordText);
+}
 const rematchSent = (p: Player) => p.sent.filter((t) => t.includes('"rematch"')).map((t) => JSON.parse(t));
 
 test("申し込む → 断る → もう一度申し込む（二重押しは 1 回）→ 受ける: 同じ部屋・同じルール・同じ制限時間で、先手と後手が入れ替わった 2 局目を終局まで打つ", async ({ browser }, info) => {
@@ -41,6 +50,15 @@ test("申し込む → 断る → もう一度申し込む（二重押しは 1 �
   expect([host.last!.gameNo, host.last!.you, guest.last!.you]).toEqual([1, 0, 1]);
   await expect(key(host.page, "request")).toHaveText("再戦");
   await expect(note(host.page)).toBeHidden();
+  // 1 局目の通算は終局画面にだけ出す（名札は 2 局目から）
+  const w1 = host.last!.view.result!.winner;
+  expect(w1).not.toBeNull();
+  expect(host.last!.record).toEqual(w1 === 0 ? { wins: 1, losses: 0, draws: 0 } : { wins: 0, losses: 1, draws: 0 });
+  expect(guest.last!.record).toEqual(flipRecord(host.last!.record));
+  for (const p of [host, guest]) {
+    await expect(recordRow(p.page)).toHaveText(recordCells(p));
+    await expect(p.page.locator(".plate-record")).toHaveCount(0);
+  }
 
   // 申し込む: 自分は返事待ち、相手には申し込みと「受ける」「断る」
   await key(host.page, "request").click();
@@ -93,6 +111,11 @@ test("申し込む → 断る → もう一度申し込む（二重押しは 1 �
   await expect(host.page.locator(".board.acting")).toHaveCount(0);
   await expect(guest.page.locator("#player-0 #turn-clock")).toBeVisible();
   expect(guest.last!.clock!.limitMs).toBe(45_000);
+  // 2 局目から名札に通算。席が入れ替わっても作成者の 1 局目の結果は作成者の名札に出る
+  await expect(host.page.locator("#player-1 .plate-record")).toHaveText(recordText(host.last!.record));
+  await expect(host.page.locator("#player-0 .plate-record")).toHaveText(recordText(flipRecord(host.last!.record)));
+  await expect(guest.page.locator("#player-0 .plate-record")).toHaveText(recordText(guest.last!.record));
+  expect(guest.last!.record).toEqual(flipRecord(host.last!.record));
   await guest.page.screenshot({ path: `${SHOT}/${pre}-online-rematch-game2.png` });
   await host.page.screenshot({ path: `${SHOT}/${pre}-online-rematch-game2-host.png` });
 
@@ -103,6 +126,22 @@ test("申し込む → 断る → もう一度申し込む（二重押しは 1 �
   expect(guest.last!.view.result).toEqual(host.last!.view.result);
   await expect(key(host.page, "request")).toHaveText("再戦");
   expect(host.last!.gameNo).toBe(2);
+  // 両者が同じ打ち方なので 2 局目は同じ席が勝ち、人としては 1 勝 1 敗。両者の終局画面と名札に出る
+  expect(guest.last!.view.result!.winner).toBe(w1);
+  expect(host.last!.record).toEqual({ wins: 1, losses: 1, draws: 0 });
+  expect(guest.last!.record).toEqual({ wins: 1, losses: 1, draws: 0 });
+  for (const p of [host, guest]) {
+    await expect(recordRow(p.page)).toHaveText(["1勝1敗", "1勝1敗"]);
+    await expect(p.page.locator(".plate-record")).toHaveText(["1勝1敗", "1勝1敗"]);
+  }
+  await host.page.screenshot({ path: `${SHOT}/${pre}-online-record-host.png` });
+  await guest.page.screenshot({ path: `${SHOT}/${pre}-online-record-guest.png` });
+  // 再読み込み（トークンで同じ席に戻る）しても通算は残る
+  host.last = null;
+  await host.page.reload();
+  await waitResult(host);
+  await expect(recordRow(host.page)).toHaveText(["1勝1敗", "1勝1敗"]);
+  await expect(host.page.locator(".plate-record")).toHaveCount(2);
 });
 
 test("申し込み中の再読み込み・同時の申し込み・相手の退室（新しい部屋で再戦）", async ({ browser }, info) => {
@@ -145,6 +184,10 @@ test("申し込み中の再読み込み・同時の申し込み・相手の退�
   await expect(note(host.page)).toHaveText("相手が退室しました");
   await expect(key(host.page, "request")).toHaveCount(0);
   await expect(key(host.page, "new")).toHaveText("新しい部屋で再戦");
+  // 相手が抜けても、この部屋の 2 局分の通算はそのまま
+  const rec = host.last!.record;
+  expect(rec.wins + rec.losses + rec.draws).toBe(2);
+  await expect(recordRow(host.page)).toHaveText(recordCells(host));
   await host.page.screenshot({ path: `${SHOT}/${pre}-online-rematch-left.png` });
   const old = new URL(host.page.url()).search;
   await key(host.page, "new").click();

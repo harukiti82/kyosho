@@ -448,6 +448,15 @@ button {
 .player-card:not(.active) .player-name {
   color: var(--ink-muted);
 }
+/* オンライン対戦の同じ部屋での通算（2 局目から） */
+.plate-record {
+  flex: none;
+  color: var(--ink-muted);
+  font-size: 0.74rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
 /* 1 手の制限時間: 手番の人の名札に出す対局時計（残りの割合の文字盤＋秒）。残りが少ないと琥珀、わずかで赤く脈打つ */
 .turn-clock {
   --left: 1;

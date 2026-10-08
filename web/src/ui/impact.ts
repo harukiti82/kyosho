@@ -35,6 +35,12 @@ export function hitOf(rules: RuleSet, m: MoveEvent): HitBreakdown {
   return { total: m.damage + penalty, base: m.damage - anchor, anchor, penalty };
 }
 
+/**
+ * 画面に出す体力。エンジンの体力は決着の一手で 0 を下回ることがある（残りを超えるダメージ・王の罰をそのまま引く。
+ * sim と同じ値で、棋譜の再生テストが突き合わせる）ので、表示だけ 0 で止める
+ */
+export const shownHp = (hp: number) => Math.max(0, hp);
+
 /** 手の段階。王を返した手は特大。それ以外は合計 ÷ 受けた側の体力上限（RuleSet.hp）で決める */
 export function tierOf(rules: RuleSet, m: MoveEvent): Tier {
   if (m.king) return "huge";

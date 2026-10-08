@@ -115,7 +115,13 @@ for (const project of ["desktop", "mobile"] as const) {
       await expect(page.locator("#result-stats .stats")).toHaveCount(1);
       await expect(page.locator("#result-cheer")).toBeHidden();
       await expect(page.locator("#result-rematch")).not.toHaveClass(/urge/);
+      // 決着の一手は残りの体力を超えるダメージ。エンジンの体力は 0 未満だが、成績表・名札は 0 と出す
+      expect(s.hp[1]).toBeLessThan(0);
+      await expect(page.locator("#result-detail .score tbody tr").first().locator("td")).toHaveText([String(s.hp[0]), "0"]);
+      await expect(page.locator(".player-card.p1 .hp-num")).toHaveText("0");
+      await expect(page.locator(".player-card.p1 .hp-gauge")).toHaveAttribute("aria-valuenow", "0");
       if (touch) await noHorizontalScroll(page, 375);
+      await page.screenshot({ path: `${SHOT}/${pre}-result-win-screen.png` });
       expect(errors).toEqual([]);
     });
 

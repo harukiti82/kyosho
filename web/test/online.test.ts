@@ -105,6 +105,7 @@ function stateMsg(over: Partial<StateMessage> = {}): StateMessage {
     view: viewFor(createGame(defaultRules()), 0),
     opponent: { joined: true, online: true, left: false },
     rematch: null,
+    record: { wins: 0, losses: 0, draws: 0 },
     clock: null,
     ...over,
   };

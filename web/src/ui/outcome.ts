@@ -4,6 +4,7 @@
 import { discCount } from "../engine/board";
 import type { GameState } from "../engine/game";
 import { other, PLAYER_NAME, type Player } from "../engine/rules";
+import type { MatchRecord } from "../net/protocol";
 
 /** 演出の種類。2 人対戦はどちらも人なので lose にならない */
 export type OutcomeKind = "win" | "lose" | "draw";
@@ -99,3 +100,9 @@ export function outcomeOf(g: Pick<GameState, "rules" | "history" | "hp" | "board
     ? { kind: "win", tone: "warm", winner: null, title: "勝利", subtitle, cheer: null, urgeRematch: false }
     : { kind: "lose", tone: "gloom", winner: null, title: "敗北", subtitle, cheer, urgeRematch: true };
 }
+
+/** オンライン対戦の部屋での通算の文（「2勝1敗」。引き分けがあれば「1勝1敗1分」） */
+export const recordText = (r: MatchRecord) => `${r.wins}勝${r.losses}敗${r.draws > 0 ? `${r.draws}分` : ""}`;
+
+/** 相手から見た通算（勝ちと負けを入れ替える） */
+export const flipRecord = (r: MatchRecord): MatchRecord => ({ wins: r.losses, losses: r.wins, draws: r.draws });

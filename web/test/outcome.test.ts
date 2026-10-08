@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import type { Board } from "../src/engine/board";
 import { createGame, legalCells, playableKinds, playMove, type GameEvent, type GameResult, type GameState, type MoveEvent } from "../src/engine/game";
 import type { Player } from "../src/engine/rules";
-import { CLOSE_PERCENT, isClose, outcomeOf, type OutcomeView } from "../src/ui/outcome";
+import { CLOSE_PERCENT, isClose, outcomeOf, type OutcomeView, flipRecord, recordText } from "../src/ui/outcome";
 import { boardOf, rulesOf } from "./helpers";
 
 const CPU0: OutcomeView = { mode: "cpu", human: 0 };
@@ -164,5 +164,18 @@ describe("エンジンの実際の終局から作る", () => {
     expect(outcomeOf(g, CPU0)).toMatchObject({ kind: "win", subtitle: "体力 0 で撃破" });
     expect(outcomeOf(g, CPU1)).toMatchObject({ kind: "lose", subtitle: "体力 0 で撃破された", urgeRematch: true });
     expect(outcomeOf(g, PVP)).toMatchObject({ kind: "win", title: "先手の勝ち" });
+  });
+});
+
+describe("オンライン対戦の通算の文", () => {
+  it("勝ちと負けは 0 でも出し、引き分けはあるときだけ足す", () => {
+    expect(recordText({ wins: 2, losses: 1, draws: 0 })).toBe("2勝1敗");
+    expect(recordText({ wins: 1, losses: 0, draws: 0 })).toBe("1勝0敗");
+    expect(recordText({ wins: 0, losses: 0, draws: 1 })).toBe("0勝0敗1分");
+    expect(recordText({ wins: 1, losses: 1, draws: 2 })).toBe("1勝1敗2分");
+  });
+
+  it("相手から見た通算は勝ちと負けが入れ替わり、引き分けは同じ", () => {
+    expect(flipRecord({ wins: 2, losses: 1, draws: 3 })).toEqual({ wins: 1, losses: 2, draws: 3 });
   });
 });

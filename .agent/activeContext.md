@@ -4,9 +4,8 @@
 
 ## 現在の対象
 
-- 何を / どこを: 遊び方（チュートリアル）の文言を、初めて遊ぶ人が一度読めば分かる言葉に書き直す（ユーザー評価「チュートリアルの言葉選びがわかりにくすぎる」。依頼元セッション経由）。`web/src/ui/lessons.ts` の文、スマホで「できた」の文が画面の下にはみ出る分だけ寄せる `ui/coach.ts`。ブランチ `feat/tutorial-wording`（worktree `../kyosho-lesson`）
-- ステータス: 実装済み、テスト・PR・本番デプロイの確認中
-- 何を / どこを: オンライン対戦の終局後に同じ部屋のまま再戦する（ユーザー要望「同じ対戦相手と再戦できるボタンを追加して」。依頼元セッション経由）。仕様は `.agent/online-protocol.md`「再戦（同じ部屋で次の対局）」。ブランチ `feat/online-rematch`（worktree `../kyosho-rematch`）。実装・テスト済み、PR・本番の確認中
+- 何を / どこを: (1) 決着の一手で体力が 0 未満になったとき、成績表・名札に 0 と出す（`ui/impact.ts` の `shownHp`。エンジンの値は sim と揃えて負のまま）。(2) オンラインの同じ部屋での再戦の通算の戦績（`state.record`、`room.ts` の `tallyOf` / `recordFor`、終局画面の「通算」と 2 局目からの名札 `.plate-record`）。依頼元セッション経由（ユーザー「どっちも採用して」）。ブランチ `feat/online-record`（worktree `../kyosho-record`）
+- ステータス: 実装・テスト済み、PR・本番デプロイの確認中
 - 最終更新: 2026-10-08
 
 ## 遊び方（チュートリアル）の要点
@@ -40,7 +39,8 @@
 - CPU 対戦の手番: 設定の `side` は `random` / `0` / `1`（既定は `random`。手番は URL に載らず、設定メニューの保存（localStorage）に載る。保存済みの `0` / `1` はそのまま）。`random` は `PlaySettings.randomSeat` で、`App.start` が対局ごとに `drawSeat`（`crypto.getRandomValues`。`Math.random` は CPU と共有なので使わない）で引き直し、トーストで知らせる。e2e は `seat.spec.ts`・`menu.spec.ts`（`helpers.ts` の `stubDraws` で crypto を差し替え）。`startGame` は CPU 対戦で side を省くと先手を選ぶ（種付きの鏡の対局は人間が先手の前提。設定の手番のままなら `side: "saved"`）
 - オンラインの画面: 通信層は `net/online.ts`（DOM なし・`test/online.test.ts`）、案内のダイアログは `ui/online.ts`、対局は `ui/app.ts`（`settings.mode === "online"`）。手は送るだけで、盤は届いた `view` で描く。王は `App.kingOf`（view の `myKing` / `oppKing`）。トークンは sessionStorage `kyosho:token:<roomId>`（別タブは別人）。入口は `/api/health` が `{"ok":true}` のときだけ。e2e は `npm run e2e:online`（wrangler dev :8790）。画面側の挙動の詳細は `.agent/online-protocol.md`「画面側の挙動」
 - サーバーの不足（直していない）: 終局後も返されなかった相手の王が届かない（終局画面は「非公開」）
-- オンラインの再戦: 同じ部屋で申し込み・受ける・断る・取り消し（`rematch`、`state.gameNo` / `state.rematch` / `opponent.left`）。成立で席のトークンを入れ替える（トークンは同じ）。相手が `leave` で抜けたら「新しい部屋で再戦」。タブを閉じただけ・回線切れは切断扱いで、申し込みは残る
+- オンラインの再戦: 同じ部屋で申し込み・受ける・断る・取り消し（`rematch`、`state.gameNo` / `state.rematch` / `opponent.left`）。成立で席のトークンを入れ替える（トークンは同じ）。相手が `leave` で抜けたら「新しい部屋で再戦」。タブを閉じただけ・回線切れは切断扱いで、申し込みは残る。通算（`state.record`）は人（作成者・参加者）ごとに数え、`host` で席を人に直す
+- 体力の表示: エンジンの `hp` は決着の一手で負になる（sim と同じ。replay が突き合わせる）。画面に出す体力は `shownHp` を通す
 
 - 配信（詳細は AGENTS.md）: 1 つの Worker（`server/wrangler.jsonc`）が `web/dist` を静的アセットで、`/api` を Worker で返す（`run_worker_first: ["/api", "/api/*"]`。静的アセットでは Worker も DO も起きない）。Origin は同一オリジン＋`ALLOWED_ORIGINS`（本番は `https://kyosho.rukiharukichi.com`、`npm run dev` が `--var` で localhost に置き換える）。CORS なし。画面はサーバー URL を持たず `API_PATH`（`/api`）の絶対パスで呼ぶ。GitHub Pages 版ではオンラインがつながらないので、画面は `/api/health` に届かなければ入口を出さない
 - オンライン対戦: サーバーは engine を import する権威サーバー。各自には `viewFor` だけを送る（`server/test/king.test.ts` が、相手の王の指定だけ違う 2 部屋で自分に届くバイト列が一致することを検査）。3 人目は拒否（観戦なし）。先手・後手は作成者の `hostSeat`（既定 random）。再接続はトークン（`sessionStorage` 推奨）。放置した部屋は alarm で削除（24 時間・終局後 1 時間）
@@ -63,7 +63,7 @@
 - [ ] ユーザーの試遊で 期限 7 手・回復 低い方−1 の標準の手応えを聞く（CPU の強さの差: ハード対ノーマル 72.0%・ノーマル対イージー 85.8%）
 - [ ] 本番 https://kyosho.rukiharukichi.com/ でメニューの「マルチ」に「オンライン」が出ること、スマホ 2 台で作成 → 参加 → 終局・再読み込みを確かめる。確かめたら別タスクで GitHub Pages（`pages.yml`）を止める
 - [ ] 必要ならサーバーに「終局後の相手の王の公開」を足す（ユーザーの判断）
-- [ ] オンラインの再戦に通算の戦績（「1勝1敗」など）を出すかはユーザー判断（今は出していない）。本番のスマホ 2 台で再戦の流れを確かめる
+- [ ] 本番のスマホ 2 台で再戦の流れと通算の表示を確かめる。CPU 対戦・同じ端末の 2 人対戦にも通算を出すかはユーザー判断（今はオンラインだけ）
 - [ ] ユーザーの試遊で演出の手応え・方向駒・隠し王・拠点・オセロの枠の見やすさの感想を聞く。RULES.md 本文を標準で新版に改稿するかはユーザー判断
 
 ## 現フェーズで Read すべき設計書

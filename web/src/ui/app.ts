@@ -57,14 +57,14 @@ import {
   wsUrl,
   type EndReason,
 } from "../net/online";
-import { TURN_SECONDS, type ErrorMessage, type RematchAction, type RoomPhase, type StateMessage } from "../net/protocol";
+import { TURN_SECONDS, type ErrorMessage, type MatchRecord, type RematchAction, type RoomPhase, type StateMessage } from "../net/protocol";
 import { dirIcon } from "./diricon";
 import { clockLevel, clockText, cpuTurnSeconds, turnSecondsText, TurnClock } from "./clock";
 import { byId, h } from "./dom";
 import { finaleMs, Fx, fxTiming, speakerIcon, type FxTiming } from "./fx";
 import { OnlineDialog } from "./online";
-import { hitOf, statsOf, tierOf, tierText, type HitBreakdown, type PlayerStats, type Tier } from "./impact";
-import { outcomeOf, type Outcome } from "./outcome";
+import { hitOf, shownHp, statsOf, tierOf, tierText, type HitBreakdown, type PlayerStats, type Tier } from "./impact";
+import { flipRecord, outcomeOf, recordText, type Outcome } from "./outcome";
 import { dirMark, endDetails, handText, hpText, kingPenaltyText, pieceLabel, ruleDetails, ruleLines, verb } from "./ruletext";
 import { Coach } from "./coach";
 import {
@@ -162,13 +162,17 @@ export class App {
   // ---- オンライン対戦 ----
   /** 部屋への接続（オンライン対戦中だけ） */
   private net: OnlineSession | null = null;
-  /** 最後に届いた部屋の状態（局面は this.game に view として入れる）。gameNo はこの部屋の何局目か（state が届く前は 0） */
+  /**
+   * 最後に届いた部屋の状態（局面は this.game に view として入れる）。gameNo はこの部屋の何局目か（state が届く前は 0）。
+   * record はこの部屋での自分から見た通算
+   */
   private room: {
     id: string;
     phase: RoomPhase;
     gameNo: number;
     opponent: StateMessage["opponent"];
     rematch: StateMessage["rematch"];
+    record: MatchRecord;
   } | null = null;
   /** 手を送って、サーバーから state が届くのを待っている */
   private sending = false;
@@ -857,7 +861,14 @@ export class App {
     this.el.game.hidden = true;
     // 再読み込みで戻ったときの制限時間は、届いた state の時計で分かる
     this.settings = settings ?? { mode: "online", human: 0, rules: defaultRules(), turnSeconds: 0 };
-    this.room = { id, phase: "waiting", gameNo: 0, opponent: { joined: false, online: false, left: false }, rematch: null };
+    this.room = {
+      id,
+      phase: "waiting",
+      gameNo: 0,
+      opponent: { joined: false, online: false, left: false },
+      rematch: null,
+      record: { wins: 0, losses: 0, draws: 0 },
+    };
     // 招待リンクから入ったとき（メニューを通らない）もメニューへ出られるように
     byId("btn-menu").hidden = false;
     this.sending = false;
@@ -941,7 +952,7 @@ export class App {
       this.renderNet();
       return;
     }
-    this.room = { id: m.roomId, phase: m.phase, gameNo: m.gameNo, opponent: m.opponent, rematch: m.rematch };
+    this.room = { id: m.roomId, phase: m.phase, gameNo: m.gameNo, opponent: m.opponent, rematch: m.rematch, record: m.record };
     s.human = m.you;
     s.rules = m.view.rules;
 
@@ -1558,18 +1569,19 @@ export class App {
     const onTray = g.result ? null : this.viewer(g);
     for (const p of [0, 1] as const) {
       const el = this.el.players[p];
-      const hp = g.hp[p];
+      const hp = shownHp(g.hp[p]);
       const max = g.rules.hp[p];
-      const pct = Math.max(0, Math.min(100, (hp / max) * 100));
+      const pct = Math.min(100, (hp / max) * 100);
       // 直前の手で減った・増えた量（新しい手の直後だけアニメーションさせる）
       let delta: HTMLElement | null = null;
       const lost = last && last.player !== p ? last.damage + (last.king?.penalty ?? 0) : 0;
       if (lost > 0) delta = h("span", { class: `delta${fresh ? " fresh" : ""}`, text: `−${lost}` });
       if (last && last.player === p && last.heal > 0) delta = h("span", { class: `delta heal${fresh ? " fresh" : ""}`, text: `+${last.heal}` });
-      // 減った分はゲージに赤く残してから縮める（格闘ゲームの体力ゲージのように。新しい手の直後だけ）
+      // 減った分はゲージに赤く残してから縮める（格闘ゲームの体力ゲージのように。新しい手の直後だけ）。
+      // 幅は手の前の体力（0 で止める前の値に減った分を足す）から今の体力まで
       const ghost =
         fresh && lost > 0
-          ? h("span", { class: "hp-ghost", attrs: { style: `left:${pct}%;width:${Math.min(100 - pct, (lost / max) * 100)}%` } })
+          ? h("span", { class: "hp-ghost", attrs: { style: `left:${pct}%;width:${Math.min(100, ((g.hp[p] + lost) / max) * 100) - pct}%` } })
           : null;
       const turn = !g.result && g.turn === p;
       el.className = `player-card p${p}`;
@@ -1582,6 +1594,7 @@ export class App {
         h("div", { class: "plate" }, [
           h("div", { class: "plate-head" }, [
             h("span", { class: "player-name", text: this.shortName(p), attrs: { title: this.name(p) } }),
+            this.plateRecord(p),
             this.kingTag(g, p),
             p === onTray ? null : this.handMini(g, p, kinds),
           ]),
@@ -1594,7 +1607,7 @@ export class App {
                 "aria-label": `${PLAYER_NAME[p]}の体力`,
                 "aria-valuemin": "0",
                 "aria-valuemax": String(Math.max(max, hp)),
-                "aria-valuenow": String(Math.max(0, hp)),
+                "aria-valuenow": String(hp),
               },
             },
             [
@@ -1607,6 +1620,21 @@ export class App {
         ]),
       );
     }
+  }
+
+  /** オンライン対戦の部屋での、席 p の人から見た通算（オンライン対戦でなければ null） */
+  private recordOf(p: Player): MatchRecord | null {
+    const room = this.room;
+    if (!this.online || !room) return null;
+    return p === this.settings!.human ? room.record : flipRecord(room.record);
+  }
+
+  /** 名札の通算（オンライン対戦の同じ部屋で 2 局目から） */
+  private plateRecord(p: Player): HTMLElement | null {
+    const rec = this.recordOf(p);
+    if (!rec || this.room!.gameNo < 2) return null;
+    const text = recordText(rec);
+    return h("span", { class: "plate-record", text, attrs: { title: `この部屋の通算 ${text}` } });
   }
 
   /** 名札の短い名前（2 人対戦は先手・後手、それ以外は あなた／CPU・相手）。正式な名前は title と読み上げ */
@@ -2185,7 +2213,7 @@ export class App {
     if (!this.el.result.open) this.el.result.showModal();
   }
 
-  /** 終局画面の成績表: 対局者を列に、体力・石数・王（隠し王のとき）を行に。下に手数とルール */
+  /** 終局画面の成績表: 対局者を列に、体力・石数・王（隠し王のとき）・通算（オンライン対戦）を行に。下に手数とルール */
   private renderScore(g: GameState, d0: number, d1: number) {
     const discs = [d0, d1];
     const winner = g.result?.winner ?? null;
@@ -2199,10 +2227,14 @@ export class App {
     const row = (label: string, cells: [string, string]) =>
       h("tr", {}, [h("th", { text: label, attrs: { scope: "row" } }), h("td", { text: cells[0] }), h("td", { text: cells[1] })]);
     const king = g.rules.king.on ? row("王", [this.kingResult(g, 0), this.kingResult(g, 1)]) : null;
+    // オンライン対戦は同じ部屋での通算（再戦を続けた分）
+    const r0 = this.recordOf(0);
+    const r1 = this.recordOf(1);
+    const record = r0 && r1 ? row("通算", [recordText(r0), recordText(r1)]) : null;
     byId("result-detail").replaceChildren(
       h("table", { class: "score" }, [
         h("thead", {}, [h("tr", {}, [h("td"), head(0), head(1)])]),
-        h("tbody", {}, [row("体力", [String(g.hp[0]), String(g.hp[1])]), row("石数", [String(discs[0]), String(discs[1])]), king]),
+        h("tbody", {}, [row("体力", [String(shownHp(g.hp[0])), String(shownHp(g.hp[1]))]), row("石数", [String(discs[0]), String(discs[1])]), king, record]),
       ]),
       h("p", { class: "score-foot", text: `${g.ply} 手・ルール ${ruleName(g.rules)}${this.levelText()}${this.timeText()}` }),
     );
