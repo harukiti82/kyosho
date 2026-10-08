@@ -4,8 +4,8 @@
 
 ## 現在の対象
 
-- 何を / どこを: 遊び方（チュートリアル。ユーザー要望「ルールがわかりにくいという意見を得たため、ゲームをしながら実践形式で学べるチュートリアルを」。依頼元セッション経由）。ブランチ `feat/tutorial`（作業ツリー `../kyosho-tutorial`）
-- ステータス: 実装・テスト済み、PR → マージ → 本番デプロイの確認中。直前に 1 手の制限時間（PR #25）をマージ・本番デプロイ済み
+- 何を / どこを: CPU 対戦の手番の既定を「ランダム」に（ユーザー要望「CPU対戦の標準設定も手番はランダムにして」。依頼元セッション経由）。ブランチ `feat/cpu-seat-random`（作業ツリー `../kyosho-seat`）
+- ステータス: 実装・テスト済み、PR → マージ → 本番デプロイの確認中。直前に遊び方（チュートリアル、PR #26）をマージ済み
 - 最終更新: 2026-10-08
 
 ## 遊び方（チュートリアル）の要点
@@ -35,7 +35,7 @@
 ## 直近の観点・指摘
 
 - 既定ルール: 既定は `rules.ts` の `DEFAULT_PRESET`（= `std`、標準: 方向駒＋端の駒の力＋隠し王（期限 7 手・−30）＋回復は低い方−1、体力 129・130、歩10 横10 角4 飛3 金2）。URL のクエリは `QUERY_BASE`（v1.0）からの差分で、欠けた項目・不正な項目も v1.0 の値（変えない）。ルールのキーがないときだけ既定。互換は `web/test/fixtures/query-compat.json`（変更前の main の出力）で検査。2 手読み同士の先手勝率は 49.5 ± 1.1%（8000 局。走査表は RULES.md「Web 試遊版」節）。旧標準（平均・110・期限 5）を明記した URL・保存済みの設定（localStorage）は旧の値のままカスタムとして読む
-- CPU 対戦の手番: 設定の `side` は `random` / `0` / `1`（既定は `0` = 先手。手番は URL・保存設定に載らない）。`random` は `PlaySettings.randomSeat` で、`App.start` が対局ごとに `drawSeat`（`crypto.getRandomValues`。`Math.random` は CPU と共有なので使わない）で引き直し、トーストで知らせる。e2e は `seat.spec.ts`（crypto を差し替え）
+- CPU 対戦の手番: 設定の `side` は `random` / `0` / `1`（既定は `random`。手番は URL に載らず、設定メニューの保存（localStorage）に載る。保存済みの `0` / `1` はそのまま）。`random` は `PlaySettings.randomSeat` で、`App.start` が対局ごとに `drawSeat`（`crypto.getRandomValues`。`Math.random` は CPU と共有なので使わない）で引き直し、トーストで知らせる。e2e は `seat.spec.ts`・`menu.spec.ts`（`helpers.ts` の `stubDraws` で crypto を差し替え）。`startGame` は CPU 対戦で side を省くと先手を選ぶ（種付きの鏡の対局は人間が先手の前提。設定の手番のままなら `side: "saved"`）
 - オンラインの画面: 通信層は `net/online.ts`（DOM なし・`test/online.test.ts`）、案内のダイアログは `ui/online.ts`、対局は `ui/app.ts`（`settings.mode === "online"`）。手は送るだけで、盤は届いた `view` で描く。王は `App.kingOf`（view の `myKing` / `oppKing`）。トークンは sessionStorage `kyosho:token:<roomId>`（別タブは別人）。入口は `/api/health` が `{"ok":true}` のときだけ。e2e は `npm run e2e:online`（wrangler dev :8790）。画面側の挙動の詳細は `.agent/online-protocol.md`「画面側の挙動」
 - サーバーの不足（直していない）: 終局後も返されなかった相手の王が届かない（終局画面は「？（明かされない）」）・同じ部屋での再戦の申し込みがない（「新しい部屋で再戦」は招待リンクを送り直す）
 

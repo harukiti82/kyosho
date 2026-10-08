@@ -234,9 +234,19 @@ describe("設定メニューの保存（localStorage）", () => {
     const m = new Map(Object.entries(init));
     return { getItem: (k: string) => m.get(k) ?? null, setItem: (k: string, v: string) => void m.set(k, v), removeItem: (k: string) => void m.delete(k) };
   };
-  it("保存がなければ標準・CPU 対戦は先手・オンラインはランダム", () => {
+  it("保存がなければ標準・CPU 対戦の手番もオンラインの席もランダム", () => {
     expect(loadSaved(memory())).toEqual(defaultSaved());
-    expect(defaultSaved()).toEqual({ rules: defaultRules(), side: "0", host: "random", timeCpu: "auto", timeMulti: "45" });
+    expect(defaultSaved()).toEqual({ rules: defaultRules(), side: "random", host: "random", timeCpu: "auto", timeMulti: "45" });
+    // 既定の手番は対局ごとに抽選する
+    expect(seatChoice(defaultSaved().side)).toEqual({ human: 0, randomSeat: true });
+  });
+  it("手番を先手・後手で保存した人はそのまま（既定がランダムになっても置き換えない）。手番のない古い保存はランダム", () => {
+    for (const side of ["0", "1"] as const) {
+      const got = loadSaved(memory({ [SETTINGS_KEY]: JSON.stringify({ rules: encodeRules(defaultRules()), side, host: "random" }) }));
+      expect(got.side).toBe(side);
+      expect(seatChoice(got.side)).toEqual({ human: Number(side), randomSeat: false });
+    }
+    expect(loadSaved(memory({ [SETTINGS_KEY]: JSON.stringify({ rules: encodeRules(defaultRules()) }) })).side).toBe("random");
   });
   it("保存した設定をそのまま読める（全プリセット・手番）", () => {
     for (const p of PRESETS) {
