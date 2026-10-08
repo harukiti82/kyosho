@@ -2,12 +2,14 @@
 
 import { env } from "cloudflare:test";
 import { exports } from "cloudflare:workers";
-import { presetById, type PresetId, type RuleSet } from "../../web/src/engine/rules";
+import { isLegal, type GameState, type PlayerView } from "../../web/src/engine/game";
+import { KIND_ORDER, presetById, type PieceKind, type PresetId, type RuleSet } from "../../web/src/engine/rules";
 import type {
   CreateRoomResponse,
   ErrorMessage,
   HostSeat,
   JoinedMessage,
+  MoveMessage,
   ServerMessage,
   StateMessage,
 } from "../../web/src/net/protocol";
@@ -138,4 +140,43 @@ export async function startedRoom(rules: RuleSet | PresetId = "v10", turnSeconds
   // 参加者の join で、作成者にも state（相手が参加）が届く
   const hostState = await host.client.expect("state");
   return { roomId: created.roomId, host: host.client, guest: guest.client, hostToken: created.token, guestToken: guest.joined.token, hostState, guestState: guest.state };
+}
+
+/** 盤の左上から走査して手番の人の最初に打てる手（自分の王に左右されない決まった手） */
+export function firstLegal(view: PlayerView): { r: number; c: number; kind: PieceKind } {
+  // isLegal は kings を読まない（手番・盤・持ち駒・ルールだけ）
+  const g = view as unknown as GameState;
+  for (let r = 0; r < 8; r++) for (let c = 0; c < 8; c++) for (const kind of KIND_ORDER) if (isLegal(g, r, c, kind)) return { r, c, kind };
+  throw new Error("打てる手がない");
+}
+
+/** 裏返すルールで毎手 1 枚以上返すので、体力 5（下限）・回復なしなら数手で決着する */
+export const quickRules = (): RuleSet => ({ ...presetById("orig").rules, heal: "none", hp: [5, 5] });
+
+/**
+ * 両者が firstLegal で終局まで打つ。clients は [先手, 後手] の順。
+ * pick を渡すと手番の人の手と王の指定を選べる（own は打つ人の何手目か、1 始まり）
+ */
+export async function playOut(
+  clients: [Client, Client],
+  first: [StateMessage, StateMessage],
+  pick?: (s: StateMessage, own: number) => Omit<MoveMessage, "type">,
+): Promise<[StateMessage, StateMessage]> {
+  let last = first;
+  const own = [0, 0];
+  for (let i = 0; last[0].phase === "playing"; i++) {
+    if (i > 200) throw new Error("終わらない");
+    const p = last[0].view.turn;
+    own[p]++;
+    clients[p].send({ type: "move", ...(pick ? pick(last[p], own[p]) : firstLegal(last[p].view)) } satisfies MoveMessage);
+    last = await Promise.all([clients[0].expect("state"), clients[1].expect("state")]);
+  }
+  return last;
+}
+
+/** 部屋を作って 2 人が参加し、quickRules（rules を渡せばそれ）で終局まで打った状態にする。host は先手 */
+export async function finishedRoom(rules: RuleSet = quickRules(), turnSeconds?: number) {
+  const room = await startedRoom(rules, turnSeconds);
+  const [hostEnd, guestEnd] = await playOut([room.host, room.guest], [room.hostState, room.guestState]);
+  return { ...room, hostEnd, guestEnd };
 }

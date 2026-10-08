@@ -57,7 +57,7 @@ import {
   wsUrl,
   type EndReason,
 } from "../net/online";
-import { TURN_SECONDS, type ErrorMessage, type RoomPhase, type StateMessage } from "../net/protocol";
+import { TURN_SECONDS, type ErrorMessage, type RematchAction, type RoomPhase, type StateMessage } from "../net/protocol";
 import { dirIcon } from "./diricon";
 import { clockLevel, clockText, cpuTurnSeconds, turnSecondsText, TurnClock } from "./clock";
 import { byId, h } from "./dom";
@@ -162,14 +162,22 @@ export class App {
   // ---- オンライン対戦 ----
   /** 部屋への接続（オンライン対戦中だけ） */
   private net: OnlineSession | null = null;
-  /** 最後に届いた部屋の状態（局面は this.game に view として入れる） */
-  private room: { id: string; phase: RoomPhase; opponent: StateMessage["opponent"] } | null = null;
+  /** 最後に届いた部屋の状態（局面は this.game に view として入れる）。gameNo はこの部屋の何局目か（state が届く前は 0） */
+  private room: {
+    id: string;
+    phase: RoomPhase;
+    gameNo: number;
+    opponent: StateMessage["opponent"];
+    rematch: StateMessage["rematch"];
+  } | null = null;
   /** 手を送って、サーバーから state が届くのを待っている */
   private sending = false;
+  /** 再戦の申し込み・取り消し・断りを送って、state（または error）を待っている（二重押しを防ぐ） */
+  private rematchSending = false;
   /** 演出の間に届いた state（演出が終わってから反映する） */
   private queued: StateMessage | null = null;
   /** 最後に届いたサーバーの時計（seq はその局面の棋譜の長さ、deadline はこの端末の時刻で数えたサーバーの締め切り） */
-  private netClock: { seq: number; limitMs: number; deadline: number } | null = null;
+  private netClock: { seq: number; gameNo: number; limitMs: number; deadline: number } | null = null;
   private readonly lobby = new OnlineDialog();
   /** トークン（部屋ごと）。再読み込みでは残り、別のタブとは共有しない */
   private readonly tokens = safeStore(() => window.sessionStorage);
@@ -370,6 +378,11 @@ export class App {
       result.close();
       this.rematch();
     });
+    // オンライン対戦の再戦（申し込む・受ける・断る・取り消す）は、終局画面と駒台のどちらのボタンでも同じ
+    document.addEventListener("click", (e) => {
+      const b = (e.target as Element | null)?.closest<HTMLButtonElement>("button[data-rematch]");
+      if (b && !b.disabled) this.onRematchClick(b.dataset.rematch as RematchAction | "new");
+    });
     // オンライン対戦: 画面に戻った・ネットにつながったら、つなぎ直しの待ち時間を飛ばす
     // 制限時間: 裏に回したタブではタイマーが間引かれるので、戻ったらすぐ時計を見直す（経過した分は時刻の差で減っている）
     document.addEventListener("visibilitychange", () => {
@@ -533,7 +546,7 @@ export class App {
       this.clock.clear();
     } else if (this.online) {
       const nc = this.netClock;
-      if (nc && nc.seq === g.history.length && this.room?.phase === "playing") this.clock.follow(`net:${nc.seq}`, nc.limitMs, nc.deadline);
+      if (nc && nc.seq === g.history.length && this.room?.phase === "playing") this.clock.follow(`net:${nc.gameNo}:${nc.seq}`, nc.limitMs, nc.deadline);
       else this.clock.clear();
     } else if (s.turnSeconds > 0 && this.isHuman(g.turn)) {
       // CPU 対戦は人間の手番だけ（CPU が考えている間は人間の時計は進まない）
@@ -844,10 +857,11 @@ export class App {
     this.el.game.hidden = true;
     // 再読み込みで戻ったときの制限時間は、届いた state の時計で分かる
     this.settings = settings ?? { mode: "online", human: 0, rules: defaultRules(), turnSeconds: 0 };
-    this.room = { id, phase: "waiting", opponent: { joined: false, online: false } };
+    this.room = { id, phase: "waiting", gameNo: 0, opponent: { joined: false, online: false, left: false }, rematch: null };
     // 招待リンクから入ったとき（メニューを通らない）もメニューへ出られるように
     byId("btn-menu").hidden = false;
     this.sending = false;
+    this.rematchSending = false;
     this.queued = null;
     this.netClock = null;
     // 再読み込みで同じ部屋に戻れるように、アドレスを部屋の URL にする
@@ -869,6 +883,8 @@ export class App {
             this.lobby.busy("接続中…", `サーバーにつながりません。再接続 ${attempt} 回目`);
           }
           if (this.game) this.render();
+          // つながっていない間は終局画面の再戦のボタンも押せない
+          this.renderResultActions();
         },
         ended: (reason, message) => this.net === net && this.onEnded(reason, message),
       },
@@ -884,6 +900,7 @@ export class App {
     this.net = null;
     this.room = null;
     this.sending = false;
+    this.rematchSending = false;
     this.queued = null;
     this.netClock = null;
     this.lobby.close();
@@ -900,31 +917,44 @@ export class App {
     this.showMenu();
   }
 
-  /** state が届いた。局面が進んだ（棋譜が伸びた）ときだけ演出し、それ以外（接続の変化・復帰）は描き直すだけ */
+  /**
+   * state が届いた。局面が進んだ（棋譜が伸びた）ときだけ演出し、それ以外（接続の変化・復帰・再戦の申し込み）は描き直すだけ。
+   * 再戦が成立した（gameNo が増えた）ときは、前の対局の演出・終局画面を片付けて新しい対局を出す
+   */
   private onState(m: StateMessage) {
     const s = this.settings!;
     const prevRoom = this.room;
     const prev = this.game;
     const first = !prev;
-    const grew = !!prev && m.view.history.length > prev.history.length;
+    const next = !!prev && !!prevRoom && prevRoom.gameNo > 0 && m.gameNo > prevRoom.gameNo;
+    const grew = !!prev && !next && m.view.history.length > prev.history.length;
+    this.rematchSending = false;
     // サーバーの時計は届いた時刻から数える（端末とサーバーの時計のずれを持ち込まない）。演出の後に反映する局面でも、ここで受け取る
-    this.netClock = m.clock ? { seq: m.view.history.length, limitMs: m.clock.limitMs, deadline: Date.now() + m.clock.remainingMs } : null;
+    this.netClock = m.clock
+      ? { seq: m.view.history.length, gameNo: m.gameNo, limitMs: m.clock.limitMs, deadline: Date.now() + m.clock.remainingMs }
+      : null;
     if (m.clock) s.turnSeconds = m.clock.limitMs / 1000;
     // 大・特大の演出中に届いた手は、演出が終わってから反映する（接続の変化は先に反映してよい）
     if (grew && this.fxLock) {
       this.queued = m;
-      this.room = { id: m.roomId, phase: this.room!.phase, opponent: m.opponent };
+      this.room = { ...this.room!, id: m.roomId, opponent: m.opponent };
       this.renderNet();
       return;
     }
-    this.room = { id: m.roomId, phase: m.phase, opponent: m.opponent };
+    this.room = { id: m.roomId, phase: m.phase, gameNo: m.gameNo, opponent: m.opponent, rematch: m.rematch };
     s.human = m.you;
     s.rules = m.view.rules;
 
+    if (next) {
+      this.startNextGame(m);
+      return;
+    }
+
     if (!first && !grew) {
       this.notifyRoom(prevRoom, first);
-      // 局面は同じ（相手の接続・切断・復帰・自分の復帰）
+      // 局面は同じ（相手の接続・切断・復帰・自分の復帰・再戦の申し込み）
       if (!this.finale) this.render();
+      this.renderResultActions();
       this.syncLobby();
       return;
     }
@@ -947,6 +977,22 @@ export class App {
     }
     this.syncLobby();
     this.afterChange();
+  }
+
+  /** 再戦が成立した: 前の対局の演出・終局画面を片付け、先手と後手が入れ替わった新しい対局を出す（過去の手はないので演出しない） */
+  private startNextGame(m: StateMessage) {
+    this.resetPlay();
+    this.queued = null;
+    this.sending = false;
+    this.gameNo++;
+    this.game = m.view as unknown as GameState;
+    this.seenEvents = 0;
+    this.el.game.hidden = this.menu.visible;
+    this.renderRuleCard(m.view.rules);
+    this.renderLegend(m.view.rules);
+    this.render();
+    this.syncLobby();
+    this.showToast(`再戦開始　あなたは${PLAYER_NAME[m.you]}`);
   }
 
   /** 待機中は招待リンクの案内、それ以外は案内を閉じる */
@@ -981,14 +1027,28 @@ export class App {
     if (prev.phase === "waiting" && now.phase === "playing") this.showToast(`相手が参加しました　あなたは${me}`);
     else if (now.phase === "playing" && prev.opponent.online && !now.opponent.online) this.showToast("相手の接続が切れました");
     else if (now.phase === "playing" && !prev.opponent.online && now.opponent.online) this.showToast("相手が戻りました");
+    else if (now.phase === "finished" && prev.phase === "finished") {
+      // 再戦の申し込みの知らせ。終局画面を開いているときはその中の一文（#result-rematch-note）で分かる
+      const was = prev.rematch?.opponent ?? "none";
+      const is = now.rematch?.opponent ?? "none";
+      let text: string | null = null;
+      if (!prev.opponent.left && now.opponent.left) text = "相手が退室しました";
+      else if (was !== "requested" && is === "requested") text = "相手から再戦の申し込み";
+      else if (was !== "declined" && is === "declined") text = "再戦を断られました";
+      else if (was === "requested" && is === "none") text = "再戦の申し込みが取り消されました";
+      if (text && !this.el.result.open) this.showToast(text);
+    }
   }
 
   /** 送った手が拒否された（盤は変わらない） */
   private onNetError(m: ErrorMessage) {
     this.sending = false;
-    // 時間切れの自動の手と入れ違った手。自動の手の知らせ（棋譜の timeout）が先に届いているので、重ねて出さない
-    if (m.code === "stale_move") {
+    this.rematchSending = false;
+    // 時間切れの自動の手と入れ違った手・再戦の二重押し（成立した後に届いた古い申し込み）。
+    // 自動の手の知らせ（棋譜の timeout）・次の対局の state が先に届いているので、重ねて出さない
+    if (m.code === "stale_move" || m.code === "stale_rematch") {
       if (this.game) this.render();
+      this.renderResultActions();
       return;
     }
     const text: Partial<Record<ErrorMessage["code"], string>> = {
@@ -996,6 +1056,7 @@ export class App {
       waiting_opponent: "相手の参加を待っています",
       game_over: "対局はもう終わっています",
       illegal_move: `その手は打てません。${m.message}`,
+      opponent_left: "相手が退室しました",
     };
     this.showToast(text[m.code] ?? m.message);
     if (this.game) this.render();
@@ -1069,6 +1130,9 @@ export class App {
     } else if (room.phase === "waiting") {
       state = "warn";
       text = "相手を待っています";
+    } else if (room.opponent.left) {
+      state = "bad";
+      text = "相手: 退室";
     } else if (room.opponent.online) {
       state = "ok";
       text = "相手: 接続中";
@@ -1706,11 +1770,18 @@ export class App {
     this.el.hand.classList.toggle("over", !!g.result && !this.inStep());
     // 遊び方のステップで決着した（体力 0 の手）ときは、再戦の鍵を出さず駒台のまま
     if (g.result && !this.inStep()) {
-      this.el.handTitle.textContent = "対局終了";
-      const again = h("button", { class: "btn primary", text: this.online ? "新しい部屋で再戦" : "再戦", attrs: { type: "button", id: "btn-rematch" } });
-      again.addEventListener("click", () => this.rematch());
       const show = h("button", { class: "btn ghost", text: "結果を見る", attrs: { type: "button" } });
       show.addEventListener("click", () => this.showResult(g.result!));
+      this.el.handTitle.textContent = "対局終了";
+      // オンライン対戦は同じ部屋での再戦の申し込み（鍵の上に申し込みの状態の 1 文）
+      const online = this.online ? this.rematchControls() : null;
+      if (online) {
+        const note = online.note ? h("p", { class: "tray-note", attrs: { id: "tray-rematch-note", role: "status" }, text: online.note }) : null;
+        box.append(...(note ? [note] : []), show, ...online.buttons);
+        return;
+      }
+      const again = h("button", { class: "btn primary", text: "再戦", attrs: { type: "button", id: "btn-rematch" } });
+      again.addEventListener("click", () => this.rematch());
       box.append(show, again);
       return;
     }
@@ -2002,6 +2073,71 @@ export class App {
     if (this.game === g && !this.inStep()) this.showResult(g.result!);
   }
 
+  /**
+   * オンライン対戦の終局後の再戦のボタンと一文（申し込みの状態ごと）。ボタンは data-rematch で、押すと onRematchClick。
+   * 相手が退室したら同じ部屋では申し込めないので、新しい部屋を作る
+   */
+  private rematchControls(): { note: string | null; buttons: HTMLButtonElement[] } | null {
+    const room = this.room;
+    const g = this.game;
+    if (!this.online || !room || !g?.result || room.phase !== "finished") return null;
+    const urge = this.outcome(g).urgeRematch;
+    const key = (action: RematchAction | "new", text: string, primary = false) =>
+      h("button", {
+        class: `btn ${primary ? "primary" : "ghost"}${primary && urge ? " urge" : ""}`,
+        text,
+        attrs: { type: "button", "data-rematch": action },
+      });
+    const r = room.rematch ?? { you: "none", opponent: "none" };
+    let note: string | null = null;
+    let buttons: HTMLButtonElement[];
+    if (room.opponent.left) {
+      note = "相手が退室しました";
+      buttons = [key("new", "新しい部屋で再戦", true)];
+    } else if (r.opponent === "requested") {
+      note = "相手から再戦の申し込み";
+      buttons = [key("decline", "断る"), key("request", "受ける", true)];
+    } else if (r.you === "requested") {
+      note = room.opponent.online ? "再戦の返事待ち" : "再戦の返事待ち　相手は切断中";
+      buttons = [key("cancel", "取り消し")];
+    } else {
+      if (r.opponent === "declined") note = "再戦を断られました";
+      else if (r.you === "declined") note = "再戦を断りました";
+      buttons = [key("request", "再戦", true)];
+    }
+    // 送った返事を待つ間・つながっていない間は押せない（新しい部屋は作れる）
+    const off = this.rematchSending || !this.net?.ready;
+    for (const b of buttons) if (b.dataset.rematch !== "new") b.disabled = off;
+    return { note, buttons };
+  }
+
+  /** 終局画面の下のボタン。オンライン対戦は再戦の申し込みの状態に合わせて差し替える（開いている間も届いた state で描き直す） */
+  private renderResultActions() {
+    const fixed = byId("result-rematch");
+    const box = byId("result-online");
+    const note = byId("result-rematch-note");
+    const online = this.rematchControls();
+    fixed.hidden = this.online;
+    box.replaceChildren(...(online?.buttons ?? []));
+    note.textContent = online?.note ?? "";
+    note.hidden = !online?.note;
+  }
+
+  /** 再戦のボタンを押した（終局画面・駒台） */
+  private onRematchClick(action: RematchAction | "new") {
+    if (action === "new") {
+      if (this.el.result.open) this.el.result.close();
+      this.rematch();
+      return;
+    }
+    const net = this.net;
+    const room = this.room;
+    if (!net || !room || !net.sendRematch(action, room.gameNo)) return;
+    this.rematchSending = true;
+    if (this.game) this.renderHand(this.game);
+    this.renderResultActions();
+  }
+
   private resultHeadline(r: GameResult): string {
     if (r.winner === null) return "引き分け";
     if (this.settings?.mode === "cpu") return r.winner === this.settings.human ? "あなたの勝ち" : "CPU の勝ち";
@@ -2044,7 +2180,7 @@ export class App {
     cheer.hidden = !o.cheer;
     const rematch = byId("result-rematch");
     rematch.classList.toggle("urge", o.urgeRematch);
-    rematch.textContent = this.online ? "新しい部屋で再戦" : "再戦";
+    this.renderResultActions();
     this.hideToast();
     if (!this.el.result.open) this.el.result.showModal();
   }

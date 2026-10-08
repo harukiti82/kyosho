@@ -125,7 +125,25 @@ export interface MoveMessage {
   seq?: number;
 }
 
-export type ClientMessage = JoinMessage | MoveMessage;
+/**
+ * 終局後の同じ部屋での再戦。request: 申し込む（相手が申し込み済みなら受けたことになり、先手と後手を入れ替えた次の対局が始まる）/
+ * cancel: 自分の申し込みを取り消す / decline: 相手の申し込みを断る。
+ * gameNo は終わった対局の番号（state.gameNo）。今の対局と違えば stale_rematch で拒否する（成立した後に届いた二重押し）
+ */
+export interface RematchMessage {
+  type: "rematch";
+  action: RematchAction;
+  gameNo: number;
+}
+
+export type RematchAction = "request" | "cancel" | "decline";
+
+/** 部屋を抜ける（メニューへ戻る・新しい部屋を作る）。相手に退室を知らせ、再戦の申し込みを取り下げる。送った後に接続を閉じる */
+export interface LeaveMessage {
+  type: "leave";
+}
+
+export type ClientMessage = JoinMessage | MoveMessage | RematchMessage | LeaveMessage;
 
 // ---- WebSocket: サーバー → クライアント ----
 
@@ -138,11 +156,14 @@ export interface JoinedMessage {
   token: string;
 }
 
-/** 部屋の状態。参加・手・相手の接続／切断・終局のたびに、各プレイヤーに自分用の内容で届く */
+/** 部屋の状態。参加・手・相手の接続／切断・終局・再戦の申し込みのたびに、各プレイヤーに自分用の内容で届く */
 export interface StateMessage {
   type: "state";
   roomId: string;
   phase: RoomPhase;
+  /** この部屋の何局目か（1 始まり）。再戦が成立すると 1 増え、view は新しい対局になる */
+  gameNo: number;
+  /** 自分の手番。再戦で先手と後手が入れ替わると変わる（トークンは同じ） */
   you: Player;
   /** viewFor(state, you)。相手の隠し王の場所は含まない。終局すると view.result が入る */
   view: PlayerView;
@@ -151,10 +172,17 @@ export interface StateMessage {
     joined: boolean;
     /** 相手が今つながっている */
     online: boolean;
+    /** 相手が leave で部屋を抜けた（同じトークンで戻ると false）。切断（online: false）とは別 */
+    left: boolean;
   };
+  /** 終局後の再戦の申し込みの状態（自分・相手）。終局していなければ null */
+  rematch: { you: RematchStatus; opponent: RematchStatus } | null;
   /** 手番の制限時間。制限なし・対局中でない（待機中・終局）なら null */
   clock: TurnClockInfo | null;
 }
+
+/** none: 何もしていない / requested: 再戦を申し込んでいる / declined: 相手の申し込みを断った（次に誰かが申し込むまで） */
+export type RematchStatus = "none" | "requested" | "declined";
 
 /** 手番の人の残り時間（送った時点の値。画面は受け取った時刻から数える） */
 export interface TurnClockInfo {
@@ -184,6 +212,8 @@ export type WsErrorCode =
   | "illegal_move" // engine が拒否した手（置けない・持ち駒がない・王を指定できない など）
   | "game_over" // 終局後に手を送った
   | "stale_move" // 手を考えた局面がもう進んでいる（制限時間切れの自動の手と入れ違い）
+  | "stale_rematch" // 終局していない・gameNo が今の対局と違う（再戦が成立した後に届いた二重押しなど）
+  | "opponent_left" // 退室した相手に再戦を申し込んだ
   | "internal";
 
 export type ServerMessage = JoinedMessage | StateMessage | ErrorMessage;

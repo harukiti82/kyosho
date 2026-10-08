@@ -100,9 +100,11 @@ function stateMsg(over: Partial<StateMessage> = {}): StateMessage {
     type: "state",
     roomId: ROOM,
     phase: "playing",
+    gameNo: 1,
     you: 0,
     view: viewFor(createGame(defaultRules()), 0),
-    opponent: { joined: true, online: true },
+    opponent: { joined: true, online: true, left: false },
+    rematch: null,
     clock: null,
     ...over,
   };
@@ -190,6 +192,34 @@ describe("参加とトークン", () => {
     ]);
   });
 
+  it("再戦の申し込み・取り消し・断りは参加してつながっているときだけ、終わった対局の番号を付けて送る", () => {
+    const s = session();
+    expect(s.sendRematch("request", 1)).toBe(false);
+    last().serverOpen();
+    expect(s.sendRematch("request", 1)).toBe(false); // joined の前
+    last().serverSend({ type: "joined", roomId: ROOM, you: 1, token: TOKEN });
+    expect(s.sendRematch("request", 1)).toBe(true);
+    expect(s.sendRematch("cancel", 1)).toBe(true);
+    expect(s.sendRematch("decline", 2)).toBe(true);
+    expect(sentOf(last()).slice(1)).toEqual([
+      { type: "rematch", action: "request", gameNo: 1 },
+      { type: "rematch", action: "cancel", gameNo: 1 },
+      { type: "rematch", action: "decline", gameNo: 2 },
+    ]);
+  });
+
+  it("再戦で先手と後手が入れ替わった state（you が変わる）もそのまま渡す", () => {
+    session();
+    last().serverOpen();
+    last().serverSend({ type: "joined", roomId: ROOM, you: 0, token: TOKEN });
+    last().serverSend(stateMsg({ phase: "finished", rematch: { you: "requested", opponent: "none" } }));
+    last().serverSend(stateMsg({ gameNo: 2, you: 1, view: viewFor(createGame(defaultRules()), 1) }));
+    expect(log.states.map((m) => [m.gameNo, m.you, m.rematch?.you ?? null])).toEqual([
+      [1, 0, "requested"],
+      [2, 1, null],
+    ]);
+  });
+
   it("拒否された手（illegal_move など）は error で渡し、接続は残す", () => {
     const s = session();
     last().serverOpen();
@@ -262,10 +292,12 @@ describe("つなぎ直し", () => {
     expect(sockets).toHaveLength(2);
   });
 
-  it("close() の後はつなぎ直さない", () => {
+  it("close() の後はつなぎ直さない。参加済みなら閉じる前に leave を送る", () => {
     const s = session();
     last().serverOpen();
+    last().serverSend({ type: "joined", roomId: ROOM, you: 0, token: TOKEN });
     s.close();
+    expect(sentOf(sockets[0]).at(-1)).toEqual({ type: "leave" });
     expect(sockets[0].closedWith).toBe(1000);
     clock.advance(60_000);
     expect(sockets).toHaveLength(1);

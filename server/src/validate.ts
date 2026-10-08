@@ -75,7 +75,14 @@ export function parseClientMessage(data: string | ArrayBuffer): Parsed {
       if (x.seq !== undefined) msg.seq = x.seq as number;
       return { ok: true, msg };
     }
+    case "rematch": {
+      if (x.action !== "request" && x.action !== "cancel" && x.action !== "decline") return bad("action は request / cancel / decline です");
+      if (!Number.isInteger(x.gameNo) || (x.gameNo as number) < 1) return bad("gameNo は 1 以上の整数です");
+      return { ok: true, msg: { type: "rematch", action: x.action, gameNo: x.gameNo as number } };
+    }
+    case "leave":
+      return { ok: true, msg: { type: "leave" } };
     default:
-      return bad("type は join / move です");
+      return bad("type は join / move / rematch / leave です");
   }
 }
