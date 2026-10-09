@@ -84,6 +84,7 @@ import {
 import { Menu } from "./menu";
 import { cryptoRandom, drawSeat, fillSentences, SetupDialog, type PlaySettings } from "./setup";
 import { Sound } from "./sound";
+import { Undo, UNDO_LIMIT } from "./undo";
 
 /** CPU が打つまでの待ち時間（盤面の変化を目で追えるように） */
 const CPU_DELAY_MS = 900;
@@ -154,6 +155,8 @@ export class App {
    */
   private readonly clock = new TurnClock();
   private clockTimer: number | undefined;
+  /** 待った（CPU 対戦のイージーだけ。遊び方の実戦では出さない）。ほかの対局では null */
+  private undo: Undo | null = null;
   /** 対局の通し番号（再戦で棋譜の長さが 0 に戻っても、時計を新しい手番として数え直す） */
   private gameNo = 0;
   /** 名札の時計（手番の人の名札に移す） */
@@ -444,6 +447,8 @@ export class App {
     this.lesson = lesson;
     if (!lesson) this.setup.reflectUrl(settings.rules);
     this.gameNo++;
+    // 待ったは対局ごとに UNDO_LIMIT 回（再戦・新しい対局で戻す）
+    this.undo = settings.mode === "cpu" && settings.level === "easy" && !lesson ? new Undo() : null;
     this.game = lesson ? lesson.lesson.start() : createGame(settings.rules);
     this.el.game.hidden = false;
     this.renderRuleCard(settings.rules);
@@ -476,6 +481,7 @@ export class App {
     this.kingOn = false;
     this.peek = false;
     this.seenEvents = 0;
+    this.undo = null;
     // 遊び方は start が lesson を渡したときだけ続ける（ほかの対局・オンラインの部屋では閉じる）
     this.lesson = null;
     this.coach.hide();
@@ -535,12 +541,43 @@ export class App {
 
   /** 画面で打った手（人間・CPU・時間切れの自動の手）を反映する */
   private advance(next: GameState) {
+    // 待った: 人間が打つ直前の局面を覚える（CPU の手は覚えない）
+    if (this.undo && this.game && this.settings) this.undo.record(this.game, this.settings.human);
     this.game = next;
     this.focus = null;
     this.pinned = false;
     this.kingOn = false;
     this.peek = false;
     this.afterChange();
+  }
+
+  /** 待ったを押せるか（人間の手番で操作できるとき。CPU の手番・考えている間・演出中・終局後は押せない） */
+  private canUndo(): boolean {
+    return !!this.undo && !!this.game && !!this.settings && this.canAct() && this.undo.canUndo(this.game, this.settings.human);
+  }
+
+  /**
+   * 待った: 自分の直前の手と、それに続く CPU の応手をまとめて戻して自分の手番にする。
+   * 戻した局面の手は演出しない（直前の CPU の手を演出し直さない）。制限時間は最初から数え直す
+   */
+  private takeBack() {
+    if (!this.canUndo()) return;
+    const back = this.undo!.undo(this.game!, this.settings!.human);
+    if (!back) return;
+    window.clearTimeout(this.cpuTimer);
+    window.clearTimeout(this.fxTimer);
+    this.fxLock = false;
+    this.fx.clear();
+    document.querySelectorAll(".flyer").forEach((f) => f.remove());
+    this.clock.clear();
+    this.game = back;
+    this.seenEvents = back.history.length;
+    this.focus = null;
+    this.pinned = false;
+    this.kingOn = false;
+    this.peek = false;
+    this.render();
+    this.showToast(`待った 残り${this.undo!.left}回`);
   }
 
   // ---- 制限時間 ----
@@ -1417,6 +1454,7 @@ export class App {
     this.renderPreview(g, pv);
     this.renderHand(g);
     this.renderKingBox(g);
+    this.renderUndo(g);
     this.renderLog(g);
     this.renderNet();
     this.syncClock();
@@ -1961,6 +1999,26 @@ export class App {
     box.hidden = false;
   }
 
+  /** 待ったの鍵（駒台の右端。残りの回数を添える）。待ったのない対局・終局後は出さない */
+  private renderUndo(g: GameState) {
+    const box = byId("undo-box");
+    const u = this.undo;
+    box.replaceChildren();
+    box.hidden = !u || !!g.result;
+    if (!u || g.result) return;
+    const b = h(
+      "button",
+      {
+        class: "btn ghost undo-btn",
+        attrs: { type: "button", id: "btn-undo", "aria-label": `待った 残り${u.left}回`, title: "自分の直前の手と相手の応手を戻す" },
+      },
+      ["待った", h("span", { class: "undo-left", text: String(u.left), attrs: { "aria-hidden": "true" } })],
+    );
+    b.disabled = !this.canUndo();
+    b.addEventListener("click", () => this.takeBack());
+    box.append(b);
+  }
+
   private moveText(e: GameEvent): string {
     if (e.type === "pass") return `${PLAYER_NAME[e.player]} パス（${e.reason === "noPieces" ? "持ち駒切れ" : "置ける所なし"}）`;
     const r = this.game!.rules;
@@ -2343,6 +2401,8 @@ export class App {
     ];
     if (r.anchor === "attack") rows.push(["端の駒の上乗せ", `合計 ${s.anchorTotal}`]);
     if (r.king.on) rows.push(["相手の王", s.kingHit ? `${v.past}` : `${v.cannot.slice(0, -1)}かった`]);
+    // 戻した手は棋譜から消えるので、ほかの成績には入らない。使った回数だけ添える
+    if (this.undo) rows.push(["待った", `${UNDO_LIMIT - this.undo.left} 回`]);
     return rows;
   }
 

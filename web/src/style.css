@@ -2280,6 +2280,34 @@ button {
 .king-toggle:disabled {
   cursor: default;
 }
+/* ---- 待った（駒台の右端。残りの回数を角に） ---- */
+.undo-box {
+  display: contents;
+}
+.undo-btn {
+  align-self: center;
+  position: relative;
+  padding: 0.35rem 1.1rem 0.35rem 0.7rem;
+  font-size: 0.82rem;
+}
+.undo-left {
+  position: absolute;
+  right: 0.35rem;
+  bottom: 0.1rem;
+  font-family: var(--font-display);
+  font-size: 0.7rem;
+  color: var(--cyan-300);
+}
+.undo-btn:not(:disabled):hover .undo-left {
+  color: var(--navy-900);
+}
+.undo-btn:disabled,
+.undo-btn:disabled:hover {
+  opacity: 0.45;
+  cursor: default;
+  background: var(--surface-2);
+  color: #fff;
+}
 .king-privacy {
   flex-basis: 100%;
   margin: 0;
