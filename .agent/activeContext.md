@@ -4,9 +4,9 @@
 
 ## 現在の対象
 
-- 何を / どこを: 見た目をペルソナ3風（試作 D）に本番化。ユーザーが試作 4 案（`?theme=a|b|c|d`）から選び、「月マークいらないかも」で月のモチーフを外した。D を `web/src/style.css` の本体に移し（試作の `themes.css`・`ui/theme.ts`・切り替えは持ち込まない）、AGENTS.md の「デザイン規約」を書き換え。依頼元セッション経由
-- ステータス: 本番化済み（PR #33、b704227。本番 https://kyosho.rukiharukichi.com/ で確認）。試作ブランチ `proto/visual-themes`・worktree `../kyosho-themes`・`style/persona3` は削除済み
-- 最終更新: 2026-10-08
+- 何を / どこを: 見た目を「ペルソナすぎる」から独自の見た目へ。ユーザーが試作 E・F・G（ブランチ `proto/original-look`、`?theme=`）から G 案（青と斜めは残し、直立の見出し・段々なしのメニュー・挟む石・盤の格子）を選んだ。G を `web/src/style.css` の本体と `index.html` のロゴに移し（試作の `themes.css`・`ui/theme.ts`・切り替え・E と F は持ち込まない）、AGENTS.md の「概要」「デザイン規約」を書き換え。依頼元セッション経由
+- ステータス: ブランチ `style/original-g`（worktree `../kyosho-original`）。localhost:5180 でユーザーの OK 待ち。マージ・デプロイはまだしない
+- 最終更新: 2026-10-09
 
 ## 遊び方（チュートリアル）の要点
 
@@ -24,9 +24,9 @@
 - 設定メニュー（`ui/setup.ts` の `SetupDialog`、`#setup`）: フォームは下書きで「保存」で `localStorage` `kyosho:settings`（`loadSaved` / `storeSaved`。読めなければ標準）。ルールの優先は URL のクエリ ＞ 保存 ＞ `DEFAULT_PRESET`。URL への反映は保存時と対局開始時だけ。手番（CPU 対戦の side・オンラインの host）もここ
 - CPU の強さ: `engine/cpu.ts` の `chooseMove(view, level, rng)`。normal = `chooseLookahead`（sim と一致）、easy = 1 手読み＋35% で適当な手、hard = 2 手読み上位 8 手 × 相手の応手上位 6 手 × 自分の最善手を 2 手読み＋決着の読み。勝率は `npm run balance -- vs 400 std normal hard`、下限は `test/level.test.ts`
 
-## 見た目の要点（ペルソナ3風。デザイン規約は AGENTS.md）
+## 見た目の要点（G 案。デザイン規約は AGENTS.md）
 
-- 色・斜め・見出しはユーザーの個人サイト rukiharukichi.com（`/Users/numataharu/repos/rukiharukichi.com`）に揃える（あちらのファイルは変えない）。ロゴは自作の SVG（時計の文字盤と水面、`index.html` の `.brand-mark` / `.logo-clock`）。月は描かない
+- 青と斜めはユーザーの個人サイト rukiharukichi.com（`/Users/numataharu/repos/rukiharukichi.com`）に揃える（あちらのファイルは変えない）。見出しは直立、選んだ項目は白い板を黒と白の石が挟む（`--pinch-black` / `--pinch-white`）、地は盤の格子。ロゴは自作の SVG（斜めの盤の 2×2 マスに黒石・白石と白の駒、`index.html` の `.brand-mark` / `.logo-mark`）。斜体・硬い影・赤い破片・段々・時計・水面・月は使わない
 - 重なり: 盤（`.board-frame`、`z-index: 2`）は名札・駒台（`isolation` の斜めの帯）より上。枠の斜めの角は `::before` だけ（枠を clip-path で切ると盤の外の吹き出しが切れる）。詳細度の低い本体の規則を後ろの `@media (max-width: 400px)` が上書きしやすいので、狭い画面の指定を足すときはメニューの項目（`.menu-btn`）を巻き込まない
 
 - 対局画面: 名札（`#seat-top` / `#seat-bottom`、`App.placeSeats`。自分が下、2 人対戦は先手が下）・盤の枠の下の縁に手番（`#status` は「あなたの番」など短く）・手数（`#ply`「N 手」）・接続（`#net`）。手番の側の縁に線（`.board-frame.turn-top` / `turn-bottom` / `turn-act`）
@@ -52,7 +52,7 @@
 
 ## 未解決・次の一手
 
-- [ ] ユーザーにスマホの実機でペルソナ3風の見た目（太い斜体の読みやすさ・青い盤での印の見分け）を見てもらう
+- [ ] ユーザーに localhost:5180 で G 案の既定の見た目を見てもらい、OK ならドラフト PR を通常の PR にしてマージ（本番デプロイ）。スマホの実機での見やすさも確かめる
 - [ ] ユーザーの試遊で遊び方の分かりやすさ（ステップの順・目標の文・光と矢印の誘導・最後の実戦）の感想を聞く。初回にメニューで勧める強さ（今は「遊び方」の横のシアンの「おすすめ」だけ）もユーザー判断
 - [ ] progress.md が 30 件を超えた。`progress-archive.md` への移送をユーザーに提案する
 - [ ] ユーザーの試遊で制限時間の長さ（ノーマル 45 秒・ハード 20 秒・マルチ 45 秒）と時計の見やすさの感想を聞く
