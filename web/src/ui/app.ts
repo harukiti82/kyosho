@@ -1739,7 +1739,7 @@ export class App {
     this.el.status.textContent = text;
     this.el.status.classList.toggle("over", !!g.result && !this.lesson?.solved);
     this.el.ply.textContent = g.rules.maxPlies > 0 ? `${g.ply} / ${g.rules.maxPlies} 手` : `${g.ply} 手`;
-    // 手番の側の木枠の縁を光らせる（操作できる手番は緑、待つ手番は琥珀）
+    // 手番の側の盤の枠の縁に線を引く（操作できる手番は白、待つ手番はシアン）
     const frame = this.el.frame;
     const top = this.el.seats[1].contains(this.el.players[g.turn]);
     const idle = !!g.result || !!this.lesson?.solved;

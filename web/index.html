@@ -8,7 +8,7 @@
   </head>
   <body>
     <header class="topbar">
-      <h1 class="title"><svg class="brand-mark" viewBox="0 0 40 40" aria-hidden="true"><circle class="ring" cx="20" cy="20" r="15" /><path class="ticks" d="M20 1.5v5M20 33.5v5M1.5 20h5M33.5 20h5" /><path class="hand" d="M20 20V10M20 20l7 4" /></svg>挟将<span class="title-sub">きょうしょう 試遊版</span></h1>
+      <h1 class="title"><svg class="brand-mark" viewBox="0 0 120 120" aria-hidden="true"><g transform="skewX(-12) translate(12 0)"><rect class="board-sq" x="8" y="8" width="104" height="104" /><path class="grid" d="M60 8V112M8 60H112" /><circle class="black" cx="34" cy="34" r="20" /><circle class="white" cx="86" cy="34" r="20" /><circle class="black" cx="86" cy="86" r="20" /><polygon class="white" points="34,63 49.2,72.2 53,109 15,109 18.8,72.2" /></g></svg>挟将<span class="title-sub">きょうしょう 試遊版</span></h1>
       <div class="topbar-actions">
         <button type="button" class="icon-btn mute-btn" id="btn-mute" aria-label="消音" aria-pressed="false"></button>
         <button type="button" class="icon-btn" id="btn-rules" aria-label="ルール詳細" title="ルール詳細">?</button>
@@ -19,9 +19,9 @@
     <!-- メニュー（起動時の画面）。CPU対戦は強さを選ぶとそのまま始まる。ルールは「設定」で変えたもの（変えなければ標準） -->
     <main class="menu" id="menu" hidden>
       <div class="menu-inner">
-        <!-- ロゴ: 時計の文字盤と水面の印（自作）・読みの帯・名前 -->
+        <!-- ロゴ: 斜めの盤の 2×2 マスに黒石・白石と白の駒（自作）・読みの帯・名前 -->
         <div class="menu-logo" aria-hidden="true">
-          <svg class="logo-clock" viewBox="0 0 120 120"><circle class="ring" cx="60" cy="60" r="44" /><path class="ticks" d="M60 6v12M60 102v12M6 60h12M102 60h12M22 22l7 7M98 22l-7 7M22 98l7-7M98 98l-7-7" /><path class="hand" d="M60 60V30M60 60l20 11" /><path class="water" d="M10 104h100M24 111h72M38 118h44" /></svg>
+          <svg class="logo-mark" viewBox="0 0 120 120"><g transform="skewX(-12) translate(12 0)"><rect class="board-sq" x="8" y="8" width="104" height="104" /><path class="grid" d="M60 8V112M8 60H112" /><circle class="black" cx="34" cy="34" r="20" /><circle class="white" cx="86" cy="34" r="20" /><circle class="black" cx="86" cy="86" r="20" /><polygon class="white" points="34,63 49.2,72.2 53,109 15,109 18.8,72.2" /></g></svg>
           <span class="logo-text"><span class="logo-kicker">きょうしょう</span><span class="logo-word">挟将</span></span>
         </div>
         <p class="setup-note menu-note" id="menu-note" role="status" hidden></p>
@@ -67,7 +67,7 @@
             <div class="coords coords-x" aria-hidden="true"><span>a</span><span>b</span><span>c</span><span>d</span><span>e</span><span>f</span><span>g</span><span>h</span></div>
             <div class="coords coords-y" aria-hidden="true"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span></div>
             <div class="board" id="board" role="grid" aria-label="盤面"></div>
-            <!-- 木枠の下の縁: 手番・手数・オンラインの接続 -->
+            <!-- 盤の枠の下の縁: 手番・手数・オンラインの接続 -->
             <div class="frame-foot">
               <span class="net" id="net" role="status" hidden></span>
               <p class="status" id="status" role="status" aria-live="polite"></p>
