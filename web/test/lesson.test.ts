@@ -17,6 +17,7 @@ import {
 } from "../src/engine/game";
 import { kindsByValue, presetById, sameRules, type PieceKind } from "../src/engine/rules";
 import type { KeyValueStore } from "../src/net/online";
+import { keyParts } from "../src/ui/coach";
 import {
   FINISHED_TEXT,
   illegalHint,
@@ -111,12 +112,16 @@ describe("チュートリアルの各ステップ", () => {
     expect(lesson("anchor").rules.anchor).toBe("attack");
     expect(lesson("heal").rules.heal).toBe("lowMinus1");
     expect(lesson("king").rules.king).toEqual(std.king);
-    // 覚えるルールは 2 文まで、課題と合わせて 3 文まで（1 文に 1 つのこと）。括弧の補足・感嘆符は使わない
+    // 覚えるルールは要点の一言（句点なし・22 字まで）と補足（なくてもよい）。要点と補足で 2 文まで、課題と合わせて 3 文まで（1 文に 1 つのこと）。
+    // 括弧の補足・感嘆符は使わない
     for (const l of LESSONS) {
-      expect(l.lead.length, l.id).toBeGreaterThan(0);
-      expect(sentences(l.lead), l.id).toBeLessThanOrEqual(2);
-      expect(sentences(l.lead) + sentences(l.task), l.id).toBeLessThanOrEqual(3);
-      expect(`${l.lead}${l.task}`, l.id).not.toMatch(/[（）！]/);
+      expect(l.point.length, l.id).toBeGreaterThan(0);
+      expect(l.point.length, l.id).toBeLessThanOrEqual(22);
+      expect(l.point, l.id).not.toContain("。");
+      const lead = sentences(l.point) + sentences(l.note ?? "");
+      expect(lead, l.id).toBeLessThanOrEqual(2);
+      expect(lead + sentences(l.task), l.id).toBeLessThanOrEqual(3);
+      expect(`${l.point}${l.note ?? ""}${l.task}`, l.id).not.toMatch(/[（）！]/);
     }
   });
 
@@ -124,7 +129,7 @@ describe("チュートリアルの各ステップ", () => {
     const texts = [FINISHED_TEXT, KING_HINT];
     for (const l of steps) {
       const { g, m } = solve(l);
-      texts.push(l.title, l.lead, l.task, l.done(m, g));
+      texts.push(l.title, l.point, l.note ?? "", l.task, l.done(m, g));
       for (const [r, c] of l.guide) texts.push(l.hint(g, { r, c, kind: firstKind(g), king: false }));
     }
     for (const t of texts) {
@@ -239,7 +244,7 @@ describe("チュートリアルの各ステップ", () => {
     const { next, m } = solve(l);
     expect(kingInfo(next, 0)).toMatchObject({ status: "hidden", cell: [5, 4], auto: false });
     expect(l.done(m, g)).toBe("この歩1があなたの王になった。王を相手に裏返されると、ダメージとは別に体力が 30 減る。");
-    expect(l.lead).toContain("最初の 7 手");
+    expect(l.point).toContain("最初の 7 手");
   });
 
   it("王を裏返す: 「?」の金が相手の王で、裏返すと 6 ダメージ＋体力−30", () => {
@@ -250,7 +255,7 @@ describe("チュートリアルの各ステップ", () => {
     expect(m.king).toMatchObject({ r: 6, c: 2, kind: "kin", penalty: 30, lose: false });
     expect(next.hp[1]).toBe(g.hp[1] - m.damage - 30);
     expect(l.done(m, g)).toBe("相手の王を裏返した。ダメージ 6 に王の分の 30 が加わり、相手の体力が 36 減った。");
-    expect(l.lead).toContain("体力が 30 減る");
+    expect(l.point).toContain("体力が 30 減る");
   });
 
   it("予測を読む: 大きいダメージのマスは置いた駒が次に返され、正解のマスは返されない。点線だけのマスもある", () => {
@@ -272,10 +277,26 @@ describe("チュートリアルの各ステップ", () => {
     expect(othelloCells(g.board, 0).map(([r, c]) => cellName(r, c)).filter((n) => !legal.has(n))).toContain("c4");
   });
 
+  it("駒の向き: 要点は「駒ごとに挟める向きが違う」", () => {
+    expect(lesson("dirs").point).toBe("駒ごとに挟める向きが違う");
+  });
+
   it("実戦は標準の初期局面", () => {
     const g = lesson("match").start();
     expect(g.ply).toBe(0);
     expect(sameRules(g.rules, presetById("std").rules)).toBe(true);
+  });
+});
+
+describe("コーチの文の目で拾う語", () => {
+  const keys = (t: string) => keyParts(t).filter((p) => p.key).map((p) => p.text);
+  it("数字と、駒の名前の付いた数字だけを分け、つなげると元の文に戻る", () => {
+    const t = `歩1と金5を裏返して、1${PLUS}5 で 6 のダメージ。相手の体力は残り 24。`;
+    expect(keys(t)).toEqual(["歩1", "金5", "1", "5", "6", "24"]);
+    expect(keyParts(t).map((p) => p.text).join("")).toBe(t);
+    // 駒の名前だけ・数字のない文は分けない
+    expect(keys("歩は縦にしか挟めない。駒台の飛をタップしてから置く")).toEqual([]);
+    expect(keyParts("")).toEqual([]);
   });
 });
 

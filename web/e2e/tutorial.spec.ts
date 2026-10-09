@@ -43,7 +43,9 @@ async function openTutorial(page: Page) {
 async function expectStep(page: Page, i: number) {
   await expect(page.locator("#coach-title")).toHaveText(LESSONS[i].title);
   await expect(page.locator("#coach-num")).toHaveText(`${i + 1}/${LESSONS.length}`);
-  await expect(page.locator("#coach-lead")).toHaveText(LESSONS[i].lead);
+  await expect(page.locator("#coach-point")).toHaveText(LESSONS[i].point);
+  const note = page.locator("#coach-note");
+  await (LESSONS[i].note ? expect(note).toHaveText(LESSONS[i].note!) : expect(note).toBeHidden());
   await expect(page.locator("#coach-task")).toHaveText(LESSONS[i].task);
 }
 

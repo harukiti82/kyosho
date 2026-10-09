@@ -146,11 +146,11 @@ test.describe("PC 幅", () => {
     await expect(page.locator("#custom-tag")).toContainText("カスタム");
     await expect(page.locator(".preset[aria-pressed=true]")).toHaveCount(0);
     await expect(page.locator("#gate-on-label")).toHaveText("強い駒は取れない");
-    await expect(page.locator("#setup-rules4")).toContainText("置いた駒より数字が大きい駒を含む列は取れない");
+    await expect(page.locator("#setup-rules4")).toContainText("強い駒を含む列は取れない 置いた駒より数字が大きい駒を含む列");
     // ラベルを押す（見えない 1px のラジオへの force のクリックは、レイアウトによって別の要素に当たる）
     await page.locator("label:has(> input[name=heal][value=avg])").click();
     await expect(page.locator("input[name=heal][value=avg]")).toBeChecked();
-    await expect(page.locator("#setup-rules4")).toContainText("挟んだ両端の駒の平均だけ回復");
+    await expect(page.locator("#setup-rules4")).toContainText("挟むと体力を回復 挟んだ両端の駒の平均だけ");
 
     // 範囲外・空の数値は直す
     await page.locator("input[name=hp0]").fill("999");
@@ -162,7 +162,7 @@ test.describe("PC 幅", () => {
     await page.locator("input[name=hp1]").fill("3");
     await page.locator("input[name=hp1]").press("Tab");
     await expect(page.locator("input[name=hp1]")).toHaveValue("5");
-    await expect(page.locator("#setup-rules4")).toContainText("体力 先手 200・後手 5 が 0 で負け");
+    await expect(page.locator("#setup-rules4")).toContainText("体力が 0 で負け 先手 200・後手 5 から");
     // 保存するとアドレスバーにも反映される（再読み込みしても同じ設定）
     const custom = await readSetup(page);
     await saveSettings(page);
@@ -244,8 +244,8 @@ test.describe("PC 幅", () => {
     // ルール詳細も新しい既定の文
     await page.locator("#btn-rules").click();
     await expect(page.locator("#rules-title")).toHaveText("標準のルール");
-    await expect(page.locator("#rules")).toContainText("王を返されたら通常のダメージに加えて体力 −30");
-    await expect(page.locator("#rules")).toContainText("回復 = 挟んだ両端（置いた駒と反対端の自分の駒）の低い方 − 1（0 未満は 0）");
+    await expect(page.locator("#rules")).toContainText("王を返されたら体力 −30 通常のダメージに加えて減る");
+    await expect(page.locator("#rules")).toContainText("回復 = 挟んだ両端の低い方 − 1 両端は置いた駒と反対端の自分の駒。0 未満は 0");
     await expect(page.locator("#rules")).toContainText("7 手目までに選ばなかったら、7 手目に置いた駒が自動で王になる");
     await expect(page.locator("#rules")).toContainText("端の駒の力:");
     await page.screenshot({ path: `${SHOT}/pc-default-rules.png` });
@@ -396,7 +396,7 @@ test.describe("PC 幅", () => {
     await seedPage(page, 1);
     await page.goto(`/?${encodeRules(hp5)}`);
     await startGame(page);
-    await expect(page.locator("#rules4")).toContainText("体力 5 が 0 で負け");
+    await expect(page.locator("#rules4")).toContainText("体力が 0 で負け どちらも 5 から");
     for (;;) {
       if (await waitHumanTurnOrEnd(page)) break;
       await humanMove(page, false);
@@ -471,7 +471,7 @@ test.describe("スマホ幅 375px", () => {
 
     await page.locator("#btn-rules").tap();
     await expect(page.locator("#rules-title")).toHaveText("v2案（強い駒は返せない）のルール");
-    await expect(page.locator("#rules")).toContainText("置いた駒より数字が大きい駒が 1 つでも入っている列は返せない");
+    await expect(page.locator("#rules")).toContainText("置いた駒より数字が大きい駒を含む列は返せない 1 つでも入っていれば返せない");
     // 冒頭から読める（末尾のボタンにフォーカスしてスクロールしない）
     expect(await page.locator("#rules").evaluate((d) => d.scrollTop)).toBe(0);
     await noHorizontalScroll(page, 375);

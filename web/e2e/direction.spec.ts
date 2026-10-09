@@ -75,7 +75,7 @@ test.describe("PC 幅", () => {
     await expect(page.locator("#custom-tag")).toHaveText("方向駒");
     await openRuleFields(page);
     await expect(page.locator("#setup-rules4 li")).toHaveText(ruleLines(DIR).map(sentenceText));
-    await expect(page.locator("#setup-rules4")).toContainText("駒の矢印の方向だけ挟める 歩↕ 横↔ 角✕ 飛✚ 金✱");
+    await expect(page.locator("#setup-rules4")).toContainText("駒ごとに挟める向きが違う 矢印の方向だけ挟める 歩↕ 横↔ 角✕ 飛✚ 金✱");
     // 駒の表: 6 種。方向は種類で固定（表示のみ）
     await expect(page.locator(".piece-row")).toHaveCount(KIND_ORDER.length);
     await expect(page.locator(".piece-row[data-kind=yoko] .piece-row-dir")).toHaveText("横");
@@ -95,7 +95,7 @@ test.describe("PC 幅", () => {
     await page.locator("input[name=kaku]").fill("12");
     await page.locator("input[name=kaku]").press("Tab");
     await expect(page.locator("#custom-tag")).toContainText("カスタム");
-    await expect(page.locator("#setup-rules4")).toContainText("体力 先手 60・後手 65 が 0 で負け");
+    await expect(page.locator("#setup-rules4")).toContainText("体力が 0 で負け 先手 60・後手 65 から");
     // 保存すると URL に反映され、再読み込みで復元される
     const custom = await readSetup(page);
     expect(custom).toEqual({ ...DIR, values: { ...DIR.values, kin: 20 }, hand: { ...DIR.hand, kaku: 12 } });
