@@ -109,11 +109,15 @@
             <button type="button" class="btn primary" id="coach-next">次へ</button>
           </div>
         </section>
-        <div class="tabs" role="tablist" aria-label="ルール・予測・棋譜・印の見かた">
-          <button type="button" class="tab" role="tab" id="tab-rules4" aria-controls="rules4" aria-selected="false"><span id="rules4-name">ルール</span></button>
-          <button type="button" class="tab" role="tab" id="tab-preview" aria-controls="preview" aria-selected="false" tabindex="-1">予測</button>
-          <button type="button" class="tab" role="tab" id="tab-log-panel" aria-controls="log-panel" aria-selected="false" tabindex="-1">棋譜</button>
-          <button type="button" class="tab" role="tab" id="tab-legend-box" aria-controls="legend-box" aria-selected="false" tabindex="-1">印</button>
+        <div class="tabs">
+          <div class="tablist" role="tablist" aria-label="ルール・予測・棋譜・印の見かた">
+            <button type="button" class="tab" role="tab" id="tab-rules4" aria-controls="rules4" aria-selected="false"><span id="rules4-name">ルール</span></button>
+            <button type="button" class="tab" role="tab" id="tab-preview" aria-controls="preview" aria-selected="false" tabindex="-1">予測</button>
+            <button type="button" class="tab" role="tab" id="tab-log-panel" aria-controls="log-panel" aria-selected="false" tabindex="-1">棋譜</button>
+            <button type="button" class="tab" role="tab" id="tab-legend-box" aria-controls="legend-box" aria-selected="false" tabindex="-1">印</button>
+          </div>
+          <!-- 取られる駒の警告「!」の切り替え（この対局の間だけ。保存した設定は変えない） -->
+          <button type="button" class="threat-toggle" id="btn-threat" aria-pressed="false" aria-label="駒の警告"><i class="key-threat" aria-hidden="true">!</i></button>
         </div>
         <!-- ルールカード（現在の設定から自動生成） -->
         <section class="tab-panel rules4" id="rules4" role="tabpanel" aria-labelledby="tab-rules4" hidden>
@@ -290,6 +294,18 @@
               <label><input type="radio" name="timeMulti" value="20" /><span>20秒</span></label>
               <label><input type="radio" name="timeMulti" value="45" checked /><span>45秒</span></label>
               <label><input type="radio" name="timeMulti" value="90" /><span>90秒</span></label>
+            </div>
+          </div>
+        </fieldset>
+
+        <!-- 表示の設定（ルールではない。対局中も引き出しの「!」で切り替えられる） -->
+        <fieldset class="field set-list">
+          <legend class="label">表示</legend>
+          <div class="opt set-row">
+            <span class="opt-name" id="opt-threat" title="相手が次の手で返せる自分の駒に ! を付ける"><i class="key-threat" aria-hidden="true">!</i> 駒の警告</span>
+            <div class="seg" role="radiogroup" aria-labelledby="opt-threat">
+              <label><input type="radio" name="threat" value="0" checked /><span>オフ</span></label>
+              <label><input type="radio" name="threat" value="1" /><span>オン</span></label>
             </div>
           </div>
         </fieldset>

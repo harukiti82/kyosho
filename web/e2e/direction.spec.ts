@@ -132,7 +132,7 @@ test.describe("PC 幅", () => {
     const seed = 3;
     await seedPage(page, seed);
     await page.goto(`/?${encodeRules(DIR)}`);
-    await startGame(page);
+    await startGame(page, { threat: true });
     await expect(page.locator("#rules4 li")).toHaveText(ruleLines(DIR).map(sentenceText));
     await expect(page.locator("#rules4-name")).toHaveText("ルール 方向駒");
     await expect(page.locator("#legend")).toContainText("↕↔✕✚✱ 駒が挟める方向");

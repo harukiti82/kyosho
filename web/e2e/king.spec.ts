@@ -131,7 +131,7 @@ test.describe("PC 幅", () => {
       page.on("pageerror", (e) => errors.push(String(e)));
       await seedPage(page, seed);
       await page.goto(`/?${encodeRules(rules)}`);
-      await startGame(page);
+      await startGame(page, { threat: true });
       await expect(page.locator("#rules4 li")).toHaveText(ruleLines(rules).map(sentenceText));
       await expect(page.locator("#legend")).toContainText("自分の王。自分にだけ見える");
 
@@ -238,7 +238,7 @@ test.describe("PC 幅", () => {
     page.on("pageerror", (e) => errors.push(String(e)));
     const rules = withKing({ deadline: 2 });
     await page.goto(`/?${encodeRules(rules)}`);
-    await startGame(page, { mode: "pvp" });
+    await startGame(page, { mode: "pvp", threat: true });
     await expect(page.locator("#rules4")).toContainText("最初の2手のうち1つを王に");
     let s = createGame(rules);
     // 王を返さない最初の合法手（この試験では王を公開させない）

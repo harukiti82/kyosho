@@ -2347,6 +2347,46 @@ button {
   border-bottom: 2px solid transparent;
   border-image: linear-gradient(90deg, #fff 0 2rem, rgba(255, 255, 255, 0.35) 2rem) 1;
 }
+.tablist {
+  flex: 1;
+  display: flex;
+  gap: 0.3rem;
+  min-width: 0;
+}
+/* 取られる駒の警告「!」の切り替え（タブの列の右端）。オフは薄くして斜線 */
+.threat-toggle {
+  flex: none;
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 1.9rem;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.threat-toggle .key-threat {
+  width: 1.3rem;
+  height: 1.3rem;
+  font-size: 0.85rem;
+}
+.threat-toggle[aria-pressed="false"] .key-threat {
+  opacity: 0.4;
+}
+.threat-toggle[aria-pressed="false"]::after {
+  content: "";
+  position: absolute;
+  left: 18%;
+  right: 18%;
+  top: calc(50% - 1px);
+  height: 2px;
+  background: var(--ink);
+  transform: rotate(-35deg);
+}
+.threat-toggle:hover .key-threat {
+  opacity: 1;
+}
 /* 選んだタブの下線は内側の影（はみ出すとタブの列のスクロールで切れる） */
 .tab {
   flex: none;

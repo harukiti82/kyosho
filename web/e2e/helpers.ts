@@ -50,17 +50,23 @@ export async function readSetup(page: Page): Promise<RuleSet> {
  * 対局を始める。preset・side の指定があれば設定メニューで選んで保存し、設定メニューが開いていれば（フォームを変えた後なら）保存してから、
  * メニューの CPU対戦 → 強さ（既定はノーマル）／マルチ → この端末で 2 人 で始める。
  * CPU 対戦で side を省くと先手（人間から打つ）を選ぶ（画面の既定はランダムだが、種付きの CPU の手を再現するテストは人間が先手の前提）。
- * 設定メニューで選んだ手番をそのまま使うときは side: "saved"
+ * 設定メニューで選んだ手番をそのまま使うときは side: "saved"。
+ * threat は取られる駒の警告「!」（画面の既定はオフ。「!」を確かめるテストは true）
  */
 export async function startGame(
   page: Page,
-  opts: { mode?: "cpu" | "pvp"; side?: 0 | 1 | "random" | "saved"; preset?: PresetId; level?: CpuLevel } = {},
+  opts: { mode?: "cpu" | "pvp"; side?: 0 | 1 | "random" | "saved"; preset?: PresetId; level?: CpuLevel; threat?: boolean } = {},
 ) {
   const mode = opts.mode ?? "cpu";
   const side = mode === "cpu" ? (opts.side ?? 0) : "saved";
-  if (opts.preset || side !== "saved") {
+  if (opts.preset || side !== "saved" || opts.threat !== undefined) {
     await openSettings(page);
     if (opts.preset) await page.locator(`.preset[data-preset=${opts.preset}]`).click();
+    if (opts.threat !== undefined) {
+      const v = opts.threat ? "1" : "0";
+      await page.locator(`label:has(> input[name=threat][value="${v}"])`).click();
+      await expect(page.locator(`input[name=threat][value="${v}"]`)).toBeChecked();
+    }
     if (side !== "saved") {
       // ラベルを押す（スマホ幅では隠れた input への直接のクリックが効かない）
       await page.locator(`label:has(> input[name=side][value="${side}"])`).click();

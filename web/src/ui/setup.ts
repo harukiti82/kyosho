@@ -44,6 +44,8 @@ export interface PlaySettings {
    * オンライン対戦は部屋を作るときにサーバーへ渡し、参加した側はサーバーの値（RoomInfoResponse.turnSeconds）
    */
   turnSeconds: number;
+  /** 相手が次の手で返せる（取れる）自分の駒の「!」を出して始める（ルールではない表示の設定。対局中は画面で切り替えられる） */
+  threat?: boolean;
 }
 
 /** 設定メニューで保存する中身（ルール・CPU 対戦の手番・オンラインで部屋を作るときの手番・制限時間） */
@@ -55,6 +57,8 @@ export interface Saved {
   timeCpu: CpuTime;
   /** マルチ（同じ端末の 2 人・オンラインで部屋を作るとき）の制限時間 */
   timeMulti: MultiTime;
+  /** 取られる駒の警告「!」を出す（既定は出さない） */
+  threat: boolean;
 }
 /** CPU 対戦の手番の設定（"0" 先手 / "1" 後手 / "random" 対局ごとに抽選） */
 export type Side = "0" | "1" | "random";
@@ -68,6 +72,7 @@ export const defaultSaved = (): Saved => ({
   host: "random",
   timeCpu: "auto",
   timeMulti: `${DEFAULT_MULTI_SECONDS}`,
+  threat: false,
 });
 
 const isSide = (v: unknown): v is Side => v === "0" || v === "1" || v === "random";
@@ -75,7 +80,7 @@ const isHost = (v: unknown): v is HostSeat => v === "random" || v === "first" ||
 
 /**
  * 保存した設定を読む。保存がない・壊れている・読めない値がある（ストレージが使えない場合を含む）ときは、
- * その部分を既定（標準・CPU 対戦の手番はランダム・オンラインの席はランダム・強さに合わせる・45 秒）にする。ルールは一部でも読めなければ全体を標準にする
+ * その部分を既定（標準・CPU 対戦の手番はランダム・オンラインの席はランダム・強さに合わせる・45 秒・警告なし）にする。ルールは一部でも読めなければ全体を標準にする
  */
 export function loadSaved(store: KeyValueStore): Saved {
   const out = defaultSaved();
@@ -95,13 +100,14 @@ export function loadSaved(store: KeyValueStore): Saved {
   if (isHost(o.host)) out.host = o.host;
   if (isCpuTime(o.timeCpu)) out.timeCpu = o.timeCpu;
   if (isMultiTime(o.timeMulti)) out.timeMulti = o.timeMulti;
+  if (typeof o.threat === "boolean") out.threat = o.threat;
   return out;
 }
 
 export function storeSaved(store: KeyValueStore, s: Saved) {
   store.setItem(
     SETTINGS_KEY,
-    JSON.stringify({ rules: encodeRules(s.rules), side: s.side, host: s.host, timeCpu: s.timeCpu, timeMulti: s.timeMulti }),
+    JSON.stringify({ rules: encodeRules(s.rules), side: s.side, host: s.host, timeCpu: s.timeCpu, timeMulti: s.timeMulti, threat: s.threat }),
   );
 }
 
@@ -209,11 +215,11 @@ export class SetupDialog {
 
   /** 次の対局の設定で、mode の対局を始める設定にする */
   playSettings(mode: Mode, level?: CpuLevel): PlaySettings {
-    const { rules, side, host, timeCpu, timeMulti } = this.current;
-    if (mode === "cpu") return { mode, ...seatChoice(side), rules, level, turnSeconds: cpuTurnSeconds(timeCpu, level ?? DEFAULT_CPU_LEVEL) };
+    const { rules, side, host, timeCpu, timeMulti, threat } = this.current;
+    if (mode === "cpu") return { mode, ...seatChoice(side), rules, level, turnSeconds: cpuTurnSeconds(timeCpu, level ?? DEFAULT_CPU_LEVEL), threat };
     const turnSeconds = Number(timeMulti);
-    if (mode === "online") return { mode, human: 0, rules, hostSeat: host, turnSeconds };
-    return { mode, human: 0, rules, turnSeconds };
+    if (mode === "online") return { mode, human: 0, rules, hostSeat: host, turnSeconds, threat };
+    return { mode, human: 0, rules, turnSeconds, threat };
   }
 
   /** 保存済みの設定をフォームに入れて開く */
@@ -223,6 +229,7 @@ export class SetupDialog {
     this.radio("host", this.saved.host);
     this.radio("timeCpu", this.saved.timeCpu);
     this.radio("timeMulti", this.saved.timeMulti);
+    this.radio("threat", this.saved.threat ? "1" : "0");
     this.openDetailsIfCustom();
     this.el.shareStatus.textContent = "";
     this.el.shareUrl.hidden = true;
@@ -305,6 +312,7 @@ export class SetupDialog {
         host: isHost(host) ? host : d.host,
         timeCpu: isCpuTime(timeCpu) ? timeCpu : d.timeCpu,
         timeMulti: isMultiTime(timeMulti) ? timeMulti : d.timeMulti,
+        threat: f.get("threat") === "1",
       };
       storeSaved(this.store, this.saved);
       this.onSaved(this.current);
