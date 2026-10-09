@@ -156,7 +156,11 @@ test.describe("PC 幅", () => {
     await page.goto("/");
     await page.locator("#menu-learn").click();
     await expect(page.locator("#coach-title")).toHaveText("予測を読む");
-    await expect(page.locator(".cell .threat").first()).toBeVisible();
+    // 光る 2 マスのうち d6 は、置いた歩が次に返される（予測で「!」が出る）
+    const d6 = cellAt(page, 5, 3);
+    await d6.hover();
+    await expect(d6.locator(".threat")).toBeVisible();
+    await expect(d6.locator(".bb-warn")).toHaveCount(1);
     await expect(toggle(page)).toBeHidden();
   });
 });

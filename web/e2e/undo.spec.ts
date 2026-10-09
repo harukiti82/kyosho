@@ -221,7 +221,9 @@ test.describe("PC 幅", () => {
     await waitHumanTurnOrEnd(page);
     let used = 0;
     for (;;) {
-      await page.locator(".cell.can-take").first().click();
+      // 取るルールは空きマスならどこでも置ける。取れるマスがなければ置けるマスに置く
+      const take = page.locator(".cell.can-take");
+      await ((await take.count()) > 0 ? take : page.locator(".cell.open")).first().click();
       if (await waitHumanTurnOrEnd(page)) break;
       if (used === 0) {
         await undoBtn(page).click();
