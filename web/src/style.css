@@ -1176,6 +1176,10 @@ button {
   font-family: var(--font-display);
   color: var(--cyan-300);
 }
+/* 合わせると白い板に左端の黒の帯（選んだタブ・トーストと同じ） */
+.undo-btn:not(:disabled):hover {
+  box-shadow: inset 0.25rem 0 0 #0b0b0c;
+}
 .undo-btn:not(:disabled):hover .undo-left {
   color: var(--navy-900);
 }
@@ -2354,39 +2358,43 @@ button {
   gap: 0.3rem;
   min-width: 0;
 }
-/* 取られる駒の警告「!」の切り替え（タブの列の右端）。オフは薄くして斜線 */
+/* 取られる駒の警告「!」の切り替え（タブの列の右端）。オンは選んだタブと同じ白い板に左端の黒の帯、オフは紺に薄い「!」と斜線 */
 .threat-toggle {
   flex: none;
   position: relative;
   display: grid;
   place-items: center;
-  width: 1.9rem;
-  padding: 0;
+  padding: 0.2rem 0.6rem;
   border: 0;
   background: none;
   cursor: pointer;
   touch-action: manipulation;
+  transform: skewX(var(--skew));
 }
 .threat-toggle .key-threat {
-  width: 1.3rem;
-  height: 1.3rem;
-  font-size: 0.85rem;
+  width: 1.2rem;
+  height: 1.2rem;
+  font-size: 0.8rem;
+}
+.threat-toggle[aria-pressed="true"] {
+  background: #fff;
+  box-shadow: inset 0.3rem 0 0 #0b0b0c;
 }
 .threat-toggle[aria-pressed="false"] .key-threat {
-  opacity: 0.4;
+  opacity: 0.45;
 }
 .threat-toggle[aria-pressed="false"]::after {
   content: "";
   position: absolute;
-  left: 18%;
-  right: 18%;
+  left: 30%;
+  right: 30%;
   top: calc(50% - 1px);
   height: 2px;
   background: var(--ink);
   transform: rotate(-35deg);
 }
-.threat-toggle:hover .key-threat {
-  opacity: 1;
+.threat-toggle[aria-pressed="false"]:hover {
+  background: var(--hover);
 }
 /* 選んだタブの下線は内側の影（はみ出すとタブの列のスクロールで切れる） */
 .tab {
