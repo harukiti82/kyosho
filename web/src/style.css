@@ -1157,6 +1157,39 @@ button {
 .status.over {
   color: var(--cyan-300);
 }
+/* 待った（盤の枠の下の縁の左。残りの回数を添える） */
+.undo-box {
+  grid-column: 1;
+  justify-self: start;
+  display: flex;
+  min-width: 0;
+}
+.undo-btn {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.3em;
+  padding: 0.15rem 0.75rem;
+  font-size: clamp(0.66rem, 2.8vw, 0.78rem);
+  white-space: nowrap;
+}
+.undo-left {
+  font-family: var(--font-display);
+  color: var(--cyan-300);
+}
+/* 合わせると白い板に左端の黒の帯（選んだタブ・トーストと同じ） */
+.undo-btn:not(:disabled):hover {
+  box-shadow: inset 0.25rem 0 0 #0b0b0c;
+}
+.undo-btn:not(:disabled):hover .undo-left {
+  color: var(--navy-900);
+}
+.undo-btn:disabled,
+.undo-btn:disabled:hover {
+  opacity: 0.45;
+  cursor: default;
+  background: var(--surface-2);
+  color: #fff;
+}
 .ply {
   grid-column: 3;
   justify-self: end;
@@ -2318,6 +2351,50 @@ button {
   padding: 0 0.4rem 0.35rem;
   border-bottom: 2px solid transparent;
   border-image: linear-gradient(90deg, #fff 0 2rem, rgba(255, 255, 255, 0.35) 2rem) 1;
+}
+.tablist {
+  flex: 1;
+  display: flex;
+  gap: 0.3rem;
+  min-width: 0;
+}
+/* 取られる駒の警告「!」の切り替え（タブの列の右端）。オンは選んだタブと同じ白い板に左端の黒の帯、オフは紺に薄い「!」と斜線 */
+.threat-toggle {
+  flex: none;
+  position: relative;
+  display: grid;
+  place-items: center;
+  padding: 0.2rem 0.6rem;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  touch-action: manipulation;
+  transform: skewX(var(--skew));
+}
+.threat-toggle .key-threat {
+  width: 1.2rem;
+  height: 1.2rem;
+  font-size: 0.8rem;
+}
+.threat-toggle[aria-pressed="true"] {
+  background: #fff;
+  box-shadow: inset 0.3rem 0 0 #0b0b0c;
+}
+.threat-toggle[aria-pressed="false"] .key-threat {
+  opacity: 0.45;
+}
+.threat-toggle[aria-pressed="false"]::after {
+  content: "";
+  position: absolute;
+  left: 30%;
+  right: 30%;
+  top: calc(50% - 1px);
+  height: 2px;
+  background: var(--ink);
+  transform: rotate(-35deg);
+}
+.threat-toggle[aria-pressed="false"]:hover {
+  background: var(--hover);
 }
 /* 選んだタブの下線は内側の影（はみ出すとタブの列のスクロールで切れる） */
 .tab {

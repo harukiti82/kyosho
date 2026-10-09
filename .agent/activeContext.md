@@ -4,19 +4,20 @@
 
 ## 現在の対象
 
-- 何を / どこを: 見た目を「ペルソナすぎる」から独自の見た目へ。ユーザーが試作 E・F・G（ブランチ `proto/original-look`、`?theme=`）から G 案（青と斜めは残し、直立の見出し・段々なしのメニュー・挟む石・盤の格子）を選んだ。G を `web/src/style.css` の本体と `index.html` のロゴに移し（試作の `themes.css`・`ui/theme.ts`・切り替え・E と F は持ち込まない）、AGENTS.md の「概要」「デザイン規約」を書き換え。依頼元セッション経由
-- ステータス: 本番反映済み（PR #35、913c1d5。本番 https://kyosho.rukiharukichi.com/ で確認）。試作ブランチ `proto/original-look`・worktree `../kyosho-original` は削除済み
+- 何を / どこを: ユーザーの要望で「待った」（CPU 対戦のイージーだけ、1 局 3 回）と、取られる駒の警告「!」の表示の切り替え（既定オフ）を追加。ブランチ `feat/undo-and-warning`（worktree `../kyosho-undo`）を G 案（#35、本番反映済み）の上に載せ、待ったの鍵と「!」の切り替えにも G の見た目を当てる。依頼元セッション経由
+- ステータス: 実装・テスト済み、rebase 後の見た目合わせ → PR → マージ → 本番デプロイの確認まで
 - 最終更新: 2026-10-09
+
+## 待った・「!」の切り替えの要点
+
+- 待った: `ui/undo.ts` の `Undo`（人間が打つ前の `GameState` を積むだけ。エンジンは不変）。`App.advance` で `record`、`App.takeBack` で戻す。鍵は盤の枠の下の縁の左 `#undo-box`（駒台に置くとスマホであふれた）。成績に「待った N 回」。e2e `undo.spec.ts`
+- 「!」: 表示の設定 `Saved.threat`（既定 false・古い保存も false）→ `PlaySettings.threat` → `App.threatOn`（`initThreat` で対局ごとに戻す）。対局中は引き出しのタブの列の右端 `#btn-threat`（保存は変えない）。遊び方は常にオンで鍵なし。「!」を確かめる e2e は `startGame(page, { threat: true })`。e2e `threat.spec.ts`
 
 ## 遊び方（チュートリアル）の要点
 
 - ステップは `ui/lessons.ts` の `LESSONS`（挟む → ダメージ → 駒の向き → 持ち駒 → 反対側の駒 → 回復 → 王を決める → 王を裏返す → 予測を読む → 実戦）。局面は engine の `gameFrom`、文はエンジンの棋譜の値。画面は `App.lesson`（`openLesson` / `inStep` / `lessonNeed`）と `ui/coach.ts`（`#coach`、引き出しの先頭 = スマホは駒台の下・PC は盤の横の上）。進み具合は localStorage `kyosho:tutorial`
 - 文の書き方: 内部の用語（端の駒・上乗せ・期限・低い方−1・返す）を使わず、盤の物を指して言う（「置いた駒の反対側にある自分の駒」）。できたの文はそのとき盤で起きた数字（「飛3と金5で挟んだ。小さいほうの 3 から 1 を引いた 2 だけ…」）。覚えるルール 2 文まで・課題と合わせて 3 文まで。`test/lesson.test.ts` が用語・文の数を検査する。足し算の＋は `PLUS`（WORD JOINER で折り返さない）
 - 「予測を読む」より前のステップは始めの局面で自分の駒に「!」が出ない（`test/lesson.test.ts`）。e2e は `tutorial.spec.ts`（スクリーンショット *-tutorial-*）
-
-## 1 手の制限時間の要点
-
-- ルールではなく `PlaySettings.turnSeconds`（URL に載せない）。CPU 対戦 `Saved.timeCpu`（`auto` = イージー 0・ノーマル 45・ハード 20）、マルチ `timeMulti`（既定 45）。時間切れは engine の `playTimeout`。画面は `ui/clock.ts` の `TurnClock` を `App.syncClock` が合わせる（遊び方は常に 0）。オンラインはサーバーの alarm（`.agent/online-protocol.md`「1 手の制限時間」）
 
 ## メニューと CPU の強さの要点
 
@@ -52,9 +53,10 @@
 
 ## 未解決・次の一手
 
+- [ ] ユーザーの試遊で待った（イージーだけ・3 回）と「!」の既定オフの手応えを聞く。既定オフで「ルールが一目で分かる」が損なわれていないか
 - [ ] ユーザーにスマホの実機で G 案の見た目（直立の見出しの読みやすさ・挟む石・盤の格子と星）を見てもらう
 - [ ] ユーザーの試遊で遊び方の分かりやすさ（ステップの順・目標の文・光と矢印の誘導・最後の実戦）の感想を聞く。初回にメニューで勧める強さ（今は「遊び方」の横のシアンの「おすすめ」だけ）もユーザー判断
-- [ ] progress.md が 30 件を超えた。`progress-archive.md` への移送をユーザーに提案する
+- [ ] progress.md が 30 件を超えた（40 件）。`progress-archive.md` への移送をユーザーに提案する
 - [ ] ユーザーの試遊で制限時間の長さ（ノーマル 45 秒・ハード 20 秒・マルチ 45 秒）と時計の見やすさの感想を聞く
 - [ ] ユーザーの試遊で CPU の強さの手応え（イージーで勝てるか・ハードが強すぎないか）とメニューの流れの感想を聞く。スマホ 2 台でオンラインの作成 → 参加も実機で確かめる
 - [ ] ユーザーの試遊で 期限 7 手・回復 低い方−1 の標準の手応えを聞く（CPU の強さの差: ハード対ノーマル 72.0%・ノーマル対イージー 85.8%）
@@ -65,15 +67,13 @@
 ## 現フェーズで Read すべき設計書
 
 - 遊び方: `web/src/ui/lessons.ts`, `web/src/ui/coach.ts`, `web/src/ui/app.ts`（「遊び方（チュートリアル）」節 `openLesson` / `inStep`、`onCellClick`・`renderBoard` の誘導）, `web/test/lesson.test.ts`, `web/e2e/tutorial.spec.ts`
-- 制限時間: `web/src/ui/clock.ts`, `web/src/ui/app.ts`（「制限時間」節 `syncClock` / `checkTimeout`）, `web/src/engine/game.ts`（`playTimeout`）, `server/src/room.ts`
+- 待った・「!」・制限時間: `web/src/ui/undo.ts`, `web/src/ui/app.ts`（`takeBack` / `initThreat` / `setThreat` / `syncClock` / `checkTimeout`）, `web/src/ui/setup.ts`（`Saved.threat`）, `web/src/ui/clock.ts`, `web/src/engine/game.ts`（`playTimeout`）, `server/src/room.ts`
 - メニュー・設定メニュー・CPU の強さ: `web/src/ui/menu.ts`, `web/src/ui/setup.ts`, `web/src/ui/app.ts`（`showMenu` / `resume` / `leaveToMenu`）, `web/src/engine/cpu.ts`（`chooseMove`）
 - 画面の見た目を直す: AGENTS.md の「デザイン規約」→ `web/src/style.css`（`:root` のトークン）, `web/index.html`, `web/src/ui/app.ts`（`placeSeats` / `renderPlayers` / `kingTag` / `bubble` / `setTab` / `renderScore`）, `web/src/ui/setup.ts`, `web/src/ui/menu.ts`
 - オンライン対戦の画面の修正: `.agent/online-protocol.md`（「画面側の挙動」「再戦」）→ `web/src/net/online.ts` → `web/src/ui/app.ts`（「オンライン対戦」節）, `web/src/ui/online.ts`, `web/e2e/online/`
-- 設定項目・プリセットの変更: `RULES.md` の「Web 試遊版」節 → `web/src/engine/rules.ts` → AGENTS.md の「ルール・設定項目を変えるとき」
-- ダメージ・端の駒: `web/src/engine/board.ts`（`damageOf` / `anchorsOf`）, `web/test/anchor.test.ts`。方向駒: `board.ts`（`pieceLines`）, `test/direction.test.ts`。隠し王: `game.ts`（隠し王節）, `cpu.ts`, `test/king.test.ts`
+- 設定項目・プリセットの変更: `RULES.md` の「Web 試遊版」節 → `web/src/engine/rules.ts` → AGENTS.md の「ルール・設定項目を変えるとき」。ダメージ・端の駒: `web/src/engine/board.ts`（`damageOf` / `anchorsOf`）, `web/test/anchor.test.ts`。方向駒: `board.ts`（`pieceLines`）, `test/direction.test.ts`。隠し王: `game.ts`（隠し王節）, `cpu.ts`, `test/king.test.ts`
 - 演出・効果音・成績: `web/src/ui/impact.ts`, `web/src/ui/fx.ts`, `web/src/ui/sound.ts`, `web/test/impact.test.ts`, `web/e2e/impact.spec.ts`。決着の演出: `web/src/ui/outcome.ts`, `web/test/outcome.test.ts`, `web/e2e/result.spec.ts`
 
 ## 関連ファイル / リンク
 
-- E2E のスクリーンショット: `web/screenshots/`（pc-* / sp-* 、隠し王は *-king-*、方向駒は *-dir*、拠点は *-anchor*、演出は *-impact-*、決着は *-result-*、オンラインは *-online-*、遊び方は *-tutorial-*）
-- デプロイ: `.github/workflows/pages.yml`（GitHub Pages。PR はテスト+ビルドのみ、main への push でデプロイ）、`.github/workflows/deploy.yml`（Cloudflare。Secret 登録済み = main へのマージで本番デプロイ）、`server/wrangler.jsonc`
+- E2E のスクリーンショット: `web/screenshots/`（pc-* / sp-* 、隠し王は *-king-*、方向駒は *-dir*、拠点は *-anchor*、演出は *-impact-*、決着は *-result-*、オンラインは *-online-*、遊び方は *-tutorial-*、待ったは *-undo-*、「!」は *-threat-*）。デプロイ: `.github/workflows/pages.yml`（GitHub Pages。PR はテスト+ビルドのみ、main への push でデプロイ）、`.github/workflows/deploy.yml`（Cloudflare。Secret 登録済み = main へのマージで本番デプロイ）、`server/wrangler.jsonc`

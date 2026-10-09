@@ -270,4 +270,6 @@ test("遊び方の実戦は制限時間なしで、CPU（イージー）が打�
   await expect(page.locator("#ply")).toHaveText("2 手", { timeout: 10_000 });
   await expect(page.locator(".board.acting")).toBeVisible();
   await expect(page.locator("#turn-clock")).toHaveCount(0);
+  // 実戦は CPU イージーでも待ったを出さない
+  await expect(page.locator("#btn-undo")).toHaveCount(0);
 });

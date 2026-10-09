@@ -258,7 +258,7 @@ test.describe("PC 幅", () => {
       // CPU の手を毎回同じにする（種がないと終局の形が実行ごとに変わり、予測の撮影・警告が出ないまま終わることがある）
       await seedPage(page, 1);
       await page.goto("/");
-      await startGame(page, { preset: preset.id });
+      await startGame(page, { preset: preset.id, threat: true });
       await ruleCardIs(page, r);
       await expect(page.locator("#rules4-name")).toHaveText(`ルール ${preset.name}`);
       await expect(page.locator("#player-0 .hp-num")).toHaveText(String(r.hp[0]));
@@ -334,7 +334,7 @@ test.describe("PC 幅", () => {
     const rules = presetById("v2").rules;
     const seq = findGameWithPass(rules);
     await page.goto("/");
-    await startGame(page, { mode: "pvp", preset: "v2" });
+    await startGame(page, { mode: "pvp", preset: "v2", threat: true });
     await expect(page.locator("#status")).toContainText("先手の番");
     let sawPass = false;
     let s = createGame(rules);

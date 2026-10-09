@@ -84,6 +84,7 @@ import {
 import { Menu } from "./menu";
 import { cryptoRandom, drawSeat, fillSentences, SetupDialog, type PlaySettings } from "./setup";
 import { Sound } from "./sound";
+import { Undo, UNDO_LIMIT } from "./undo";
 
 /** CPU が打つまでの待ち時間（盤面の変化を目で追えるように） */
 const CPU_DELAY_MS = 900;
@@ -154,6 +155,13 @@ export class App {
    */
   private readonly clock = new TurnClock();
   private clockTimer: number | undefined;
+  /**
+   * 取られる駒の警告「!」を出すか（この対局の間だけの表示の設定）。対局を始めるたびに保存した設定（既定はオフ）に戻し、
+   * 遊び方は常にオン（「予測を読む」で使う）。オンライン対戦も自分の画面だけで切り替える
+   */
+  private threatOn = false;
+  /** 待った（CPU 対戦のイージーだけ。遊び方の実戦では出さない）。ほかの対局では null */
+  private undo: Undo | null = null;
   /** 対局の通し番号（再戦で棋譜の長さが 0 に戻っても、時計を新しい手番として数え直す） */
   private gameNo = 0;
   /** 名札の時計（手番の人の名札に移す） */
@@ -364,6 +372,7 @@ export class App {
       this.inStep() ? this.showRules(LESSONS[LESSONS.length - 1].rules) : this.showRules(this.settings?.rules ?? null, this.settings ?? undefined),
     );
     byId("btn-menu").addEventListener("click", () => this.showMenu());
+    byId("btn-threat").addEventListener("click", () => this.setThreat(!this.threatOn));
     byId("rules-close").addEventListener("click", () => rules.close());
     const mute = byId("btn-mute");
     const showMute = () => {
@@ -444,6 +453,9 @@ export class App {
     this.lesson = lesson;
     if (!lesson) this.setup.reflectUrl(settings.rules);
     this.gameNo++;
+    // 待ったは対局ごとに UNDO_LIMIT 回（再戦・新しい対局で戻す）
+    this.undo = settings.mode === "cpu" && settings.level === "easy" && !lesson ? new Undo() : null;
+    this.initThreat(lesson ? true : settings.threat);
     this.game = lesson ? lesson.lesson.start() : createGame(settings.rules);
     this.el.game.hidden = false;
     this.renderRuleCard(settings.rules);
@@ -476,6 +488,7 @@ export class App {
     this.kingOn = false;
     this.peek = false;
     this.seenEvents = 0;
+    this.undo = null;
     // 遊び方は start が lesson を渡したときだけ続ける（ほかの対局・オンラインの部屋では閉じる）
     this.lesson = null;
     this.coach.hide();
@@ -535,12 +548,43 @@ export class App {
 
   /** 画面で打った手（人間・CPU・時間切れの自動の手）を反映する */
   private advance(next: GameState) {
+    // 待った: 人間が打つ直前の局面を覚える（CPU の手は覚えない）
+    if (this.undo && this.game && this.settings) this.undo.record(this.game, this.settings.human);
     this.game = next;
     this.focus = null;
     this.pinned = false;
     this.kingOn = false;
     this.peek = false;
     this.afterChange();
+  }
+
+  /** 待ったを押せるか（人間の手番で操作できるとき。CPU の手番・考えている間・演出中・終局後は押せない） */
+  private canUndo(): boolean {
+    return !!this.undo && !!this.game && !!this.settings && this.canAct() && this.undo.canUndo(this.game, this.settings.human);
+  }
+
+  /**
+   * 待った: 自分の直前の手と、それに続く CPU の応手をまとめて戻して自分の手番にする。
+   * 戻した局面の手は演出しない（直前の CPU の手を演出し直さない）。制限時間は最初から数え直す
+   */
+  private takeBack() {
+    if (!this.canUndo()) return;
+    const back = this.undo!.undo(this.game!, this.settings!.human);
+    if (!back) return;
+    window.clearTimeout(this.cpuTimer);
+    window.clearTimeout(this.fxTimer);
+    this.fxLock = false;
+    this.fx.clear();
+    document.querySelectorAll(".flyer").forEach((f) => f.remove());
+    this.clock.clear();
+    this.game = back;
+    this.seenEvents = back.history.length;
+    this.focus = null;
+    this.pinned = false;
+    this.kingOn = false;
+    this.peek = false;
+    this.render();
+    this.showToast(`待った 残り${this.undo!.left}回`);
   }
 
   // ---- 制限時間 ----
@@ -872,6 +916,8 @@ export class App {
     this.el.game.hidden = true;
     // 再読み込みで戻ったときの制限時間は、届いた state の時計で分かる
     this.settings = settings ?? { mode: "online", human: 0, rules: defaultRules(), turnSeconds: 0 };
+    // 招待リンク・再読み込みで入ったときは保存した設定
+    this.initThreat(this.settings.threat);
     this.room = {
       id,
       phase: "waiting",
@@ -1010,6 +1056,7 @@ export class App {
     this.queued = null;
     this.sending = false;
     this.gameNo++;
+    this.initThreat(this.settings!.threat);
     this.game = m.view as unknown as GameState;
     this.seenEvents = 0;
     this.el.game.hidden = this.menu.visible;
@@ -1393,7 +1440,9 @@ export class App {
       ...(r.anchor === "attack"
         ? [h("span", {}, [h("span", { class: "key-anchor", attrs: { "aria-hidden": "true" } }), " ダメージに上乗せする端の自分の駒"])]
         : []),
-      h("span", {}, [h("span", { class: "key-threat", attrs: { "aria-hidden": "true" }, text: "!" }), ` 相手に次に${v.passive}自分の駒`]),
+      ...(this.threatOn
+        ? [h("span", {}, [h("span", { class: "key-threat", attrs: { "aria-hidden": "true" }, text: "!" }), ` 相手に次に${v.passive}自分の駒`])]
+        : []),
       ...(r.dirs === "piece"
         ? [h("span", {}, [h("span", { class: "key-dir", attrs: { "aria-hidden": "true" }, text: dirMarks(r) }), " 駒が挟める方向"])]
         : []),
@@ -1404,6 +1453,28 @@ export class App {
         ? [h("span", {}, [h("span", { class: "key-cand", attrs: { "aria-hidden": "true" }, text: "?" }), " 相手の王の候補"])]
         : []),
     );
+  }
+
+  /** 対局の始めに「!」の表示を決める（on を省けば保存した設定）。切り替えの鍵は遊び方では出さない */
+  private initThreat(on: boolean | undefined) {
+    this.threatOn = on ?? this.setup.current.threat;
+    const b = byId("btn-threat");
+    b.hidden = !!this.lesson;
+    this.showThreatToggle();
+  }
+
+  /** 対局中に「!」の表示を切り替える（この対局の間だけ。保存した設定は変えない） */
+  private setThreat(on: boolean) {
+    this.threatOn = on;
+    this.showThreatToggle();
+    if (this.settings) this.renderLegend(this.settings.rules);
+    this.render();
+  }
+
+  private showThreatToggle() {
+    const b = byId("btn-threat");
+    b.setAttribute("aria-pressed", String(this.threatOn));
+    b.title = `駒の警告: ${this.threatOn ? "オン" : "オフ"}`;
   }
 
   private render() {
@@ -1417,6 +1488,7 @@ export class App {
     this.renderPreview(g, pv);
     this.renderHand(g);
     this.renderKingBox(g);
+    this.renderUndo(g);
     this.renderLog(g);
     this.renderNet();
     this.syncClock();
@@ -1442,7 +1514,8 @@ export class App {
     const othello = new Set(act ? othelloCells(g.board, g.turn).map(idx) : []);
     const viewer = this.viewer(g);
     // 予測中は「置いた後に返されうる駒」、それ以外は「今、相手が次の手で返せる駒」に警告を出す
-    const threat = new Set((pv ? pv.exposed : threatenedPieces(g, viewer)).map(idx));
+    // 表示の設定でオフなら出さない（遊び方は常にオン）
+    const threat = new Set(!this.threatOn ? [] : (pv ? pv.exposed : threatenedPieces(g, viewer)).map(idx));
     const willTake = new Set((pv?.targets ?? []).map(idx));
     // 端の駒の力: 上乗せに使う端の自分の駒 → 足す数字
     const anchors = new Map((pv?.anchors ?? []).map((a) => [idx([a.r, a.c]), g.rules.values[a.kind]]));
@@ -1567,7 +1640,9 @@ export class App {
         ]),
       );
     }
-    if (ex.king || (designating && ex.placed)) lines.push(warn(" king", `王が${v.passive}`));
+    if (!this.threatOn) {
+      // 警告はオフ（「!」と同じ設定）
+    } else if (ex.king || (designating && ex.placed)) lines.push(warn(" king", `王が${v.passive}`));
     else if (ex.placed) lines.push(warn("", v.passive));
     else if (pv.exposedDamage > 0) lines.push(warn(" soft", `次に最大 −${pv.exposedDamage}`));
     const touch = this.lastPointer === "touch" || this.lastPointer === "pen";
@@ -1798,7 +1873,9 @@ export class App {
     const pen = kingPenaltyText(g.rules);
     // 王にする駒が返されうるなら、置いた駒の警告はこの 1 行にまとめる
     const kingPlacedExposed = designating && placedExposed;
-    if (kingPlacedExposed) {
+    if (!this.threatOn) {
+      // 警告はオフ（盤の「!」と同じ設定）
+    } else if (kingPlacedExposed) {
       box.append(h("p", { class: "warn king", text: `！ 王にする${pieceLabel(g.rules, kind)}が次に${v.passive}。${v.hitIf}${pen}` }));
     } else if (myKing !== undefined && kingExposed) {
       const [y, x] = [Math.floor(myKing / SIZE), myKing % SIZE];
@@ -1809,8 +1886,8 @@ export class App {
         }),
       );
     }
-    if (kingPlacedExposed) {
-      // 上で警告済み
+    if (!this.threatOn || kingPlacedExposed) {
+      // オフ・上で警告済み
     } else if (placedExposed) {
       box.append(h("p", { class: "warn", text: `！ 置いた${pieceLabel(g.rules, kind)}が次に${v.passive}` }));
     } else if (pv.exposedDamage > 0) {
@@ -1959,6 +2036,26 @@ export class App {
     peek.addEventListener("contextmenu", (e) => e.preventDefault());
     box.append(peek);
     box.hidden = false;
+  }
+
+  /** 待ったの鍵（盤の枠の下の縁の左。残りの回数を添える）。待ったのない対局・終局後は出さない */
+  private renderUndo(g: GameState) {
+    const box = byId("undo-box");
+    const u = this.undo;
+    box.replaceChildren();
+    box.hidden = !u || !!g.result;
+    if (!u || g.result) return;
+    const b = h(
+      "button",
+      {
+        class: "btn ghost undo-btn",
+        attrs: { type: "button", id: "btn-undo", "aria-label": `待った 残り${u.left}回`, title: "自分の直前の手と相手の応手を戻す" },
+      },
+      ["待った", h("span", { class: "undo-left", text: String(u.left), attrs: { "aria-hidden": "true" } })],
+    );
+    b.disabled = !this.canUndo();
+    b.addEventListener("click", () => this.takeBack());
+    box.append(b);
   }
 
   private moveText(e: GameEvent): string {
@@ -2343,6 +2440,8 @@ export class App {
     ];
     if (r.anchor === "attack") rows.push(["端の駒の上乗せ", `合計 ${s.anchorTotal}`]);
     if (r.king.on) rows.push(["相手の王", s.kingHit ? `${v.past}` : `${v.cannot.slice(0, -1)}かった`]);
+    // 戻した手は棋譜から消えるので、ほかの成績には入らない。使った回数だけ添える
+    if (this.undo) rows.push(["待った", `${UNDO_LIMIT - this.undo.left} 回`]);
     return rows;
   }
 

@@ -236,7 +236,7 @@ describe("設定メニューの保存（localStorage）", () => {
   };
   it("保存がなければ標準・CPU 対戦の手番もオンラインの席もランダム", () => {
     expect(loadSaved(memory())).toEqual(defaultSaved());
-    expect(defaultSaved()).toEqual({ rules: defaultRules(), side: "random", host: "random", timeCpu: "auto", timeMulti: "45" });
+    expect(defaultSaved()).toEqual({ rules: defaultRules(), side: "random", host: "random", timeCpu: "auto", timeMulti: "45", threat: false });
     // 既定の手番は対局ごとに抽選する
     expect(seatChoice(defaultSaved().side)).toEqual({ human: 0, randomSeat: true });
   });
@@ -248,12 +248,23 @@ describe("設定メニューの保存（localStorage）", () => {
     }
     expect(loadSaved(memory({ [SETTINGS_KEY]: JSON.stringify({ rules: encodeRules(defaultRules()) }) })).side).toBe("random");
   });
-  it("保存した設定をそのまま読める（全プリセット・手番）", () => {
+  it("保存した設定をそのまま読める（全プリセット・手番・駒の警告）", () => {
     for (const p of PRESETS) {
-      const store = memory();
-      storeSaved(store, { rules: p.rules, side: "random", host: "second", timeCpu: "90", timeMulti: "0" });
-      expect(loadSaved(store)).toEqual({ rules: p.rules, side: "random", host: "second", timeCpu: "90", timeMulti: "0" });
+      for (const threat of [false, true]) {
+        const store = memory();
+        storeSaved(store, { rules: p.rules, side: "random", host: "second", timeCpu: "90", timeMulti: "0", threat });
+        expect(loadSaved(store)).toEqual({ rules: p.rules, side: "random", host: "second", timeCpu: "90", timeMulti: "0", threat });
+      }
     }
+  });
+  it("駒の警告「!」は既定でオフ。項目のない古い保存・真偽値でない値もオフ", () => {
+    expect(defaultSaved().threat).toBe(false);
+    const old = loadSaved(memory({ [SETTINGS_KEY]: JSON.stringify({ rules: encodeRules(defaultRules()), side: "1", host: "first", timeCpu: "20", timeMulti: "90" }) }));
+    expect(old).toEqual({ rules: defaultRules(), side: "1", host: "first", timeCpu: "20", timeMulti: "90", threat: false });
+    for (const bad of ["1", 1, "true", null]) expect(loadSaved(memory({ [SETTINGS_KEY]: JSON.stringify({ threat: bad }) })).threat).toBe(false);
+    expect(loadSaved(memory({ [SETTINGS_KEY]: JSON.stringify({ threat: true }) })).threat).toBe(true);
+    // ルールではないので共有 URL に載らない
+    expect(encodeRules(defaultRules())).not.toMatch(/threat|warn/);
   });
   it("制限時間は選択肢（CPU 対戦は強さに合わせる・なし・20・45・90 秒、マルチはなし・20・45・90 秒）だけを読む", () => {
     for (const t of ["auto", "0", "20", "45", "90"]) {
