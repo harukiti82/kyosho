@@ -41,8 +41,10 @@ export interface Lesson {
   id: LessonId;
   /** 短い見出し */
   title: string;
-  /** このステップで覚えるルール（1 文） */
-  lead: string;
+  /** このステップで覚えるルールの要点（大きく太く出す一言。句点を付けない） */
+  point: string;
+  /** 要点の補足（小さく添える 1 文。何を見ればよいか・数え方）。課題と合わせて文が多くなるステップは付けない */
+  note?: string;
   /** 盤ですること（命令形の 1 文） */
   task: string;
   rules: RuleSet;
@@ -107,7 +109,8 @@ export const LESSONS: readonly Lesson[] = [
   {
     id: "flank",
     title: "挟む",
-    lead: "あなたは黒。オセロと同じように、白い駒を黒で挟むと、裏返して黒にできる。",
+    point: "白い駒を挟むと、黒に裏返る",
+    note: "あなたは黒で、挟み方はオセロと同じ。",
     task: "光っているマスをタップして、歩を置く",
     rules: rulesWith({}),
     start() {
@@ -124,7 +127,8 @@ export const LESSONS: readonly Lesson[] = [
   {
     id: "damage",
     title: "ダメージ",
-    lead: "駒の漢字の右下にある小さな数字が、その駒の強さ。裏返した駒の数字を足した分が、相手へのダメージになる。",
+    point: "裏返した駒の数字の合計がダメージ",
+    note: "駒の漢字の右下にある小さな数字が、その駒の強さ。",
     task: "光っているマスのうち、金と歩を両方挟めるほうに歩を置く",
     rules: rulesWith({}),
     start() {
@@ -150,7 +154,8 @@ export const LESSONS: readonly Lesson[] = [
   {
     id: "dirs",
     title: "駒の向き",
-    lead: "駒の上の矢印は、その駒で挟める向き。歩は縦だけ、飛は縦と横に挟める。",
+    point: "駒ごとに挟める向きが違う",
+    note: "駒の上の矢印が挟める向きで、歩は縦だけ、飛は縦と横。",
     task: "駒台の飛をタップしてから、光っているマスに置く",
     rules: rulesWith({ dirs: true }),
     start() {
@@ -168,7 +173,8 @@ export const LESSONS: readonly Lesson[] = [
   {
     id: "hand",
     title: "持ち駒",
-    lead: "駒台にある駒を持ち駒と呼ぶ。丸の中の数字が残りの数で、0 になるとその駒はもう置けない。",
+    point: "残りが 0 になった駒は置けない",
+    note: "駒台にある駒が持ち駒で、丸の中の数字が残りの数。",
     task: "残り 1 つの金をタップしてから、光っているマスに置く",
     rules: rulesWith({ dirs: true }),
     start() {
@@ -195,7 +201,8 @@ export const LESSONS: readonly Lesson[] = [
   {
     id: "anchor",
     title: "反対側の駒",
-    lead: "相手の駒を挟んだとき、置いた駒の反対側にある自分の駒の数字も、ダメージに足される。置く前にマスをタップすると、その駒が青い枠で光る。",
+    point: "反対側の自分の駒の数字も、ダメージに足す",
+    note: "置く前にマスをタップすると、置いた駒の反対側にある自分の駒が青い枠で光る。",
     task: "光っているマスのうち、反対側が自分の金になるほうに歩を置く",
     rules: rulesWith({ dirs: true, anchor: true }),
     start() {
@@ -220,7 +227,8 @@ export const LESSONS: readonly Lesson[] = [
   {
     id: "heal",
     title: "回復",
-    lead: "挟むと、自分の体力も回復する。置いた駒と反対側の駒のうち、小さいほうの数字から 1 を引いた分だけ回復する。",
+    point: "挟むと、自分の体力も回復",
+    note: "置いた駒と反対側の駒のうち、小さいほうの数字から 1 を引いた分だけ回復する。",
     task: "駒台の飛をタップしてから、光っているマスに置く",
     rules: rulesWith({ dirs: true, anchor: true, heal: true }),
     start() {
@@ -253,7 +261,8 @@ export const LESSONS: readonly Lesson[] = [
   {
     id: "king",
     title: "王を決める",
-    lead: `最初の ${STD.king.deadline} 手のうちどれか 1 手で、置く駒を王にする。どの駒が王かは、相手には見えない。`,
+    point: `最初の ${STD.king.deadline} 手のうちに、駒を 1 つ王にする`,
+    note: "どの駒が王かは、相手には見えない。",
     task: "駒台の右にある王をタップしてから、光っているマスに歩を置く",
     rules: rulesWith({ dirs: true, anchor: true, heal: true, king: true }),
     start() {
@@ -270,7 +279,7 @@ export const LESSONS: readonly Lesson[] = [
   {
     id: "kingHit",
     title: "王を裏返す",
-    lead: `相手の王を裏返すと、ダメージとは別に相手の${kingLoss(STD)}。`,
+    point: `王を裏返すと、相手の${kingLoss(STD)}`,
     task: "この練習では「?」の駒が相手の王。光っているマスに歩を置いて挟む",
     rules: std(),
     start() {
@@ -293,7 +302,8 @@ export const LESSONS: readonly Lesson[] = [
   {
     id: "read",
     title: "予測を読む",
-    lead: "置く前にマスをタップすると、結果が先に出る。! の付いた駒は、次の相手の手で裏返されるかもしれない。",
+    point: "! の付いた駒は、次に裏返されるかもしれない",
+    note: "置く前にマスをタップすると、結果が先に出る。",
     task: "光っている 2 マスを見比べて、置いた歩に ! が付かないほうに置く",
     rules: std(),
     start() {
@@ -329,7 +339,8 @@ export const LESSONS: readonly Lesson[] = [
   {
     id: "match",
     title: "実戦",
-    lead: "ここまで覚えたルールを全部使う、ふつうの対局。この対局には時間の制限がない。",
+    point: "覚えたルールを全部使って対局",
+    note: "この対局には時間の制限がない。",
     task: "強さイージーの CPU と、最後まで対局する",
     rules: std(),
     match: true,

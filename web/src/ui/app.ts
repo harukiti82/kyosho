@@ -789,7 +789,7 @@ export class App {
     }
     // 一度でも開いたステップと、終えた後は全部へ移れる
     const open = this.progress?.done ? LESSONS.length - 1 : (this.progress?.reached ?? run.index);
-    this.coach.show(run.index, LESSONS.map((l) => l.title), open, run.lesson.lead, run.lesson.task);
+    this.coach.show(run.index, LESSONS.map((l) => l.title), open, run.lesson.point, run.lesson.note, run.lesson.task);
   }
 
   /** 正解を打った: 何が起きたかの 1 文と「次へ」 */
@@ -2465,8 +2465,10 @@ export class App {
     {
       const v = verb(r);
       const list = (tag: "ol" | "ul", items: (string | HTMLElement)[]) => h(tag, {}, items.map((x) => h("li", {}, [x])));
-      const ol = h("ol");
+      const ol = h("ol", { class: "rule-lines" });
       fillSentences(ol, ruleDetails(r));
+      const ends = h("ul", { class: "rule-lines" });
+      fillSentences(ends, endDetails(r));
       content.append(
         h("p", { text: `オセロの盤で、挟んだ相手の駒の数字がダメージになる二人対戦。体力を 0 にした方の勝ち。` }),
         h("h3", { text: "ルール" }),
@@ -2478,7 +2480,7 @@ export class App {
           hpText(r),
         ]),
         h("h3", { text: "決着" }),
-        list("ul", endDetails(r)),
+        ends,
         ...(play && play.turnSeconds > 0
           ? [
               h("h3", { text: "制限時間" }),

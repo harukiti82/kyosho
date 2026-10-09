@@ -82,14 +82,14 @@ test.describe("PC 幅", () => {
     expect(await readSetup(page)).toEqual(KING);
     await expect(page.locator("#king-sub")).toBeVisible();
     await expect(page.locator("#setup-rules4 li")).toHaveText(ruleLines(KING).map(sentenceText));
-    await expect(page.locator("#setup-rules4")).toContainText("最初の5手のうち1つを王にする。相手に見えず、返されたら体力−20");
+    await expect(page.locator("#setup-rules4")).toContainText("王を返されたら体力−20 最初の5手のうち1つを王にする。相手に見えない");
     await page.locator("#opt-king").scrollIntoViewIfNeeded();
     await page.screenshot({ path: `${SHOT}/pc-king-setup.png` });
 
     // 即負けにすると減る体力の欄は隠れ、ルール文が変わる
     await page.locator("input[name=kingPenalty][value=lose]").check({ force: true });
     await expect(page.locator("#king-amount-field")).toBeHidden();
-    await expect(page.locator("#setup-rules4")).toContainText("相手に見えず、返されたら即負け");
+    await expect(page.locator("#setup-rules4")).toContainText("王を返されたら即負け 最初の5手のうち1つを王にする。相手に見えない");
     await expect(page.locator("#custom-tag")).toContainText("カスタム");
     // 期限の範囲外は直す
     await page.locator("input[name=kingDeadline]").fill("25");
@@ -98,7 +98,7 @@ test.describe("PC 幅", () => {
     await page.locator("input[name=kingDeadline]").fill("0");
     await page.locator("input[name=kingDeadline]").press("Tab");
     await expect(page.locator("input[name=kingDeadline]")).toHaveValue("1");
-    await expect(page.locator("#setup-rules4")).toContainText("最初に置く駒が王。相手に見えず、返されたら即負け");
+    await expect(page.locator("#setup-rules4")).toContainText("王を返されたら即負け 最初に置く駒が王。相手に見えない");
     // 取るルールでは「取られたら」
     await page.locator("input[name=action][value=capture]").check({ force: true });
     await expect(page.locator("#king-lose-label")).toHaveText("取られたら即負け");
@@ -323,7 +323,7 @@ test.describe("PC 幅", () => {
   test("期限 1 手（CPU 対戦）: 最初に置いた駒が自動で王になり、その旨を表示する", async ({ page }) => {
     await page.goto(`/?${encodeRules(withKing({ deadline: 1 }))}`);
     await startGame(page);
-    await expect(page.locator("#rules4")).toContainText("最初に置く駒が王。相手に見えず、返されたら体力−20");
+    await expect(page.locator("#rules4")).toContainText("王を返されたら体力−20 最初に置く駒が王。相手に見えない");
     await expect(page.locator("#king-toggle")).toBeDisabled();
     await expect(page.locator("#king-toggle")).toHaveAccessibleName("この手で置く駒が王になる");
     await expect(page.locator("#king-toggle")).toContainText("この手で王");

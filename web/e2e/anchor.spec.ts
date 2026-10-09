@@ -83,7 +83,7 @@ test.describe("PC 幅", () => {
     await expect(page.locator("#custom-tag")).toHaveText("拠点");
     await openRuleFields(page);
     await expect(page.locator("#setup-rules4 li")).toHaveText(ruleLines(ANCHOR).map(sentenceText));
-    await expect(page.locator("#setup-rules4")).toContainText("挟んだ端の自分の駒の数字もダメージに足す");
+    await expect(page.locator("#setup-rules4")).toContainText("端の自分の駒もダメージに足す 挟んだ反対端の自分の駒の数字");
     // 保存するとアドレスバーに載る
     await saveSettings(page);
     expect(new URL(page.url()).search.slice(1)).toBe(encodeRules(ANCHOR));
@@ -185,7 +185,7 @@ test.describe("PC 幅", () => {
     logs.forEach((t, i) => expect(t).toContain(`${moves[i].damage}ダメージ${logBreakdownOf(ANCHOR, moves[i])}`));
     await page.screenshot({ path: `${SHOT}/pc-anchor-log.png`, fullPage: true });
     await page.locator("#btn-rules").click();
-    await expect(page.locator("#rules")).toContainText("返した列ごとに、反対端の自分の駒");
+    await expect(page.locator("#rules")).toContainText("端の駒の力: 反対端の自分の駒もダメージに足す 返した列ごとに、もともと盤上にあって挟むのに使った駒");
     await expect(page.locator("#rules")).toContainText("青枠と「+数字」で示す");
     expect(errors).toEqual([]);
   });

@@ -232,19 +232,19 @@ describe("URL・設定・ルール文", () => {
     }
     expect(decodeRules("?anc=none")).toMatchObject({ invalid: [], present: true });
   });
-  it("ルールカード: ダメージの次の行に「挟んだ端の自分の駒の数字もダメージに足す」。なしなら出さない", () => {
+  it("ルールカード: ダメージの次の行に「端の自分の駒もダメージに足す」。なしなら出さない", () => {
     expect(ruleLines(ANCHOR).map(sentenceText)).toEqual([
-      "挟めるマスに置き、相手の駒を裏返す",
-      "駒の矢印の方向だけ挟める 歩↕ 横↔ 角✕ 飛✚ 金✱",
-      "返した駒の数字の合計がダメージ",
-      "挟んだ端の自分の駒の数字もダメージに足す",
+      "挟んだ相手の駒を裏返す 挟めるマスにだけ置ける",
+      "駒ごとに挟める向きが違う 矢印の方向だけ挟める 歩↕ 横↔ 角✕ 飛✚ 金✱",
+      "数字の合計がダメージ 返した駒の数字を足す",
+      "端の自分の駒もダメージに足す 挟んだ反対端の自分の駒の数字",
       "回復なし",
-      "最初の5手のうち1つを王にする。相手に見えず、返されたら体力−20",
-      `体力 先手 ${ANCHOR.hp[0]}・後手 ${ANCHOR.hp[1]} が 0 で負け`,
+      "王を返されたら体力−20 最初の5手のうち1つを王にする。相手に見えない",
+      `体力が 0 で負け 先手 ${ANCHOR.hp[0]}・後手 ${ANCHOR.hp[1]} から`,
     ]);
     expect(ruleLines(presetById("dir").rules).map(sentenceText).join("")).not.toContain("端の自分の駒");
     const details = ruleDetails(ANCHOR).map(sentenceText).join("\n");
-    expect(details).toContain("返した列ごとに、反対端の自分の駒（もともと盤上にあって挟むのに使った駒）の数字もダメージに足す");
+    expect(details).toContain("端の駒の力: 反対端の自分の駒もダメージに足す 返した列ごとに、もともと盤上にあって挟むのに使った駒の数字を足す");
     expect(details).toContain("返されると相手の拠点になる");
     expect(ruleDetails({ ...ANCHOR, action: "capture" }).map(sentenceText).join("\n")).toContain("取った列ごとに");
   });

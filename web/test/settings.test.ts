@@ -133,67 +133,80 @@ describe("ルールカードの文言", () => {
   });
   it("v0.4", () => {
     expect(card("v04")).toEqual([
-      "挟めるマスに置き、相手の駒を裏返す",
-      "返した駒の最大の数字＋枚数÷4がダメージ",
-      "挟んだ両端の駒の低い方−1だけ回復",
-      "体力 先手 65・後手 66 が 0 で負け",
+      "挟んだ相手の駒を裏返す 挟めるマスにだけ置ける",
+      "最大の数字＋枚数÷4がダメージ 返した駒の数字と枚数で数える",
+      "挟むと体力を回復 挟んだ両端の駒の低い方−1だけ",
+      "体力が 0 で負け 先手 65・後手 66 から",
     ]);
   });
   it("v1.0（取る）", () => {
     expect(card("v10")).toEqual([
-      "空きマスならどこにでも置け、挟んだ相手の駒を取って自分の持ち駒にする",
-      "取った駒の数字の合計がダメージ",
+      "挟んだ相手の駒を取って持ち駒にする 空きマスならどこにでも置ける",
+      "数字の合計がダメージ 取った駒の数字を足す",
       "回復なし",
-      "体力 20 が 0 で負け 80 手で終われば体力の多い方が勝ち",
+      "体力が 0 で負け どちらも 20 から。80 手で終われば体力の多い方が勝ち",
     ]);
   });
   it("v2 案", () => {
     expect(card("v2")).toEqual([
-      "挟めるマスに置き、相手の駒を裏返す",
-      "置いた駒より数字が大きい駒を含む列は返せない",
-      "返した駒の数字の合計がダメージ",
+      "挟んだ相手の駒を裏返す 挟めるマスにだけ置ける",
+      "強い駒を含む列は返せない 置いた駒より数字が大きい駒を含む列",
+      "数字の合計がダメージ 返した駒の数字を足す",
       "回復なし",
-      "体力 40 が 0 で負け",
+      "体力が 0 で負け どちらも 40 から",
     ]);
   });
   it("原案", () => {
-    expect(card("orig")).toContain("挟んだ両端の駒の平均だけ回復");
+    expect(card("orig")).toContain("挟むと体力を回復 挟んだ両端の駒の平均だけ");
   });
   it("標準（既定）: 方向・端の駒・回復・隠し王（−30）の行がすべて入る", () => {
     expect(card("std")).toEqual([
-      "挟めるマスに置き、相手の駒を裏返す",
-      "駒の矢印の方向だけ挟める 歩↕ 横↔ 角✕ 飛✚ 金✱",
-      "返した駒の数字の合計がダメージ",
-      "挟んだ端の自分の駒の数字もダメージに足す",
-      "挟んだ両端の駒の低い方−1だけ回復",
-      "最初の7手のうち1つを王にする。相手に見えず、返されたら体力−30",
-      "体力 先手 129・後手 130 が 0 で負け",
+      "挟んだ相手の駒を裏返す 挟めるマスにだけ置ける",
+      "駒ごとに挟める向きが違う 矢印の方向だけ挟める 歩↕ 横↔ 角✕ 飛✚ 金✱",
+      "数字の合計がダメージ 返した駒の数字を足す",
+      "端の自分の駒もダメージに足す 挟んだ反対端の自分の駒の数字",
+      "挟むと体力を回復 挟んだ両端の駒の低い方−1だけ",
+      "王を返されたら体力−30 最初の7手のうち1つを王にする。相手に見えない",
+      "体力が 0 で負け 先手 129・後手 130 から",
     ]);
   });
   it("取る＋強さ制限は「取れない」", () => {
-    expect(ruleLines(rulesOf("v10", { gate: true })).map(sentenceText)).toContain("置いた駒より数字が大きい駒を含む列は取れない");
+    expect(ruleLines(rulesOf("v10", { gate: true })).map(sentenceText)).toContain("強い駒を含む列は取れない 置いた駒より数字が大きい駒を含む列");
   });
   it("隠し王: 期限と罰の 1 行が体力の行の前に入る", () => {
     expect(card("king")).toEqual([
-      "挟めるマスに置き、相手の駒を裏返す",
-      "返した駒の数字の合計がダメージ",
+      "挟んだ相手の駒を裏返す 挟めるマスにだけ置ける",
+      "数字の合計がダメージ 返した駒の数字を足す",
       "回復なし",
-      "最初の5手のうち1つを王にする。相手に見えず、返されたら体力−20",
-      "体力 先手 70・後手 60 が 0 で負け",
+      "王を返されたら体力−20 最初の5手のうち1つを王にする。相手に見えない",
+      "体力が 0 で負け 先手 70・後手 60 から",
     ]);
     const lose1 = rulesOf("v10", { king: { on: true, penalty: "lose", amount: 20, deadline: 1 } });
-    expect(ruleLines(lose1).map(sentenceText)).toContain("最初に置く駒が王。相手に見えず、取られたら即負け");
+    expect(ruleLines(lose1).map(sentenceText)).toContain("王を取られたら即負け 最初に置く駒が王。相手に見えない");
     // 強さ制限＋隠し王でも 6 行まで
     expect(ruleLines(rulesOf("king", { gate: true }))).toHaveLength(6);
-    expect(endDetails(lose1)[0]).toBe("体力が 0 以下になるか、王を取られたらその時点で負け");
+    expect(sentenceText(endDetails(lose1)[0])).toBe("体力が 0 以下になるか、王を取られたらその時点で負け");
     const details = ruleDetails(rulesOf("king")).map(sentenceText).join("\n");
     expect(details).toContain("5 手目までに選ばなかったら、5 手目に置いた駒が自動で王になる");
-    expect(details).toContain("通常のダメージに加えて体力 −20");
+    expect(details).toContain("王を返されたら体力 −20 通常のダメージに加えて減る");
     expect(ruleLines(rulesOf("v2")).map(sentenceText).join("")).not.toContain("王");
   });
+  it("各行は要点の一言と補足に分かれ、要点に句点を付けない（ルールカード・ルール詳細・決着）", () => {
+    for (const p of PRESETS) {
+      for (const line of [...ruleLines(p.rules), ...ruleDetails(p.rules), ...endDetails(p.rules)]) {
+        expect(line.point.length, `${p.id} ${line.point}`).toBeGreaterThan(0);
+        expect(line.point, p.id).not.toMatch(/。$/);
+        expect(line.note ?? "x", p.id).not.toBe("");
+      }
+      // ルールカードの要点は一目で読める長さ（スマホ幅で 2 行まで）
+      for (const line of ruleLines(p.rules)) expect(line.point.length, `${p.id} ${line.point}`).toBeLessThanOrEqual(20);
+    }
+    // 方向駒の要点（試遊の声「駒によって挟める所が変わる」を大きく出す）
+    expect(ruleLines(rulesOf("std")).map((l) => l.point)).toContain("駒ごとに挟める向きが違う");
+  });
   it("決着の説明に手数上限の有無が入る", () => {
-    expect(endDetails(rulesOf("v10"))[1]).toContain("80 手");
-    expect(endDetails(rulesOf("v2"))[1]).toBe("手数の上限なし");
+    expect(sentenceText(endDetails(rulesOf("v10"))[1])).toBe("総手数 80 手で打ち切り 体力の多い方の勝ち");
+    expect(sentenceText(endDetails(rulesOf("v2"))[1])).toBe("手数の上限なし");
   });
 });
 

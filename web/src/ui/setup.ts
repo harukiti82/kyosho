@@ -126,17 +126,14 @@ export function seatChoice(side: FormDataEntryValue | null): { human: Player; ra
   return { human: side === "1" ? 1 : 0, randomSeat: side === "random" };
 }
 
-/** 文の配列を <li> にして ol へ入れる（強調部分は <strong>、補足は薄い字の <span class="rule-note">） */
+/** 文の配列を <li> にして ol / ul へ入れる（要点は大きく太い <strong class="rule-point">、補足は小さく薄い <span class="rule-note">） */
 export function fillSentences(list: HTMLElement, lines: Sentence[]) {
   list.replaceChildren(
     ...lines.map((line) =>
-      h(
-        "li",
-        {},
-        line.map((seg) =>
-          typeof seg === "string" ? seg : "strong" in seg ? h("strong", { text: seg.strong }) : h("span", { class: "rule-note", text: ` ${seg.note}` }),
-        ),
-      ),
+      h("li", {}, [
+        h("strong", { class: "rule-point", text: line.point }),
+        ...(line.note ? [h("span", { class: "rule-note", text: ` ${line.note}` })] : []),
+      ]),
     ),
   );
 }
