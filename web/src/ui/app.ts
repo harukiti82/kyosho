@@ -2038,7 +2038,7 @@ export class App {
     box.hidden = false;
   }
 
-  /** 待ったの鍵（駒台の右端。残りの回数を添える）。待ったのない対局・終局後は出さない */
+  /** 待ったの鍵（盤の枠の下の縁の左。残りの回数を添える）。待ったのない対局・終局後は出さない */
   private renderUndo(g: GameState) {
     const box = byId("undo-box");
     const u = this.undo;

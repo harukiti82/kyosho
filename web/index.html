@@ -67,9 +67,10 @@
             <div class="coords coords-x" aria-hidden="true"><span>a</span><span>b</span><span>c</span><span>d</span><span>e</span><span>f</span><span>g</span><span>h</span></div>
             <div class="coords coords-y" aria-hidden="true"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span></div>
             <div class="board" id="board" role="grid" aria-label="盤面"></div>
-            <!-- 盤の枠の下の縁: 手番・手数・オンラインの接続 -->
+            <!-- 盤の枠の下の縁: 手番・手数・オンラインの接続・待った（CPU 対戦のイージーだけ。オンラインの接続と同じ左の欄） -->
             <div class="frame-foot">
               <span class="net" id="net" role="status" hidden></span>
+              <div class="undo-box" id="undo-box" hidden></div>
               <p class="status" id="status" role="status" aria-live="polite"></p>
               <span class="ply" id="ply"></span>
             </div>
@@ -85,8 +86,6 @@
           <h2 class="sr-only" id="hand-title">持ち駒</h2>
           <div class="hand-buttons" id="hand-buttons"></div>
           <div class="king-box" id="king-box" hidden></div>
-          <!-- 待った（CPU 対戦のイージーだけ） -->
-          <div class="undo-box" id="undo-box" hidden></div>
         </div>
       </div>
 
