@@ -45,3 +45,4 @@
 ## 2026-10-11
 
 - スキル（タロットカード風の 8 枚）をプリセット「スキルあり」で: engine（ゲージ・効果・隠し情報は kings の中）・CPU（sim.ts の規則。スキル側 52.8〜56.8%）・3 枚から選ぶ画面・名札のゲージ・使う演出・サーバー（pick / skill・時計は選ぶ間止める・再戦で配り直し）。ユニット `skills.test.ts`・server `skill.test.ts`・e2e `skill.spec.ts`（ブランチ `feat/skills`、未マージ）
+- スキルのオンライン e2e `online/skill.spec.ts`（両者が選ぶ・選ぶ途中の再読み込み・使う演出が相手にも・満タンのまま終局・再戦で配り直し、偵察と王の移し替えの隠し情報は API で配りを探した部屋で確かめる）。既存の隠し王の e2e を `oppKing.scouted` に合わせる。activeContext を AGENTS.md と重複する節を落として 55 行に
