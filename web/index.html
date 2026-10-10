@@ -310,6 +310,24 @@
           </div>
         </fieldset>
 
+        <!-- CPU 対戦（強さごと）と同じ端末の 2 人対戦の通算（ui/record.ts）。消すのは保存を待たず、画面内の確認の後すぐ -->
+        <fieldset class="field set-list">
+          <legend class="label">記録</legend>
+          <div class="opt set-row">
+            <span class="opt-name" id="opt-record" title="CPU対戦は強さごと、2人対戦は先手と後手ごと">通算</span>
+            <div class="record-box">
+              <ul class="record-sum" id="record-sum" aria-labelledby="opt-record"></ul>
+              <button type="button" class="btn ghost" id="record-clear">通算を消す</button>
+              <div class="record-confirm" id="record-confirm" role="group" aria-labelledby="record-ask" hidden>
+                <span class="record-ask" id="record-ask">通算を消しますか</span>
+                <button type="button" class="btn ghost" id="record-keep">やめる</button>
+                <button type="button" class="btn primary" id="record-erase">消す</button>
+              </div>
+              <span class="record-status" id="record-status" role="status" tabindex="-1"></span>
+            </div>
+          </div>
+        </fieldset>
+
         <div class="modal-actions">
           <button type="button" class="icon-btn" id="setup-rules" aria-label="ルール詳細" title="ルール詳細">?</button>
           <button type="button" class="btn ghost" id="setup-copy" title="この設定の URL をコピー">URL をコピー</button>

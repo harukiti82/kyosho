@@ -800,7 +800,7 @@ button {
 .player-card:not(.active) .player-name {
   color: #fff;
 }
-/* オンライン対戦の同じ部屋での通算（2 局目から） */
+/* 通算（2 局目から）。オンライン対戦は同じ部屋、CPU 対戦は同じ強さ・2 人対戦は席ごとのこの端末の分 */
 .plate-record {
   flex: none;
   color: var(--ink-muted);
@@ -3300,6 +3300,48 @@ button {
   border-top: 1px solid var(--line);
   background: #04112e;
   border-top-color: rgba(122, 230, 255, 0.3);
+}
+/* 設定の通算: 一覧と「通算を消す」。押すと同じ場所に確認（やめる・消す）を出す */
+.record-box {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.6rem;
+  min-width: 0;
+}
+.record-sum {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.15rem 0.9rem;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.84rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-muted);
+}
+.record-confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.6rem;
+}
+.record-ask {
+  font-weight: 700;
+  color: var(--ink);
+}
+.record-box .btn {
+  padding: 0.35rem 0.9rem;
+  font-size: 0.82rem;
+}
+.record-status {
+  font-size: 0.82rem;
+  color: var(--ink-muted);
+}
+.record-status:focus {
+  outline: none;
 }
 /* 「?」は左端、決定は右端 */
 .setup .modal-actions #setup-rules {
