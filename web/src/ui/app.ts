@@ -157,7 +157,7 @@ export class App {
   private clockTimer: number | undefined;
   /**
    * 取られる駒の警告「!」を出すか（この対局の間だけの表示の設定）。対局を始めるたびに保存した設定（既定はオフ）に戻し、
-   * 遊び方は常にオン（「予測を読む」で使う）。オンライン対戦も自分の画面だけで切り替える
+   * 遊び方のステップは常にオン（「予測を読む」で使う）、最後の実戦は保存した設定。オンライン対戦も自分の画面だけで切り替える
    */
   private threatOn = false;
   /** 待った（CPU 対戦のイージーだけ。遊び方の実戦では出さない）。ほかの対局では null */
@@ -455,7 +455,8 @@ export class App {
     this.gameNo++;
     // 待ったは対局ごとに UNDO_LIMIT 回（再戦・新しい対局で戻す）
     this.undo = settings.mode === "cpu" && settings.level === "easy" && !lesson ? new Undo() : null;
-    this.initThreat(lesson ? true : settings.threat);
+    // 遊び方のステップは常にオン（「予測を読む」で使う）。最後の実戦はふつうの対局と同じく保存した設定
+    this.initThreat(lesson && !lesson.lesson.match ? true : settings.threat);
     this.game = lesson ? lesson.lesson.start() : createGame(settings.rules);
     this.el.game.hidden = false;
     this.renderRuleCard(settings.rules);
@@ -1455,11 +1456,11 @@ export class App {
     );
   }
 
-  /** 対局の始めに「!」の表示を決める（on を省けば保存した設定）。切り替えの鍵は遊び方では出さない */
+  /** 対局の始めに「!」の表示を決める（on を省けば保存した設定）。切り替えの鍵は遊び方のステップでは出さない（実戦では出す） */
   private initThreat(on: boolean | undefined) {
     this.threatOn = on ?? this.setup.current.threat;
     const b = byId("btn-threat");
-    b.hidden = !!this.lesson;
+    b.hidden = !!this.inStep();
     this.showThreatToggle();
   }
 
@@ -1514,7 +1515,7 @@ export class App {
     const othello = new Set(act ? othelloCells(g.board, g.turn).map(idx) : []);
     const viewer = this.viewer(g);
     // 予測中は「置いた後に返されうる駒」、それ以外は「今、相手が次の手で返せる駒」に警告を出す
-    // 表示の設定でオフなら出さない（遊び方は常にオン）
+    // 表示の設定でオフなら出さない（遊び方のステップは常にオン）
     const threat = new Set(!this.threatOn ? [] : (pv ? pv.exposed : threatenedPieces(g, viewer)).map(idx));
     const willTake = new Set((pv?.targets ?? []).map(idx));
     // 端の駒の力: 上乗せに使う端の自分の駒 → 足す数字

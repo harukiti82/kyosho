@@ -11,7 +11,7 @@
 ## 待った・「!」の切り替えの要点
 
 - 待った: `ui/undo.ts` の `Undo`（人間が打つ前の `GameState` を積むだけ。エンジンは不変）。`App.advance` で `record`、`App.takeBack` で戻す。鍵は盤の枠の下の縁の左 `#undo-box`（駒台に置くとスマホであふれた）。成績に「待った N 回」。e2e `undo.spec.ts`
-- 「!」: 表示の設定 `Saved.threat`（既定 false・古い保存も false）→ `PlaySettings.threat` → `App.threatOn`（`initThreat` で対局ごとに戻す）。対局中は引き出しのタブの列の右端 `#btn-threat`（保存は変えない）。遊び方は常にオンで鍵なし。「!」を確かめる e2e は `startGame(page, { threat: true })`。e2e `threat.spec.ts`
+- 「!」: 表示の設定 `Saved.threat`（既定 false・古い保存も false）→ `PlaySettings.threat` → `App.threatOn`（`initThreat` で対局ごとに戻す）。対局中は引き出しのタブの列の右端 `#btn-threat`（保存は変えない）。遊び方のステップは常にオンで鍵なし、最後の実戦はふつうの対局と同じく保存した設定で鍵あり（`initThreat` / `inStep`）。「!」を確かめる e2e は `startGame(page, { threat: true })`。e2e `threat.spec.ts`
 
 ## 遊び方（チュートリアル）の要点
 
