@@ -4,9 +4,16 @@
 
 ## 現在の対象
 
-- 何を / どこを: CPU 対戦（強さごと）と同じ端末の 2 人対戦（席ごと）の通算（`ui/record.ts` の `RecordBook`、localStorage `kyosho:record`）。表示はオンラインと同じ成績表の「通算」と名札 `.plate-record`（2 局目から）、設定メニューの「記録」で一覧と「通算を消す」（画面内の確認）。依頼元セッション経由
-- ステータス: ブランチ `feat/local-record`（worktree `../kyosho-record2`）。PR #40 → CI → squash merge → 本番デプロイまで
-- 最終更新: 2026-10-10
+- 何を / どこを: スキル（タロットカード風の 8 枚、プリセット「スキルあり」）。engine `skills.ts` / `game.ts` の「スキル」節・CPU `skillcpu.ts`・画面 `ui/skillui.ts` と `App` の「スキル」節・サーバー `room.ts` の pick / skill。依頼元セッション（master）経由
+- ステータス: ブランチ `feat/skills`（worktree `../kyosho-skills`）。engine・CPU・画面・サーバー・e2e（`skill.spec.ts`）まで。残りはオンラインの e2e（`e2e/online/` にスキルの 1 本）・`npm run e2e:online`・PR・CI。**マージはしない**（見た目の確認待ち。マスターの指示後）
+- 最終更新: 2026-10-11
+
+## スキルの要点
+
+- 状態は `GameState.skills`（スキルなしのルールではキーなし）。隠し情報は `kings` の中だけ（偵察 = `kings[相手].seen`、移し替えの先 = `kings[自分].cell`）。`viewFor` が相手の配られたカードと、選び終える前の相手のカードを隠す
+- ゲージは 1/20 点の整数（`GAUGE_UNIT`）。使うのは手番の頭（`useSkill`）→ 置く（`playMove`）の 2 段階。偵察の罰 2 倍はその手番の手だけ（sim.ts と同じ）。偵察は相手が期限の手まで打った後だけ（sim.ts の CPU は真の王を見ていた）。強打＋鉄壁は ×1.5 してから半分（sim.ts と違う）
+- 仮置き 3 点（ユーザーは止められる）: 標準は変えず「スキルあり」を足す／選んだカードは相手に見せる（選び終えるまでは隠す）／絵柄は石・駒・盤の格子の自作 SVG
+- バランス: `npm run balance -- skill 400` でスキル側 52.8〜56.8%（sim.ts の値と標準誤差の範囲。表は RULES.md「スキル」）
 
 ## 通算（CPU 対戦・2 人対戦）の要点
 
@@ -56,6 +63,7 @@
 
 ## 未解決・次の一手
 
+- [ ] スキル: `web/e2e/online/` にスキルの 1 本（両者が選ぶ・ゲージ・使う・相手に演出）→ `npm run e2e:online` → PR（本文に「見た目の確認待ち。マージは master の指示後」）→ CI 緑。ユーザーに localhost で見た目（カード・名札のゲージ・演出）を見てもらう
 - [ ] ユーザーの試遊で待った（イージーだけ・3 回）と「!」の既定オフの手応えを聞く。既定オフで「ルールが一目で分かる」が損なわれていないか
 - [ ] ユーザーにスマホの実機で G 案の見た目（直立の見出しの読みやすさ・挟む石・盤の格子と星）と、要点を大きくした説明文の読みやすさ（言い回し・補足の小ささ・ルールカードの長さ）を見てもらう
 - [ ] ユーザーの試遊で「自動で王に」のステップ（手数 12 の局面から始まる・「数えるのは自分の手だけ」）と「反対側」の表記（吹き出しが 2 行になる場面）の手応えと、遊び方の分かりやすさ（ステップの順・目標の文・光と矢印の誘導・最後の実戦）の感想を聞く。初回にメニューで勧める強さ（今は「遊び方」の横のシアンの「おすすめ」だけ）もユーザー判断
@@ -66,6 +74,7 @@
 
 ## 現フェーズで Read すべき設計書
 
+- スキル: `RULES.md`「スキル」, `web/src/engine/skills.ts`, `web/src/engine/game.ts`（「スキル」節）, `web/src/engine/skillcpu.ts`, `web/src/ui/skillui.ts`, `web/src/ui/app.ts`（「スキル」節）, `server/src/room.ts`（pick / skill）, `.agent/online-protocol.md`「スキル」, `web/test/skills.test.ts`, `server/test/skill.test.ts`, `web/e2e/skill.spec.ts`
 - 通算（CPU 対戦・2 人対戦）: `web/src/ui/record.ts`, `web/src/ui/app.ts`（`countResult` / `recordOf` / `plateRecord`）, `web/src/ui/setup.ts`（`showRecord`）, `web/test/record.test.ts`, `web/e2e/record.spec.ts`
 - 遊び方: `web/src/ui/lessons.ts`, `web/src/ui/coach.ts`, `web/src/ui/app.ts`（「遊び方（チュートリアル）」節 `openLesson` / `inStep`、`onCellClick`・`renderBoard` の誘導）, `web/test/lesson.test.ts`, `web/e2e/tutorial.spec.ts`
 - 待った・「!」・制限時間: `web/src/ui/undo.ts`, `web/src/ui/app.ts`（`takeBack` / `initThreat` / `setThreat` / `syncClock` / `checkTimeout`）, `web/src/ui/setup.ts`（`Saved.threat`）, `web/src/ui/clock.ts`, `web/src/engine/game.ts`（`playTimeout`）, `server/src/room.ts`

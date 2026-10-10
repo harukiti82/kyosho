@@ -4,6 +4,7 @@
 // 仕様は .agent/online-protocol.md
 
 import type { PieceKind } from "../engine/rules";
+import type { SkillId, SkillUse } from "../engine/skills";
 import {
   API_PATH,
   CLOSE,
@@ -18,10 +19,12 @@ import {
   type HttpErrorCode,
   type JoinedMessage,
   type MoveMessage,
+  type PickMessage,
   type RematchAction,
   type RematchMessage,
   type RoomInfoResponse,
   type ServerMessage,
+  type SkillMessage,
   type StateMessage,
   type WsErrorCode,
 } from "./protocol";
@@ -278,6 +281,24 @@ export class OnlineSession {
   sendMove(r: number, c: number, kind: PieceKind, king = false, seq?: number): boolean {
     if (!this.ready) return false;
     const msg: MoveMessage = king ? { type: "move", r, c, kind, king: true } : { type: "move", r, c, kind };
+    if (seq !== undefined) msg.seq = seq;
+    this.ws!.send(JSON.stringify(msg));
+    return true;
+  }
+
+  /** スキルのカードを選ぶ（対局の前）。つながっていなければ false */
+  sendPick(card: SkillId): boolean {
+    if (!this.ready) return false;
+    this.ws!.send(JSON.stringify({ type: "pick", card } satisfies PickMessage));
+    return true;
+  }
+
+  /** スキルを使う（置く前）。seq は sendMove と同じ。つながっていなければ false */
+  sendSkill(use: SkillUse, seq?: number): boolean {
+    if (!this.ready) return false;
+    const msg: SkillMessage = { type: "skill", id: use.id };
+    if (use.kind) msg.kind = use.kind;
+    if (use.to) msg.to = [use.to[0], use.to[1]];
     if (seq !== undefined) msg.seq = seq;
     this.ws!.send(JSON.stringify(msg));
     return true;

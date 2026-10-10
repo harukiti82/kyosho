@@ -42,6 +42,7 @@ export async function readSetup(page: Page): Promise<RuleSet> {
       values: Object.fromEntries(kinds.map((k) => [k, n(`v${k}`)])),
       maxPlies: n("maxPlies"),
       king: { on: f.get("king") === "1", penalty: f.get("kingPenalty"), amount: n("kingAmount"), deadline: n("kingDeadline") },
+      skills: f.get("skills") === "1",
     } as unknown as RuleSet;
   }, [...KIND_ORDER]);
 }
@@ -51,11 +52,12 @@ export async function readSetup(page: Page): Promise<RuleSet> {
  * メニューの CPU対戦 → 強さ（既定はノーマル）／マルチ → この端末で 2 人 で始める。
  * CPU 対戦で side を省くと先手（人間から打つ）を選ぶ（画面の既定はランダムだが、種付きの CPU の手を再現するテストは人間が先手の前提）。
  * 設定メニューで選んだ手番をそのまま使うときは side: "saved"。
- * threat は取られる駒の警告「!」（画面の既定はオフ。「!」を確かめるテストは true）
+ * threat は取られる駒の警告「!」（画面の既定はオフ。「!」を確かめるテストは true）。
+ * スキルありのルールでカードを選ぶ画面が出たら、配られた先頭のカードを選ぶ（2 人対戦は両者。cards: false なら選ばない）
  */
 export async function startGame(
   page: Page,
-  opts: { mode?: "cpu" | "pvp"; side?: 0 | 1 | "random" | "saved"; preset?: PresetId; level?: CpuLevel; threat?: boolean } = {},
+  opts: { mode?: "cpu" | "pvp"; side?: 0 | 1 | "random" | "saved"; preset?: PresetId; level?: CpuLevel; threat?: boolean; cards?: false } = {},
 ) {
   const mode = opts.mode ?? "cpu";
   const side = mode === "cpu" ? (opts.side ?? 0) : "saved";
@@ -84,6 +86,11 @@ export async function startGame(
   }
   await expect(page.locator("#menu")).toBeHidden();
   await expect(page.locator("#game")).toBeVisible();
+  if (opts.cards === false) return;
+  for (let i = 0; i < 2 && (await page.locator("#skill-pick").isVisible()); i++) {
+    await page.locator("#skill-pick .tarot[data-skill]").first().click();
+    await page.locator("#skill-pick-ok").click();
+  }
 }
 
 /** 設定メニューの「ルールを細かく変える」を開く（設定メニューが閉じていれば開く。開いていれば何もしない） */

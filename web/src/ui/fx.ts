@@ -89,6 +89,22 @@ export interface TossOptions {
   onSkip: () => void;
 }
 
+/** スキルを使った演出の長さ（カードが表を向いて名前を見せ、消える）。この間は入力・CPU を待たせる */
+export const SKILL_CAST_MS = 1100;
+export const SKILL_CAST_REDUCED_MS = 700;
+export const skillCastMs = (reduce: boolean) => (reduce ? SKILL_CAST_REDUCED_MS : SKILL_CAST_MS);
+
+export interface SkillCastOptions {
+  /** カードの面（skillui.ts の tarotCard） */
+  card: HTMLElement;
+  /** 使った人（名札の短い名前）と石の色 */
+  who: string;
+  owner: Player;
+  /** 使った人の名札が盤の上の側（カードは上から来る） */
+  fromTop: boolean;
+  reduce: boolean;
+}
+
 export class Fx {
   private timers: number[] = [];
   private finaleEl: HTMLElement | null = null;
@@ -130,6 +146,21 @@ export class Fx {
     root.addEventListener("click", () => o.onSkip());
     this.layer.append(root);
     this.tossEl = root;
+  }
+
+  /**
+   * スキルを使った演出: 使った人の側から裏向きのカードが現れて表を向き、名前と効果を見せて消える（タップは盤に通す）。
+   * 動きを減らす設定では回さず、表のカードを出して消すだけ
+   */
+  skillCast(o: SkillCastOptions) {
+    const ms = skillCastMs(o.reduce);
+    const root = h("div", { class: `fx-skill p${o.owner}${o.fromTop ? " from-top" : ""}${o.reduce ? " reduce" : ""}`, attrs: { "data-skill": o.card.dataset.skill ?? "" } });
+    root.style.setProperty("--cast-ms", `${ms}ms`);
+    root.append(
+      h("div", { class: "cast-flip" }, [h("div", { class: "cast-back" }), o.card]),
+      h("p", { class: "cast-who" }, [h("span", { class: `fin-stone p${o.owner}`, attrs: { "aria-hidden": "true" } }), o.who]),
+    );
+    this.add(root, ms);
   }
 
   /** 抽選の演出を消す */

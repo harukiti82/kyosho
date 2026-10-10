@@ -93,7 +93,8 @@ test.describe("PC 幅", () => {
     await page.screenshot({ path: `${SHOT}/pc-anchor-setup.png` });
 
     // 「なし」に戻すとカスタム（体力が方向駒と違う）、ルールカードから端の駒の行が消え、URL から anc が消える
-    await page.locator("input[name=anchor][value=none]").check({ force: true });
+    await page.locator('label:has(> input[name=anchor][value="none"])').click();
+    await expect(page.locator('input[name=anchor][value="none"]')).toBeChecked();
     await expect(page.locator("#custom-tag")).toContainText("カスタム");
     await expect(page.locator("#setup-rules4")).not.toContainText("反対側の自分の駒もダメージ");
     await saveSettings(page);
@@ -104,7 +105,8 @@ test.describe("PC 幅", () => {
     await saveSettings(page);
     expect(new URL(page.url()).search.slice(1)).toBe(encodeRules(presetById("dir").rules));
     await openRuleFields(page);
-    await page.locator("input[name=anchor][value=attack]").check({ force: true });
+    await page.locator('label:has(> input[name=anchor][value="attack"])').click();
+    await expect(page.locator('input[name=anchor][value="attack"]')).toBeChecked();
     await expect(page.locator("#custom-tag")).toContainText("カスタム");
     const custom = await readSetup(page);
     expect(custom).toEqual({ ...presetById("dir").rules, anchor: "attack" });

@@ -193,6 +193,16 @@ export class Sound {
     this.tone({ freq: 784, type: "sine", dur: 0.4, gain: 0.12 }, landAt + 0.12);
   }
 
+  /** スキルを使った音。カードをめくる擦れ → 上がる 3 音のきらめき */
+  skill() {
+    if (this.muted) return;
+    this.noise(0.12, 0.1, 2600);
+    [587, 880, 1319].forEach((f, i) => {
+      this.tone({ freq: f, type: "triangle", at: 0.1 + i * 0.08, dur: 0.35, gain: 0.14 });
+      this.tone({ freq: f * 2, type: "sine", at: 0.1 + i * 0.08, dur: 0.3, gain: 0.04 });
+    });
+  }
+
   /** 決着の音。win: 短いファンファーレ / lose: 低く短い下降音 / draw: 落ち着いた 2 音 */
   finale(kind: OutcomeKind) {
     if (this.muted) return;
