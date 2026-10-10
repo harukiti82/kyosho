@@ -4,9 +4,13 @@
 
 ## 現在の対象
 
-- 何を / どこを: チュートリアルと表記の手直し 3 点（依頼元セッション経由・ユーザー承認済み）。遊び方に「自動で王に」（7 手目の自動指定を盤で体験）、画面の「端5」「端の駒」を「反対側」に統一（設定名「反対側の駒の力」、吹き出しは「＋ 反対側N」ごとに折り返す）、遊び方の最後の実戦の「!」を保存した設定に従わせる
-- ステータス: ブランチ `feat/tutorial-tweaks`（worktree `../kyosho-tweaks`）。PR → CI → squash merge → 本番デプロイまで
+- 何を / どこを: CPU 対戦（強さごと）と同じ端末の 2 人対戦（席ごと）の通算（`ui/record.ts` の `RecordBook`、localStorage `kyosho:record`）。表示はオンラインと同じ成績表の「通算」と名札 `.plate-record`（2 局目から）、設定メニューの「記録」で一覧と「通算を消す」（画面内の確認）。依頼元セッション経由
+- ステータス: ブランチ `feat/local-record`（worktree `../kyosho-record2`）。PR #40 → CI → squash merge → 本番デプロイまで
 - 最終更新: 2026-10-10
+
+## 通算（CPU 対戦・2 人対戦）の要点
+
+- `App.afterChange` の先頭で決着を `countResult`（`countedGame` で 1 局 1 回。`recordKey` が null のオンライン・遊び方の実戦は数えない。待ったの対局は数える）→ `recordOf` が 2 局目から出す（2 人対戦は先手から見た値）。壊れた保存は 0 から、localStorage なしは画面の間だけメモリ
 
 ## 待った・「!」の切り替えの要点
 
@@ -29,13 +33,12 @@
 
 - 青と斜めはユーザーの個人サイト rukiharukichi.com（`/Users/numataharu/repos/rukiharukichi.com`）に揃える（あちらのファイルは変えない）。見出しは直立、選んだ項目は白い板を黒と白の石が挟む（`--pinch-black` / `--pinch-white`）、地は盤の格子。ロゴは自作の SVG（斜めの盤の 2×2 マスに黒石・白石と白の駒、`index.html` の `.brand-mark` / `.logo-mark`）。斜体・硬い影・赤い破片・段々・時計・水面・月は使わない
 - 重なり: 盤（`.board-frame`、`z-index: 2`）は名札・駒台（`isolation` の斜めの帯）より上。枠の斜めの角は `::before` だけ（枠を clip-path で切ると盤の外の吹き出しが切れる）。詳細度の低い本体の規則を後ろの `@media (max-width: 400px)` が上書きしやすいので、狭い画面の指定を足すときはメニューの項目（`.menu-btn`）を巻き込まない
-
 - 対局画面: 名札（`#seat-top` / `#seat-bottom`、`App.placeSeats`。自分が下、2 人対戦は先手が下）・盤の枠の下の縁に手番（`#status` は「あなたの番」など短く）・手数（`#ply`「N 手」）・接続（`#net`）。手番の側の縁に線（`.board-frame.turn-top` / `turn-bottom` / `turn-act`）
 - 名札: 短い名前（`shortName`。正式名は aria-label・title）・王の駒の形とマス名（`kingTag`。返されたら取り消し線 `.lost`、オンラインの相手は「候補N」で `#king-cands`）・持ち駒（駒台に出ている人の分は省く）・体力ゲージ（`.hp-gauge`、減った分は `.hp-ghost`）
 - 駒台（`.tray`）: 残り数は `.piece-count`、置けない駒は `.blocked` の斜線、隠し王は右端の王の駒（`#king-toggle`「あと N 手」、2 人対戦の `#king-peek`）。説明の文は sr-only の `#king-note`
 - 予測: マスのバッジ（`.dmg-badge` / `.heal-badge`）＋吹き出し（`App.bubble`。返す駒・端の駒がない側に出し、上下両方にあれば盤の外の縁 `.edge-top` / `.edge-bottom`）。文の詳細は引き出しの「予測」タブ（`#preview`、閉じても `.tab-off` で読み上げに残す）
 - 引き出し（`#drawer`、`setTab`）: 「ルール 名前」（名前は `.tab-sub`）「予測」「棋譜」「印」。PC は盤の横でルールを開いて始め、スマホは閉じて始める
-- 設定メニュー: プリセットの札（標準は大きな `.preset-main`、ほかは名前の長さなりの小さな札）＋ルール文 `#setup-rules4` →「詳細設定」（`#rule-details`）→ 手番・1 手の時間（`.set-row` の行）→ やめる／保存（e2e は `openRuleFields` / `openTab`）。終局画面は見出し・理由・成績表（`.score`）・成績（`.stats`）。オンラインのダイアログは 2 つの席を VS で並べる（`.lobby`）
+- 設定メニュー: プリセットの札（標準は大きな `.preset-main`、ほかは名前の長さなりの小さな札）＋ルール文 `#setup-rules4` →「詳細設定」（`#rule-details`）→ 手番・1 手の時間・表示・記録（`.set-row` の行）→ やめる／保存（e2e は `openRuleFields` / `openTab`）。終局画面は見出し・理由・成績表（`.score`）・成績（`.stats`）。オンラインのダイアログは 2 つの席を VS で並べる（`.lobby`）
 
 ## 直近の観点・指摘
 
@@ -54,19 +57,16 @@
 ## 未解決・次の一手
 
 - [ ] ユーザーの試遊で待った（イージーだけ・3 回）と「!」の既定オフの手応えを聞く。既定オフで「ルールが一目で分かる」が損なわれていないか
-- [ ] ユーザーにスマホの実機で G 案の見た目（直立の見出しの読みやすさ・挟む石・盤の格子と星）を見てもらう
-- [ ] ユーザーの試遊で、要点を大きくした説明文の読みやすさ（要点の言い回し・補足の小ささ・スマホのルールカードの長さ）の感想を聞く
-- [ ] ユーザーの試遊で「自動で王に」のステップ（手数 12 の局面から始まる・「数えるのは自分の手だけ」）と「反対側」の表記（吹き出しが 2 行になる場面）の手応えを聞く
-- [ ] ユーザーの試遊で遊び方の分かりやすさ（ステップの順・目標の文・光と矢印の誘導・最後の実戦）の感想を聞く。初回にメニューで勧める強さ（今は「遊び方」の横のシアンの「おすすめ」だけ）もユーザー判断
-- [ ] ユーザーの試遊で制限時間の長さ（ノーマル 45 秒・ハード 20 秒・マルチ 45 秒）と時計の見やすさの感想を聞く
-- [ ] ユーザーの試遊で CPU の強さの手応え（イージーで勝てるか・ハードが強すぎないか）とメニューの流れの感想を聞く。スマホ 2 台でオンラインの作成 → 参加も実機で確かめる
+- [ ] ユーザーにスマホの実機で G 案の見た目（直立の見出しの読みやすさ・挟む石・盤の格子と星）と、要点を大きくした説明文の読みやすさ（言い回し・補足の小ささ・ルールカードの長さ）を見てもらう
+- [ ] ユーザーの試遊で「自動で王に」のステップ（手数 12 の局面から始まる・「数えるのは自分の手だけ」）と「反対側」の表記（吹き出しが 2 行になる場面）の手応えと、遊び方の分かりやすさ（ステップの順・目標の文・光と矢印の誘導・最後の実戦）の感想を聞く。初回にメニューで勧める強さ（今は「遊び方」の横のシアンの「おすすめ」だけ）もユーザー判断
+- [ ] ユーザーの試遊で制限時間の長さ（ノーマル 45 秒・ハード 20 秒・マルチ 45 秒）と時計の見やすさ、CPU の強さの手応え（イージーで勝てるか・ハードが強すぎないか）とメニューの流れの感想を聞く。スマホ 2 台でオンラインの作成 → 参加も実機で確かめる
 - [ ] ユーザーの試遊で 期限 7 手・回復 低い方−1 の標準の手応えを聞く（CPU の強さの差: ハード対ノーマル 72.0%・ノーマル対イージー 85.8%）
-- [ ] 本番 https://kyosho.rukiharukichi.com/ でメニューの「マルチ」に「オンライン」が出ること、スマホ 2 台で作成 → 参加 → 終局・再読み込みを確かめる。確かめたら別タスクで GitHub Pages（`pages.yml`）を止める
-- [ ] 本番のスマホ 2 台で再戦の流れと通算の表示を確かめる。CPU 対戦・同じ端末の 2 人対戦にも通算を出すかはユーザー判断（今はオンラインだけ）
+- [ ] 本番 https://kyosho.rukiharukichi.com/ でメニューの「マルチ」に「オンライン」が出ること、スマホ 2 台で作成 → 参加 → 終局・再読み込み・再戦と通算を確かめる。確かめたら別タスクで GitHub Pages（`pages.yml`）を止める。CPU 対戦・2 人対戦の通算（端末ごと）の見え方も試遊で聞く
 - [ ] ユーザーの試遊で演出の手応え・方向駒・隠し王・拠点・オセロの枠の見やすさの感想を聞く。RULES.md 本文を標準で新版に改稿するかはユーザー判断
 
 ## 現フェーズで Read すべき設計書
 
+- 通算（CPU 対戦・2 人対戦）: `web/src/ui/record.ts`, `web/src/ui/app.ts`（`countResult` / `recordOf` / `plateRecord`）, `web/src/ui/setup.ts`（`showRecord`）, `web/test/record.test.ts`, `web/e2e/record.spec.ts`
 - 遊び方: `web/src/ui/lessons.ts`, `web/src/ui/coach.ts`, `web/src/ui/app.ts`（「遊び方（チュートリアル）」節 `openLesson` / `inStep`、`onCellClick`・`renderBoard` の誘導）, `web/test/lesson.test.ts`, `web/e2e/tutorial.spec.ts`
 - 待った・「!」・制限時間: `web/src/ui/undo.ts`, `web/src/ui/app.ts`（`takeBack` / `initThreat` / `setThreat` / `syncClock` / `checkTimeout`）, `web/src/ui/setup.ts`（`Saved.threat`）, `web/src/ui/clock.ts`, `web/src/engine/game.ts`（`playTimeout`）, `server/src/room.ts`
 - メニュー・設定メニュー・CPU の強さ: `web/src/ui/menu.ts`, `web/src/ui/setup.ts`, `web/src/ui/app.ts`（`showMenu` / `resume` / `leaveToMenu`）, `web/src/engine/cpu.ts`（`chooseMove`）
@@ -77,4 +77,4 @@
 
 ## 関連ファイル / リンク
 
-- E2E のスクリーンショット: `web/screenshots/`（pc-* / sp-* 、隠し王は *-king-*、方向駒は *-dir*、拠点は *-anchor*、演出は *-impact-*、決着は *-result-*、オンラインは *-online-*、遊び方は *-tutorial-*、待ったは *-undo-*、「!」は *-threat-*）。デプロイ: `.github/workflows/pages.yml`（GitHub Pages。PR はテスト+ビルドのみ、main への push でデプロイ）、`.github/workflows/deploy.yml`（Cloudflare。Secret 登録済み = main へのマージで本番デプロイ）、`server/wrangler.jsonc`
+- E2E のスクリーンショット: `web/screenshots/`（pc-* / sp-* 、隠し王は *-king-*、方向駒は *-dir*、拠点は *-anchor*、演出は *-impact-*、決着は *-result-*、オンラインは *-online-*、遊び方は *-tutorial-*、待ったは *-undo-*、「!」は *-threat-*、通算は *-record-*）。デプロイ: `.github/workflows/pages.yml`（GitHub Pages。PR はテスト+ビルドのみ、main への push でデプロイ）、`.github/workflows/deploy.yml`（Cloudflare。Secret 登録済み = main へのマージで本番デプロイ）、`server/wrangler.jsonc`
