@@ -50,8 +50,8 @@ export function kingLine(r: RuleSet): Sentence {
   return { point: `王を${verb(r).hitIf}${kingPenaltyText(r)}`, note: `${pick}。相手に見えない` };
 }
 
-/** 端の駒の力（攻撃に上乗せ）のルールカードの 1 行 */
-export const anchorLine = (): Sentence => ({ point: "端の自分の駒もダメージに足す", note: "挟んだ反対端の自分の駒の数字" });
+/** 反対側の駒の力（攻撃に上乗せ）のルールカードの 1 行。遊び方と同じく「反対側」と言う */
+export const anchorLine = (): Sentence => ({ point: "反対側の自分の駒もダメージに足す", note: "挟んだ列の、置いた駒と反対側にある自分の駒の数字" });
 
 /** 始めの体力（例: 「先手 129・後手 130 から」「どちらも 20 から」） */
 const hpStart = (r: RuleSet) => (r.hp[0] === r.hp[1] ? `どちらも ${r.hp[0]} から` : `先手 ${r.hp[0]}・後手 ${r.hp[1]} から`);
@@ -104,7 +104,7 @@ export function ruleDetails(r: RuleSet): Sentence[] {
       point: "挟める方向は駒ごとに違う",
       note: `${each.join("・")}。置いた駒の方向に挟んだ列だけ${v.can}。他の方向に挟んでいても${v.cannot}。縦・横は盤の向きで、先手・後手で同じ`,
     });
-    out.push({ point: "方向は置く駒だけで決まる", note: "挟まれる側の駒・反対端の自分の駒の矢印は関係ない" });
+    out.push({ point: "方向は置く駒だけで決まる", note: "挟まれる側の駒・反対側の自分の駒の矢印は関係ない" });
   }
   if (r.gate) {
     out.push({ point: `置いた駒より数字が大きい駒を含む列は${v.cannot}`, note: `1 つでも入っていれば${v.cannot}。他の方向の列は${v.can}` });
@@ -113,15 +113,15 @@ export function ruleDetails(r: RuleSet): Sentence[] {
   else out.push({ point: `ダメージ = ${v.past}駒の数字の最大値 ＋ ${v.past}枚数 ÷ 4`, note: "割り算は切り捨て" });
   if (r.anchor === "attack") {
     out.push({
-      point: "端の駒の力: 反対端の自分の駒もダメージに足す",
-      note: `${v.past}列ごとに、もともと盤上にあって挟むのに使った駒の数字を足す。2 列${v.past}ら両方の端を足す。${v.cannot}列の端は足さない。置いた駒の数字は足さない`,
+      point: "反対側の自分の駒もダメージに足す",
+      note: `${v.past}列ごとに、もともと盤上にあって挟むのに使った駒の数字を足す。2 列${v.past}ら両方の列の反対側を足す。${v.cannot}列の反対側は足さない。置いた駒の数字は足さない`,
     });
     out.push({
       point: "強い駒は何度もダメージを上乗せできる拠点になる",
       note: r.action === "flip" ? "逆に返されると相手の拠点になる" : "逆に取られると相手の持ち駒になる",
     });
   }
-  const ends = "両端は置いた駒と反対端の自分の駒";
+  const ends = "両端は置いた駒と反対側の自分の駒";
   if (r.heal === "avg") {
     out.push({ point: "回復 = 挟んだ両端の数字の平均", note: `${ends}。切り捨て。複数方向なら最も大きい 1 方向分` });
   } else if (r.heal === "lowMinus1") {

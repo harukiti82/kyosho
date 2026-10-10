@@ -1,9 +1,10 @@
-// 取られる駒の警告「!」の表示の切り替え: 既定はオフ・設定メニューで保存・対局中の切り替え（保存は変えない）・古い保存・遊び方は常にオン。
+// 取られる駒の警告「!」の表示の切り替え: 既定はオフ・設定メニューで保存・対局中の切り替え（保存は変えない）・古い保存・遊び方のステップは常にオン・
+// 遊び方の最後の実戦は保存した設定。
 // 「!」の場所はページの Math.random を種付きにした CPU（ノーマル）の鏡の対局で、エンジンの threatenedPieces と照らし合わせる。
 
 import { expect, test, type Page } from "@playwright/test";
 import { cellName } from "../src/engine/board";
-import { chooseMove } from "../src/engine/cpu";
+import { chooseMove, type CpuLevel } from "../src/engine/cpu";
 import { createGame, legalCells, playableKinds, playMove, previewMove, threatenedPieces, viewFor, type GameState } from "../src/engine/game";
 import { presetById } from "../src/engine/rules";
 import { LESSONS, TUTORIAL_KEY } from "../src/ui/lessons";
@@ -18,14 +19,14 @@ const threatCells = (page: Page) =>
   page.locator(".cell:has(.threat)").evaluateAll((cs) => cs.map((c) => (c.getAttribute("aria-label") ?? "").split(" ")[0]).sort());
 const saved = (page: Page) => page.evaluate((k) => localStorage.getItem(k), SETTINGS_KEY);
 
-/** 鏡の対局を 1 手（人間は置ける手の先頭、CPU はノーマルを同じ乱数で）進め、人間の手番にする */
-async function advance(page: Page, s: GameState, rand: () => number, touch: boolean): Promise<GameState> {
+/** 鏡の対局を 1 手（人間は置ける手の先頭、CPU は既定でノーマルを同じ乱数で）進め、人間の手番にする */
+async function advance(page: Page, s: GameState, rand: () => number, touch: boolean, level: CpuLevel = "normal"): Promise<GameState> {
   const kind = playableKinds(s)[0];
   const [r, c] = legalCells(s, kind)[0];
   await play(page, r, c, kind, touch);
   s = playMove(s, r, c, kind);
   while (!s.result && s.turn === 1) {
-    const ch = chooseMove(viewFor(s, 1), "normal", rand)!;
+    const ch = chooseMove(viewFor(s, 1), level, rand)!;
     s = playMove(s, ch.r, ch.c, ch.kind, { king: ch.king });
   }
   expect(await waitHumanTurnOrEnd(page)).toBe(false);
@@ -163,4 +164,63 @@ test.describe("PC 幅", () => {
     await expect(d6.locator(".bb-warn")).toHaveCount(1);
     await expect(toggle(page)).toBeHidden();
   });
+});
+
+/** 遊び方の最後の実戦から始める（進み具合を実戦の手前にしておく） */
+async function openTutorialMatch(page: Page, threat: boolean | null) {
+  await page.addInitScript(
+    ([key, i, settingsKey, on]) => {
+      if (!sessionStorage.getItem("seeded")) {
+        localStorage.setItem(key, JSON.stringify({ step: i, reached: i, done: false }));
+        if (on !== null) localStorage.setItem(settingsKey, JSON.stringify({ threat: on }));
+        sessionStorage.setItem("seeded", "1");
+      }
+    },
+    [TUTORIAL_KEY, LESSONS.length - 1, SETTINGS_KEY, threat] as const,
+  );
+  await page.goto("/");
+  await page.locator("#menu-learn").click();
+  await expect(page.locator("#coach-title")).toHaveText("実戦");
+}
+
+test("遊び方の最後の実戦は保存した設定に従う: オフなら「!」を出さず、切り替えの鍵で出せる", async ({ page }, info) => {
+  const touch = isMobile(info.project.name);
+  const SEED = 7;
+  await seedPage(page, SEED);
+  await openTutorialMatch(page, null);
+  await expect(toggle(page)).toBeVisible();
+  await expect(toggle(page)).toHaveAttribute("aria-pressed", "false");
+  // 実戦は CPU イージー。自分の駒が返されうる局面まで鏡の対局で進める
+  const rand = rng(SEED);
+  let s = createGame(STD);
+  for (let i = 0; threatenedPieces(s, 0).length === 0; i++) {
+    expect(i).toBeLessThan(12);
+    s = await advance(page, s, rand, touch, "easy");
+  }
+  await expect(page.locator(".cell .threat")).toHaveCount(0);
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.screenshot({ path: `${SHOT}/${touch ? "sp" : "pc"}-threat-tutorial-match-off.png` });
+  await (touch ? toggle(page).tap() : toggle(page).click());
+  await expect(toggle(page)).toHaveAttribute("aria-pressed", "true");
+  expect(await threatCells(page)).toEqual(threatenedPieces(s, 0).map(([r, c]) => cellName(r, c)).sort());
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.screenshot({ path: `${SHOT}/${touch ? "sp" : "pc"}-threat-tutorial-match-toggled.png` });
+});
+
+test("遊び方の最後の実戦は保存した設定に従う: オンなら初めから「!」を出す", async ({ page }, info) => {
+  const touch = isMobile(info.project.name);
+  const SEED = 7;
+  await seedPage(page, SEED);
+  await openTutorialMatch(page, true);
+  await expect(toggle(page)).toBeVisible();
+  await expect(toggle(page)).toHaveAttribute("aria-pressed", "true");
+  const rand = rng(SEED);
+  let s = createGame(STD);
+  for (let i = 0; threatenedPieces(s, 0).length === 0; i++) {
+    expect(i).toBeLessThan(12);
+    s = await advance(page, s, rand, touch, "easy");
+  }
+  expect(await threatCells(page)).toEqual(threatenedPieces(s, 0).map(([r, c]) => cellName(r, c)).sort());
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.screenshot({ path: `${SHOT}/${touch ? "sp" : "pc"}-threat-tutorial-match-on.png` });
 });

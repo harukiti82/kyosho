@@ -3,7 +3,7 @@
 // DOM に依存しない（盤の誘導・コーチの表示は ui/app.ts と ui/coach.ts）。
 
 import { parseCell, type Cell } from "../engine/board";
-import { createGame, gameFrom, isLegal, previewMove, type GameState, type MoveEvent } from "../engine/game";
+import { createGame, gameFrom, isLegal, kingInfo, playMove, previewMove, type GameState, type MoveEvent } from "../engine/game";
 import {
   cloneRules,
   KIND_ORDER,
@@ -19,7 +19,7 @@ import {
 import type { KeyValueStore } from "../net/online";
 import { pieceLabel } from "./ruletext";
 
-export type LessonId = "flank" | "damage" | "dirs" | "hand" | "anchor" | "heal" | "king" | "kingHit" | "read" | "match";
+export type LessonId = "flank" | "damage" | "dirs" | "hand" | "anchor" | "heal" | "king" | "kingAuto" | "kingHit" | "read" | "match";
 
 /** プレイヤーが打とうとした手（王にするかを含む） */
 export interface LessonMove {
@@ -275,6 +275,39 @@ export const LESSONS: readonly Lesson[] = [
     guide: cells("e6"),
     hint: () => "光っているマスに歩を置く",
     done: (m, g) => `この${label(g, m.kind)}があなたの王になった。王を相手に裏返されると、ダメージとは別に${kingLoss(g.rules)}。`,
+  },
+  {
+    id: "kingAuto",
+    title: "自動で王に",
+    point: `王を決めないと、${STD.king.deadline} 手目の駒が王になる`,
+    note: "数えるのは自分の手だけで、相手の手は数えない。",
+    task: `${STD.king.deadline} 手目の歩を、光っているマスに置く`,
+    rules: rulesWith({ dirs: true, anchor: true, heal: true, king: true }),
+    start() {
+      // 王を決めずに、お互い期限の 1 手前まで打った局面（自分は左の 2 列を下から、相手は右の 2 列を上から）。
+      // どちらの列も盤の端から続く同じ色の並びになり、縦にしか挟めない歩では挟み返せない（「!」を出さない）
+      let g = gameFrom(this.rules, {
+        stones: stones([
+          ["a8", B, "fu"], ["a7", W, "fu"], ["a5", W, "fu"], ["a3", W, "fu"],
+          ["b8", B, "fu"], ["b7", W, "fu"], ["b5", W, "fu"], ["b3", W, "fu"],
+          ["g1", W, "fu"], ["g2", B, "fu"], ["g4", B, "fu"], ["g6", B, "fu"],
+          ["h1", W, "fu"], ["h2", B, "fu"], ["h4", B, "fu"], ["h6", B, "fu"],
+          ["e8", B, "fu"], ["e7", W, "fu"],
+        ]),
+        hands: [hand({ fu: 10 }), hand({ fu: 10 })],
+      });
+      const mine = ["a6", "a4", "a2", "b6", "b4", "b2"];
+      const theirs = ["g3", "g5", "g7", "h3", "h5", "h7"];
+      for (const [i, name] of mine.entries()) {
+        for (const at of [name, theirs[i]]) g = playMove(g, ...parseCell(at), "fu");
+      }
+      return g;
+    },
+    answers: [{ at: parseCell("e6"), kind: "fu" }],
+    guide: cells("e6"),
+    hint: () => "光っているマスに歩を置く",
+    done: (m, g) =>
+      `王を決めないまま ${kingInfo(g, 0).nextMove} 手目に置いたので、この${label(g, m.kind)}が自動であなたの王になった。好きな駒を王にしたいときは、それより前に駒台の王をタップする。`,
   },
   {
     id: "kingHit",

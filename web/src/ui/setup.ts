@@ -147,7 +147,7 @@ function clampInt(raw: string, range: { min: number; max: number }, fallback: nu
 
 const KEY_LABEL: Record<string, string> = {
   take: "挟んだ駒を", gate: "強さ制限", dmg: "ダメージ", heal: "回復", hp1: "先手の体力", hp2: "後手の体力",
-  limit: "手数上限", anc: "端の駒の力", king: "隠し王", kpen: "王の罰", kdmg: "王の罰の体力", kdue: "王の指定期限", dir: "挟める方向",
+  limit: "手数上限", anc: "反対側の駒の力", king: "隠し王", kpen: "王の罰", kdmg: "王の罰の体力", kdue: "王の指定期限", dir: "挟める方向",
   ...Object.fromEntries(KIND_ORDER.flatMap((k) => [[k, `${PIECES[k].name}の数`], [`v${k}`, `${PIECES[k].name}の数字`]])),
 };
 

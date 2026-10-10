@@ -22,6 +22,7 @@ const WRONG: Record<Exclude<LessonId, "match">, { cell: string; kind: PieceKind;
   anchor: { cell: "g6", kind: "fu", hint: "反対側の自分の駒は歩1" },
   heal: { cell: "g6", kind: "fu", hint: "回復は 0" },
   king: { cell: "e6", kind: "fu", hint: "王をタップする" },
+  kingAuto: { cell: "c6", kind: "fu", hint: "光っているマスに歩を置く" },
   kingHit: { cell: "b6", kind: "fu", hint: "「?」の駒を挟む" },
   read: { cell: "d6", kind: "fu", hint: "置いた歩が次の相手の手で裏返される" },
 };
@@ -65,6 +66,8 @@ async function solveStep(page: Page, l: Lesson, i: number) {
   const touch = narrow(page);
   const wrong = WRONG[l.id as Exclude<LessonId, "match">];
   const a = l.answers[0];
+  // 始めの手数（「自動で王に」はお互い 6 手ずつ打った局面から）
+  const ply = l.start().ply;
   await expectStep(page, i);
   // 誘導: 光るマス（候補すべて）。駒台で選ぶ駒・押す王があれば、そこに矢印
   await expect(page.locator(".cell.guide")).toHaveCount(l.guide.length);
@@ -79,10 +82,10 @@ async function solveStep(page: Page, l: Lesson, i: number) {
   if ((await pieceBtn.getAttribute("aria-pressed")) !== "true") await (touch ? pieceBtn.tap() : pieceBtn.click());
   await press(page, wrong.cell);
   await expect(page.locator("#coach-msg.hint")).toContainText(wrong.hint);
-  await expect(page.locator("#ply")).toHaveText("0 手");
+  await expect(page.locator("#ply")).toHaveText(`${ply} 手`);
   await expect(page.locator("#coach-actions")).toBeHidden();
   await expect(cellAt(page, ...parseCell(wrong.cell)).locator(".stone:not(.ghost)")).toHaveCount(0);
-  if (i === 2 || i === 6) await page.screenshot({ path: `${SHOT}/${prefix(page)}-tutorial-${i + 1}-${l.id}-hint.png` });
+  if (i === 2 || i === 6 || l.id === "kingAuto") await page.screenshot({ path: `${SHOT}/${prefix(page)}-tutorial-${i + 1}-${l.id}-hint.png` });
 
   // 正解: 駒台で駒を選び（矢印で誘導）、王が要るなら王を押してから置く
   if (a.kind !== wrong.kind) await expect(page.locator(`#hand-buttons .piece-btn.guide[data-kind=${a.kind}] .guide-arrow`)).toBeVisible();
@@ -91,9 +94,14 @@ async function solveStep(page: Page, l: Lesson, i: number) {
     await (touch ? page.locator("#king-toggle").tap() : page.locator("#king-toggle").click());
     await expect(page.locator("#king-toggle")).toHaveAttribute("aria-pressed", "true");
   }
+  if (l.id === "kingAuto") {
+    // 期限の手: 王の駒は「この手で王」で押せない（押さなくても置いた駒が王になる）
+    await expect(page.locator("#king-toggle")).toContainText("この手で王");
+    await expect(page.locator("#king-toggle")).toBeDisabled();
+  }
   await play(page, a.at[0], a.at[1], a.kind, touch);
   await expect(page.locator("#coach-msg.ok")).toHaveText(doneText(l));
-  await expect(page.locator("#ply")).toHaveText("1 手");
+  await expect(page.locator("#ply")).toHaveText(`${ply + 1} 手`);
   await expect(cellAt(page, a.at[0], a.at[1]).locator(".stone.p0")).toBeVisible();
   await expect(page.locator(".board.acting")).toHaveCount(0);
   await expect(page.locator(".cell.guide")).toHaveCount(0);

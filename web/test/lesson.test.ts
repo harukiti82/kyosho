@@ -103,7 +103,7 @@ describe("gameFrom（指定した局面から始める）", () => {
 
 describe("チュートリアルの各ステップ", () => {
   it("標準ルールの要素を易しい順に足し、最後は標準の実戦", () => {
-    expect(LESSONS.map((l) => l.id)).toEqual(["flank", "damage", "dirs", "hand", "anchor", "heal", "king", "kingHit", "read", "match"]);
+    expect(LESSONS.map((l) => l.id)).toEqual(["flank", "damage", "dirs", "hand", "anchor", "heal", "king", "kingAuto", "kingHit", "read", "match"]);
     const std = presetById("std").rules;
     expect(sameRules(lesson("match").rules, std)).toBe(true);
     expect(sameRules(lesson("read").rules, std)).toBe(true);
@@ -112,6 +112,7 @@ describe("チュートリアルの各ステップ", () => {
     expect(lesson("anchor").rules.anchor).toBe("attack");
     expect(lesson("heal").rules.heal).toBe("lowMinus1");
     expect(lesson("king").rules.king).toEqual(std.king);
+    expect(lesson("kingAuto").rules.king).toEqual(std.king);
     // 覚えるルールは要点の一言（句点なし・22 字まで）と補足（なくてもよい）。要点と補足で 2 文まで、課題と合わせて 3 文まで（1 文に 1 つのこと）。
     // 括弧の補足・感嘆符は使わない
     for (const l of LESSONS) {
@@ -245,6 +246,23 @@ describe("チュートリアルの各ステップ", () => {
     expect(kingInfo(next, 0)).toMatchObject({ status: "hidden", cell: [5, 4], auto: false });
     expect(l.done(m, g)).toBe("この歩1があなたの王になった。王を相手に裏返されると、ダメージとは別に体力が 30 減る。");
     expect(l.point).toContain("最初の 7 手");
+  });
+
+  it("自動で王に: 王を決めないまま自分の 7 手目。光っている 1 マスに置いた歩が自動で王になる", () => {
+    const l = lesson("kingAuto");
+    const { g, next, m } = solve(l);
+    // お互い 6 手ずつ打ち、どちらも王はまだない。次の自分の手が期限
+    expect(g.ply).toBe(12);
+    expect(g.turn).toBe(0);
+    expect(kingInfo(g, 0)).toMatchObject({ status: "unset", nextMove: 7, canDesignate: true, forcedNow: true });
+    expect(kingInfo(g, 1)).toMatchObject({ status: "unset", nextMove: 7 });
+    expect(legalCells(g, "fu").map(([r, c]) => cellName(r, c))).toEqual(["e6"]);
+    // 王を選ばずに置いても、その駒が王になる
+    expect(kingInfo(next, 0)).toMatchObject({ status: "hidden", cell: [5, 4], auto: true });
+    expect(l.done(m, g)).toBe("王を決めないまま 7 手目に置いたので、この歩1が自動であなたの王になった。好きな駒を王にしたいときは、それより前に駒台の王をタップする。");
+    expect(l.point).toBe("王を決めないと、7 手目の駒が王になる");
+    expect(judgeMove(l, g, { r: 0, c: 0, kind: "fu", king: false })).toBe("光っているマスに歩を置く");
+    expect(nextNeed(l, "fu", false)).toEqual({});
   });
 
   it("王を裏返す: 「?」の金が相手の王で、裏返すと 6 ダメージ＋体力−30", () => {

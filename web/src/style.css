@@ -2043,6 +2043,14 @@ button {
 .bb-anchor {
   color: #7fb2ff;
 }
+/* 反対側の駒が多い内訳は「＋ 反対側5」の塊ごとに折り返す（吹き出しの外にはみ出さない） */
+.bb-sum {
+  flex-wrap: wrap;
+  white-space: normal;
+}
+.bb-term {
+  white-space: nowrap;
+}
 .bb-warn {
   color: var(--warn);
 }
