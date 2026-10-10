@@ -7,9 +7,11 @@
 // 終局後は同じ部屋で再戦できる。両者が申し込む（片方の申し込みをもう一方が受ける）と、席のトークンを入れ替えて
 // （先手と後手を交代して）同じルール・同じ制限時間の新しい対局を始める。前の対局の GameState（王を含む）は捨てる。
 // 部屋での通算の戦績は、席でなく人（作成者・参加者）ごとに数える。席は再戦で入れ替わるが、作成者の席 host も一緒に入れ替える。
+// スキルありのルールでは、対局を作るたびに両者へカードを 3 枚ずつ配り（dealSkills）、両者が選ぶ（pick）まで手を受けず時計も止める。
+// スキルの使用（skill）も engine の useSkill で検証する。偵察で分かった王・王の移し替えの先は kings の中だけにあり、viewFor が相手に出さない。
 
 import { DurableObject } from "cloudflare:workers";
-import { createGame, playMove, playTimeout, viewFor, type GameState } from "../../web/src/engine/game";
+import { createGame, dealSkills, pickSkill, playMove, playTimeout, useSkill, viewFor, type GameState } from "../../web/src/engine/game";
 import { other, type Player, type RuleSet } from "../../web/src/engine/rules";
 import {
   CLOSE,
@@ -23,15 +25,23 @@ import {
   type HostSeat,
   type MatchRecord,
   type MoveMessage,
+  type PickMessage,
   type RematchMessage,
   type RematchStatus,
   type RoomInfoResponse,
   type RoomPhase,
+  type SkillMessage,
   type StateMessage,
   type TurnClockInfo,
 } from "../../web/src/net/protocol";
 import { closeQuietly, errorMsg, randomId, randomInt, rejectSocket, send } from "./util";
 import { parseClientMessage } from "./validate";
+
+/** 新しい対局。スキルありならカードを配る（乱数は crypto） */
+function newGame(rules: RuleSet): GameState {
+  const g = createGame(rules);
+  return g.skills ? dealSkills(g, () => randomInt(2 ** 32) / 2 ** 32) : g;
+}
 
 /** storage に保存する部屋の状態 */
 export interface RoomRecord {
@@ -131,7 +141,7 @@ export class Room extends DurableObject<Env> {
       tokens,
       host,
       drawn: hostSeat === "random",
-      game: createGame(rules),
+      game: newGame(rules),
       turnMs: turnSeconds * 1000,
       deadline: null,
     };
@@ -185,6 +195,8 @@ export class Room extends DurableObject<Env> {
     if (att.player === null) return reject("not_joined", "先に join を送ってください");
     if (msg.type === "rematch") return this.rematch(ws, att.player, room, msg);
     if (msg.type === "leave") return this.leave(att.player, room);
+    if (msg.type === "pick") return this.pick(ws, att.player, room, msg);
+    if (msg.type === "skill") return this.skill(ws, att.player, room, msg);
     return this.move(ws, att.player, room, msg);
   }
 
@@ -246,7 +258,9 @@ export class Room extends DurableObject<Env> {
   private restartClock(extraMs = 0): void {
     const room = this.room!;
     const turnMs = room.turnMs ?? 0;
-    room.deadline = turnMs > 0 && this.phase() === "playing" ? Date.now() + turnMs + TURN_GRACE_MS + extraMs : null;
+    // スキルのカードを選んでいる間は時計を止める（両者が選んだら数え始める）
+    const picking = !!room.game.skills && !room.game.skills.ready;
+    room.deadline = turnMs > 0 && this.phase() === "playing" && !picking ? Date.now() + turnMs + TURN_GRACE_MS + extraMs : null;
   }
 
   /** 今の対局の先手・後手を抽選で決めたか（再戦では入れ替えなので false） */
@@ -336,6 +350,48 @@ export class Room extends DurableObject<Env> {
     this.broadcast();
   }
 
+  /** 手・スキル・カードの選択を受けられない局面なら、送り主にエラーを返して true */
+  private refuse(ws: WebSocket): boolean {
+    const phase = this.phase();
+    if (phase === "waiting") send(ws, errorMsg("waiting_opponent", "相手の参加を待っています"));
+    else if (phase === "finished") send(ws, errorMsg("game_over", "対局は終了しています"));
+    else return false;
+    return true;
+  }
+
+  /** スキルのカードを選ぶ（対局の前）。両者が選んだら手番の時計を動かす */
+  private async pick(ws: WebSocket, player: Player, room: RoomRecord, msg: PickMessage): Promise<void> {
+    if (this.refuse(ws)) return;
+    try {
+      room.game = pickSkill(room.game, player, msg.card);
+    } catch (e) {
+      return send(ws, errorMsg("illegal_skill", e instanceof Error ? e.message : "そのカードは選べません"));
+    }
+    if (room.game.skills!.ready) this.restartClock();
+    await this.save();
+    this.broadcast();
+  }
+
+  /** 手番の人がスキルを使う（置く前）。手番は変わらないので時計はそのまま */
+  private async skill(ws: WebSocket, player: Player, room: RoomRecord, msg: SkillMessage): Promise<void> {
+    if (this.refuse(ws)) return;
+    if (room.deadline != null && Date.now() >= room.deadline) {
+      await this.timeout();
+      return send(ws, errorMsg("stale_move", "制限時間が切れたため、自動で手を打ちました"));
+    }
+    if (room.game.turn !== player) return send(ws, errorMsg("not_your_turn", "相手の手番です"));
+    if (msg.seq !== undefined && msg.seq !== room.game.history.length) {
+      return send(ws, errorMsg("stale_move", "局面が進んでいます（制限時間切れの自動の手と入れ違いになりました）"));
+    }
+    try {
+      room.game = useSkill(room.game, { id: msg.id, kind: msg.kind, to: msg.to });
+    } catch (e) {
+      return send(ws, errorMsg("illegal_skill", e instanceof Error ? e.message : "そのスキルは使えません"));
+    }
+    await this.save();
+    this.broadcast();
+  }
+
   /**
    * 再戦の申し込み・取り消し・断り（終局後だけ）。同じ操作の二重押しは何もしない。
    * 相手が申し込み済みのところへ申し込む（受ける・同時に申し込んだ）と、次の対局を始める
@@ -378,7 +434,8 @@ export class Room extends DurableObject<Env> {
     const room = this.room!;
     // 終わった対局を通算に入れてから捨てる（host を入れ替える前に、勝った席を人に直す）
     room.record = tallyOf(room);
-    room.game = createGame(room.game.rules);
+    // スキルありなら配り直す（前の対局のカード・ゲージは持ち越さない）
+    room.game = newGame(room.game.rules);
     room.tokens = [room.tokens[1], room.tokens[0]];
     room.host = other(room.host);
     room.gameNo = (room.gameNo ?? 1) + 1;

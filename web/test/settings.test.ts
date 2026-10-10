@@ -111,7 +111,11 @@ describe("既定（標準）と共有済みの URL の互換", () => {
     }
   });
   it("一部だけ・不正な値を含む古い URL も、既定を変える前と同じ設定に読める", () => {
-    for (const [q, before] of Object.entries(compat.decoded)) expect(decodeRules(q)).toEqual(before);
+    // スキルを足す前の URL は「スキルなし」として読む
+    for (const [q, before] of Object.entries(compat.decoded)) {
+      const b = before as { rules: object };
+      expect(decodeRules(q)).toEqual({ ...b, rules: { ...b.rules, skills: false } });
+    }
   });
   it("差分の基準は v1.0 のまま", () => {
     expect(QUERY_BASE).toBe("v10");
@@ -120,11 +124,12 @@ describe("既定（標準）と共有済みの URL の互換", () => {
 
 describe("ルールカードの文言", () => {
   const card = (id: string) => ruleLines(PRESETS.find((p) => p.id === id)!.rules).map(sentenceText);
-  it("プリセットは 3〜5 行（方向駒は方向の 1 行が増えて 6 行、拠点・標準は端の駒の 1 行が増えて 7 行）", () => {
+  it("プリセットは 3〜5 行（方向駒は方向の 1 行が増えて 6 行、拠点・標準は端の駒の 1 行が増えて 7 行、スキルありはさらに 1 行で 8 行）", () => {
     expect(ruleLines(rulesOf("dir"))).toHaveLength(6);
     expect(ruleLines(rulesOf("anchor"))).toHaveLength(7);
     expect(ruleLines(rulesOf("std"))).toHaveLength(7);
-    for (const p of PRESETS.filter((p) => p.id !== "dir" && p.id !== "anchor" && p.id !== "std")) {
+    expect(ruleLines(rulesOf("skill"))).toHaveLength(8);
+    for (const p of PRESETS.filter((p) => !["dir", "anchor", "std", "skill"].includes(p.id))) {
       const n = ruleLines(p.rules).length;
       expect(n).toBeGreaterThanOrEqual(3);
       expect(n).toBeLessThanOrEqual(5);
@@ -169,6 +174,16 @@ describe("ルールカードの文言", () => {
       "王を返されたら体力−30 最初の7手のうち1つを王にする。相手に見えない",
       "体力が 0 で負け 先手 129・後手 130 から",
     ]);
+  });
+  it("スキルあり: 標準の行の後にスキルの 1 行。詳細にゲージと 8 枚の効果", () => {
+    expect(card("skill")).toEqual([...card("std").slice(0, 6), "ゲージが満タンでスキルを使う 配られた3枚から1枚を選ぶ。返した枚数と受けたダメージで溜まる", card("std")[6]]);
+    const details = ruleDetails(rulesOf("skill")).map(sentenceText).join("\n");
+    expect(details).toContain("1 手で 1 枚 +1・2 枚 +2・3 枚 +4・4 枚以上 +7。受けたダメージ 1 点ごとに +0.15");
+    expect(details).toContain("偵察: 相手の王の場所が自分にだけ分かる 相手が最初の7手を打ち終えてから使える。その手で王を返すと罰が 2 倍の体力−60");
+    expect(details).toContain("鉄壁: 相手の次の手のダメージが半分 駒は返る。小数は切り捨て");
+    expect(details).toContain("大回復: 体力を 10 回復 始めの体力は超えない。タロットの女帝。ゲージ 80・溜めマス 12");
+    // 隠し王なしなら偵察・王の移し替えは出さない
+    expect(ruleDetails(rulesOf("skill", { king: { on: false, penalty: "hp", amount: 20, deadline: 5 } })).map(sentenceText).join("")).not.toContain("偵察");
   });
   it("取る＋強さ制限は「取れない」", () => {
     expect(ruleLines(rulesOf("v10", { gate: true })).map(sentenceText)).toContain("強い駒を含む列は取れない 置いた駒より数字が大きい駒を含む列");

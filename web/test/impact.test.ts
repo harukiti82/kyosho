@@ -46,7 +46,7 @@ describe("段階の判定", () => {
     const anchor = rulesOf("anchor", { hp: [100, 100] });
     // 返した駒 1 ＋ 端の金5 ＝ 6 → 中
     const m = move({ damage: 6, anchors: [{ r: 0, c: 2, kind: "kin" }] });
-    expect(hitOf(anchor, m)).toEqual({ total: 6, base: 1, anchor: 5, penalty: 0 });
+    expect(hitOf(anchor, m)).toEqual({ total: 6, base: 1, anchor: 5, penalty: 0, skill: 0 });
     expect(tierOf(anchor, m)).toBe("mid");
     // 罰だけでも合計に入る（王の手は特大だが、内訳としての合計を確かめる）
     expect(hitOf(anchor, move({ damage: 3, king: { r: 0, c: 1, kind: "fu", penalty: 20, lose: false } })).total).toBe(23);
@@ -93,7 +93,7 @@ describe("成績の集計", () => {
 
   it("最大ダメージは罰を含む合計で選び、内訳を持つ", () => {
     expect(p0.best?.move.ply).toBe(4);
-    expect(p0.best?.hit).toEqual({ total: 31, base: 7, anchor: 4, penalty: 20 });
+    expect(p0.best?.hit).toEqual({ total: 31, base: 7, anchor: 4, penalty: 20, skill: 0 });
     expect(p1.best?.move.ply).toBe(2);
     expect(p1.best?.hit.total).toBe(12);
   });

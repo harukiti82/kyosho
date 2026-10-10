@@ -10,6 +10,7 @@ import {
   playableKinds,
   playMove,
   previewMove,
+  setSkills,
   threatenedPieces,
   viewFor,
   type GameState,
@@ -35,25 +36,27 @@ describe("プリセットと初期状態", () => {
     const byId = Object.fromEntries(PRESETS.map((p) => [p.id, p.rules]));
     expect(byId.v04).toEqual({
       action: "flip", gate: false, dirs: "all", damage: "maxCount", anchor: "none", heal: "lowMinus1",
-      hp: [65, 66], hand: { fu: 14, yoko: 0, gin: 10, kaku: 0, kin: 6, hi: 2 }, values: DEFAULT_VALUES, maxPlies: 0, king: NO_KING,
+      hp: [65, 66], hand: { fu: 14, yoko: 0, gin: 10, kaku: 0, kin: 6, hi: 2 }, values: DEFAULT_VALUES, maxPlies: 0, king: NO_KING, skills: false,
     });
     expect(byId.v10).toEqual({
       action: "capture", gate: false, dirs: "all", damage: "sum", anchor: "none", heal: "none",
-      hp: [20, 20], hand: { fu: 8, yoko: 0, gin: 0, kaku: 0, kin: 4, hi: 2 }, values: DEFAULT_VALUES, maxPlies: 80, king: NO_KING,
+      hp: [20, 20], hand: { fu: 8, yoko: 0, gin: 0, kaku: 0, kin: 4, hi: 2 }, values: DEFAULT_VALUES, maxPlies: 80, king: NO_KING, skills: false,
     });
     expect(byId.v2).toEqual({
       action: "flip", gate: true, dirs: "all", damage: "sum", anchor: "none", heal: "none",
-      hp: [40, 40], hand: { fu: 20, yoko: 0, gin: 0, kaku: 0, kin: 8, hi: 4 }, values: DEFAULT_VALUES, maxPlies: 0, king: NO_KING,
+      hp: [40, 40], hand: { fu: 20, yoko: 0, gin: 0, kaku: 0, kin: 8, hi: 4 }, values: DEFAULT_VALUES, maxPlies: 0, king: NO_KING, skills: false,
     });
     expect(byId.orig).toEqual({
       action: "flip", gate: false, dirs: "all", damage: "sum", anchor: "none", heal: "avg",
-      hp: [40, 40], hand: { fu: 14, yoko: 0, gin: 10, kaku: 0, kin: 6, hi: 2 }, values: DEFAULT_VALUES, maxPlies: 0, king: NO_KING,
+      hp: [40, 40], hand: { fu: 14, yoko: 0, gin: 10, kaku: 0, kin: 6, hi: 2 }, values: DEFAULT_VALUES, maxPlies: 0, king: NO_KING, skills: false,
     });
     expect(byId.king).toEqual({
       action: "flip", gate: false, dirs: "all", damage: "sum", anchor: "none", heal: "none",
       hp: [70, 60], hand: { fu: 14, yoko: 0, gin: 10, kaku: 0, kin: 6, hi: 2 }, values: DEFAULT_VALUES, maxPlies: 0,
-      king: { on: true, penalty: "hp", amount: 20, deadline: 5 },
+      king: { on: true, penalty: "hp", amount: 20, deadline: 5 }, skills: false,
     });
+    // スキルありは標準にスキルだけを足したもの
+    expect(byId.skill).toEqual({ ...byId.std, skills: true });
     expect(NO_KING).toEqual({ on: false, penalty: "hp", amount: 20, deadline: 5 });
   });
   it("初期配置は中央 4 駒がすべて歩で、オセロと同じ並び。体力と持ち駒は設定どおり", () => {
@@ -294,6 +297,8 @@ describe("予測と警告", () => {
 describe("CPU（2 手読み）", () => {
   it.each(PRESETS.map((p) => [p.name, p.rules] as const))("%s: 合法手だけを打って終局まで進む", (_, rules) => {
     let s = createGame(rules);
+    // スキルありはカードを決めてから（CPU のスキルの使い方は test/skills.test.ts）
+    if (rules.skills) s = setSkills(s, ["strong", "wall"]);
     let n = 0;
     while (!s.result) {
       const ch = chooseLookahead(viewFor(s, s.turn), () => 0.5)!;

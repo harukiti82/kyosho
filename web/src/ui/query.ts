@@ -4,6 +4,7 @@
 // 方向駒の項目（dir=piece・横と角の数 yoko / kaku・駒の数字 vfu〜vhi）は基準（QUERY_BASE = v1.0）と違うときだけ末尾に載せる。
 // そのため既存プリセットの URL は方向駒の追加前と同じで、方向駒の項目がない古い URL は「全方向・既定の数字・横と角は 0 個」になる
 // 端の駒の力（anc=atk）も基準（なし）と違うときだけ載せる。項目がない URL は「なし」
+// スキル（skill=1）も基準（なし）と違うときだけ載せる。項目がない URL は「なし」
 // 基準は画面の既定（DEFAULT_PRESET）とは別に固定する。既定を変えても共有済みの URL の意味が変わらない。
 // ルールのキーが 1 つもないとき（クエリなし・?room= など）だけ画面の既定を使う
 
@@ -45,7 +46,7 @@ const keyOf = <T>(table: Record<string, T>, v: T) => Object.keys(table).find((k)
 /** クエリに載せるキー（これ以外のキーは無視する） */
 export const QUERY_KEYS = [
   "take", "gate", "dmg", "heal", "hp1", "hp2", ...KIND_ORDER, "limit", "king", "kpen", "kdmg", "kdue",
-  "dir", ...KIND_ORDER.map(valueKey), "anc",
+  "dir", ...KIND_ORDER.map(valueKey), "anc", "skill",
 ] as const;
 
 export function encodeRules(r: RuleSet): string {
@@ -70,6 +71,7 @@ export function encodeRules(r: RuleSet): string {
   for (const k of NEW_KINDS) if (r.hand[k] !== def.hand[k]) q.set(k, String(r.hand[k]));
   for (const k of KIND_ORDER) if (r.values[k] !== def.values[k]) q.set(valueKey(k), String(r.values[k]));
   if (r.anchor !== def.anchor) q.set("anc", keyOf(ANCHOR, r.anchor));
+  if (r.skills !== def.skills) q.set("skill", r.skills ? "1" : "0");
   return q.toString();
 }
 
@@ -125,6 +127,7 @@ export function decodeRules(search: string): Decoded {
       amount: pick("kdmg", (s) => intIn(s, LIMITS.kingAmount), def.king.amount),
       deadline: pick("kdue", (s) => intIn(s, LIMITS.kingDeadline), def.king.deadline),
     },
+    skills: pick("skill", own(GATE), def.skills),
   };
   for (const k of KIND_ORDER) rules.hand[k] = pick(k, (s) => intIn(s, LIMITS.pieces), def.hand[k]);
   for (const k of KIND_ORDER) rules.values[k] = pick(valueKey(k), (s) => intIn(s, LIMITS.value), def.values[k]);

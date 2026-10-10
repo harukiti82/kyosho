@@ -167,7 +167,9 @@ test("隠し王: 自分の王の指定と相手の王の候補。相手に届く
       if (!f.startsWith("{")) continue;
       const m = JSON.parse(f);
       if (m.type !== "state") continue;
-      expect(Object.keys(m.view.oppKing).sort()).toEqual(["candidates", "revealed"]);
+      // scouted はスキル（偵察）の印。スキルなしの部屋では常に false
+      expect(Object.keys(m.view.oppKing).sort()).toEqual(["candidates", "revealed", "scouted"]);
+      expect(m.view.oppKing.scouted).toBe(false);
       expect(m.view.myKing.cell === null || JSON.stringify(m.view.myKing.cell) !== JSON.stringify(foeKing)).toBe(true);
     }
   }

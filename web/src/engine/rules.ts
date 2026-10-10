@@ -90,6 +90,8 @@ export interface RuleSet {
   maxPlies: number;
   /** 隠し王。on が false なら他の項目は使わない */
   king: HiddenKing;
+  /** スキル（対局の前に配られた 3 枚から 1 枚を選び、ゲージが満タンになるたびに使う。engine/skills.ts） */
+  skills: boolean;
 }
 
 /** 設定値の範囲（設定画面・URL の検証で使う） */
@@ -105,7 +107,7 @@ export const LIMITS = {
 /** 隠し王なし（追加設定は「あり」に切り替えたときの既定値） */
 export const NO_KING: Readonly<HiddenKing> = { on: false, penalty: "hp", amount: 20, deadline: 5 };
 
-export type PresetId = "v04" | "v10" | "v2" | "orig" | "king" | "dir" | "anchor" | "std";
+export type PresetId = "v04" | "v10" | "v2" | "orig" | "king" | "dir" | "anchor" | "std" | "skill";
 
 export interface Preset {
   id: PresetId;
@@ -126,7 +128,7 @@ export const PRESETS: readonly Preset[] = [
     note: "裏返す・最大値＋枚数÷4・回復は低い方−1",
     rules: {
       action: "flip", gate: false, dirs: "all", damage: "maxCount", anchor: "none", heal: "lowMinus1",
-      hp: [65, 66], hand: hand(14, 10, 6, 2), values: values(), maxPlies: 0, king: { ...NO_KING },
+      hp: [65, 66], hand: hand(14, 10, 6, 2), values: values(), maxPlies: 0, king: { ...NO_KING }, skills: false,
     },
   },
   {
@@ -135,7 +137,7 @@ export const PRESETS: readonly Preset[] = [
     note: "取って持ち駒にする・どこでも置ける・合計",
     rules: {
       action: "capture", gate: false, dirs: "all", damage: "sum", anchor: "none", heal: "none",
-      hp: [20, 20], hand: hand(8, 0, 4, 2), values: values(), maxPlies: 80, king: { ...NO_KING },
+      hp: [20, 20], hand: hand(8, 0, 4, 2), values: values(), maxPlies: 80, king: { ...NO_KING }, skills: false,
     },
   },
   {
@@ -144,7 +146,7 @@ export const PRESETS: readonly Preset[] = [
     note: "裏返す・置いた駒より強い駒は返せない・合計",
     rules: {
       action: "flip", gate: true, dirs: "all", damage: "sum", anchor: "none", heal: "none",
-      hp: [40, 40], hand: hand(20, 0, 8, 4), values: values(), maxPlies: 0, king: { ...NO_KING },
+      hp: [40, 40], hand: hand(20, 0, 8, 4), values: values(), maxPlies: 0, king: { ...NO_KING }, skills: false,
     },
   },
   {
@@ -153,7 +155,7 @@ export const PRESETS: readonly Preset[] = [
     note: "裏返す・合計・回復は両端の平均",
     rules: {
       action: "flip", gate: false, dirs: "all", damage: "sum", anchor: "none", heal: "avg",
-      hp: [40, 40], hand: hand(14, 10, 6, 2), values: values(), maxPlies: 0, king: { ...NO_KING },
+      hp: [40, 40], hand: hand(14, 10, 6, 2), values: values(), maxPlies: 0, king: { ...NO_KING }, skills: false,
     },
   },
   {
@@ -165,6 +167,7 @@ export const PRESETS: readonly Preset[] = [
       // 体力 60・60 だと 2 手読み同士の先手勝率が 32.5%（400 局）だったため、先手に 10 上乗せ（48.3%）
       hp: [70, 60], hand: hand(14, 10, 6, 2), values: values(), maxPlies: 0,
       king: { on: true, penalty: "hp", amount: 20, deadline: 5 },
+      skills: false,
     },
   },
   {
@@ -180,6 +183,7 @@ export const PRESETS: readonly Preset[] = [
       values: { ...DEFAULT_VALUES, hi: 3, kin: 5 },
       maxPlies: 0,
       king: { on: true, penalty: "hp", amount: 20, deadline: 5 },
+      skills: false,
     },
   },
   {
@@ -195,6 +199,7 @@ export const PRESETS: readonly Preset[] = [
       values: { ...DEFAULT_VALUES, hi: 3, kin: 5 },
       maxPlies: 0,
       king: { on: true, penalty: "hp", amount: 20, deadline: 5 },
+      skills: false,
     },
   },
   {
@@ -212,6 +217,22 @@ export const PRESETS: readonly Preset[] = [
       values: { ...DEFAULT_VALUES, hi: 3, kin: 5 },
       maxPlies: 0,
       king: { on: true, penalty: "hp", amount: 30, deadline: 7 },
+      skills: false,
+    },
+  },
+  {
+    id: "skill",
+    name: "スキルあり",
+    note: "標準＋スキル（配られた3枚から1枚を選び、ゲージが満タンになるたびに使う）",
+    // 標準と同じ値にスキルだけを足す（各スキルの値はスキルなし相手の勝率 52〜56%。kyosho-skillsim の 2 手読み同士・各 2000 局）
+    rules: {
+      action: "flip", gate: false, dirs: "piece", damage: "sum", anchor: "attack", heal: "lowMinus1",
+      hp: [129, 130],
+      hand: { fu: 10, yoko: 10, gin: 0, kaku: 4, kin: 2, hi: 3 },
+      values: { ...DEFAULT_VALUES, hi: 3, kin: 5 },
+      maxPlies: 0,
+      king: { on: true, penalty: "hp", amount: 30, deadline: 7 },
+      skills: true,
     },
   },
 ];
@@ -252,6 +273,7 @@ export function sameRules(a: RuleSet, b: RuleSet): boolean {
     a.hp[1] === b.hp[1] &&
     a.maxPlies === b.maxPlies &&
     sameKing(a.king, b.king) &&
+    a.skills === b.skills &&
     KIND_ORDER.every((k) => a.hand[k] === b.hand[k] && a.values[k] === b.values[k])
   );
 }
