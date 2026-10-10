@@ -15,7 +15,7 @@
 
 ## 遊び方（チュートリアル）の要点
 
-- ステップは `ui/lessons.ts` の `LESSONS`（挟む → ダメージ → 駒の向き → 持ち駒 → 反対側の駒 → 回復 → 王を決める → 王を裏返す → 予測を読む → 実戦）。局面は engine の `gameFrom`、文はエンジンの棋譜の値。画面は `App.lesson`（`openLesson` / `inStep` / `lessonNeed`）と `ui/coach.ts`（`#coach`、引き出しの先頭 = スマホは駒台の下・PC は盤の横の上）。進み具合は localStorage `kyosho:tutorial`
+- ステップは `ui/lessons.ts` の `LESSONS`（挟む → ダメージ → 駒の向き → 持ち駒 → 反対側の駒 → 回復 → 王を決める → 自動で王に → 王を裏返す → 予測を読む → 実戦）。「自動で王に」は `start()` で双方 6 手ずつ `playMove` した局面（手数 12）から自分の 7 手目。局面は engine の `gameFrom`、文はエンジンの棋譜の値。画面は `App.lesson`（`openLesson` / `inStep` / `lessonNeed`）と `ui/coach.ts`（`#coach`、引き出しの先頭 = スマホは駒台の下・PC は盤の横の上）。進み具合は localStorage `kyosho:tutorial`
 - 文の書き方: 内部の用語（端の駒・上乗せ・期限・低い方−1・返す）を使わず、盤の物を指して言う（「置いた駒の反対側にある自分の駒」）。できたの文はそのとき盤で起きた数字（「飛3と金5で挟んだ。小さいほうの 3 から 1 を引いた 2 だけ…」）。覚えるルールは要点の一言 `point`（句点なし・22 字まで、大きく表示）と補足 `note`（なくてもよい）で 2 文まで・課題と合わせて 3 文まで。`test/lesson.test.ts` が用語・文の数を検査する。足し算の＋は `PLUS`（WORD JOINER で折り返さない）
 - 「予測を読む」より前のステップは始めの局面で自分の駒に「!」が出ない（`test/lesson.test.ts`）。e2e は `tutorial.spec.ts`（スクリーンショット *-tutorial-*）
 
