@@ -1438,7 +1438,7 @@ export class App {
       h("span", {}, [h("span", { class: "key-take", attrs: { "aria-hidden": "true" } }), ` この手で${v.can}駒`]),
       h("span", {}, [h("span", { class: "key-othello", attrs: { "aria-hidden": "true" } }), " 普通のオセロなら置けるマス"]),
       ...(r.anchor === "attack"
-        ? [h("span", {}, [h("span", { class: "key-anchor", attrs: { "aria-hidden": "true" } }), " ダメージに上乗せする端の自分の駒"])]
+        ? [h("span", {}, [h("span", { class: "key-anchor", attrs: { "aria-hidden": "true" } }), " ダメージに足す反対側の自分の駒"])]
         : []),
       ...(this.threatOn
         ? [h("span", {}, [h("span", { class: "key-threat", attrs: { "aria-hidden": "true" }, text: "!" }), ` 相手に次に${v.passive}自分の駒`])]
@@ -1578,7 +1578,7 @@ export class App {
         const add = anchors.get(i);
         if (add !== undefined) {
           cell.append(h("span", { class: "anchor-badge", text: `+${add}`, attrs: { "aria-hidden": "true" } }));
-          label += ` 端の駒としてダメージに+${add}`;
+          label += ` 反対側の駒としてダメージに+${add}`;
         }
         const mark = marks.get(i);
         if (mark) {
@@ -1633,10 +1633,11 @@ export class App {
     if (designating) lines.push(h("span", { class: "bb-line bb-king", text: "王にして置く" }));
     if (pv.anchors.length > 0) {
       lines.push(
+        // 「＋ 反対側5」を 1 つの塊にし、狭い吹き出しでは塊の間で折り返す（先頭の空白は文の読み取り用で、間は flex の gap）
         h("span", { class: "bb-line bb-sum" }, [
           String(pv.base),
-          ...pv.anchors.flatMap((a) => [" ＋ ", h("span", { class: "bb-anchor", text: `端${g.rules.values[a.kind]}` })]),
-          ` ＝ ${pv.damage}`,
+          ...pv.anchors.map((a) => h("span", { class: "bb-term" }, [" ＋ ", h("span", { class: "bb-anchor", text: `反対側${g.rules.values[a.kind]}` })])),
+          h("span", { class: "bb-term", text: ` ＝ ${pv.damage}` }),
         ]),
       );
     }
@@ -1863,8 +1864,8 @@ export class App {
         ]),
       );
       if (pv.anchors.length > 0) {
-        // 内訳（例: 返した駒 2 ＋ 端の金5 ＝ 7）。端の駒は盤上の青枠と同じ色
-        const parts = pv.anchors.flatMap((a) => [" ＋ ", h("span", { class: "anchor-part", text: `端の${pieceLabel(g.rules, a.kind)}` })]);
+        // 内訳（例: 返した駒 2 ＋ 反対側の金5 ＝ 7）。反対側の駒は盤上の青枠と同じ色
+        const parts = pv.anchors.flatMap((a) => [" ＋ ", h("span", { class: "anchor-part", text: `反対側の${pieceLabel(g.rules, a.kind)}` })]);
         box.append(h("p", { class: "breakdown" }, [`内訳: ${v.past}駒 ${pv.base}`, ...parts, ` ＝ ${pv.damage}`]));
       }
     }
@@ -2429,7 +2430,7 @@ export class App {
     if (s.best) {
       const { move: m, hit } = s.best;
       const parts = [`${v.past}駒 ${m.targets.length} 個で ${hit.base}`];
-      if (hit.anchor > 0) parts.push(`端の駒 ${hit.anchor}`);
+      if (hit.anchor > 0) parts.push(`反対側の駒 ${hit.anchor}`);
       if (hit.penalty > 0) parts.push(`王の罰 ${hit.penalty}`);
       // 数字を主に、どの手か・内訳は薄い字で添える
       best = [String(hit.total), `${m.ply} 手目 ${cellName(m.r, m.c)} ${pieceLabel(r, m.kind)}・${parts.join(" ＋ ")}`];
@@ -2438,7 +2439,7 @@ export class App {
       ["最大ダメージ", best],
       ["会心以上", `${s.bigHits} 回`],
     ];
-    if (r.anchor === "attack") rows.push(["端の駒の上乗せ", `合計 ${s.anchorTotal}`]);
+    if (r.anchor === "attack") rows.push(["反対側の駒の分", `合計 ${s.anchorTotal}`]);
     if (r.king.on) rows.push(["相手の王", s.kingHit ? `${v.past}` : `${v.cannot.slice(0, -1)}かった`]);
     // 戻した手は棋譜から消えるので、ほかの成績には入らない。使った回数だけ添える
     if (this.undo) rows.push(["待った", `${UNDO_LIMIT - this.undo.left} 回`]);
@@ -2508,9 +2509,9 @@ export class App {
           ...(r.anchor === "attack"
             ? [
                 h("span", {}, [
-                  "予測中、ダメージに上乗せする端の自分の駒は ",
+                  "予測中、ダメージに足す反対側の自分の駒は ",
                   h("span", { class: "key-anchor", attrs: { "aria-hidden": "true" } }),
-                  ` 青枠と「+数字」で示す。予測と棋譜にはダメージの内訳（${v.past}駒 ＋ 端の駒）を出す`,
+                  ` 青枠と「+数字」で示す。予測と棋譜にはダメージの内訳（${v.past}駒 ＋ 反対側の駒）を出す`,
                 ]),
               ]
             : []),
@@ -2559,12 +2560,12 @@ function lastKingHit(g: GameState, owner: Player) {
 }
 
 
-/** 棋譜のダメージの内訳（上乗せがあるときだけ。例: 「（返した駒2＋端の金5）」） */
+/** 棋譜のダメージの内訳（上乗せがあるときだけ。例: 「（返した駒2＋反対側の金5）」） */
 function anchorText(r: RuleSet, e: MoveEvent): string {
   const anchors: readonly Target[] = e.anchors ?? [];
   if (anchors.length === 0) return "";
   const bonus = anchors.reduce((n, a) => n + r.values[a.kind], 0);
-  return `（${verb(r).past}駒${e.damage - bonus}${anchors.map((a) => `＋端の${pieceLabel(r, a.kind)}`).join("")}）`;
+  return `（${verb(r).past}駒${e.damage - bonus}${anchors.map((a) => `＋反対側の${pieceLabel(r, a.kind)}`).join("")}）`;
 }
 
 /** 対局に出てくる駒の方向のマーク（例: 「↕↔✕✚✱」。同じ方向は 1 回） */

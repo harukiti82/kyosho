@@ -185,7 +185,7 @@ export const PRESETS: readonly Preset[] = [
   {
     id: "anchor",
     name: "拠点",
-    note: "方向駒＋挟んだ端の自分の駒の数字もダメージに足す",
+    note: "方向駒＋挟んだ反対側の自分の駒の数字もダメージに足す",
     rules: {
       action: "flip", gate: false, dirs: "piece", damage: "sum", anchor: "attack", heal: "none",
       // 方向駒と同じ 60・65 だと上乗せでダメージが増え、2 手読み同士の平均手数が 16.9 手（2000 局）と短すぎるため、
@@ -200,7 +200,7 @@ export const PRESETS: readonly Preset[] = [
   {
     id: "std",
     name: "標準",
-    note: "方向駒＋端の駒の力＋隠し王（最初の7手・返されたら−30）・回復は両端の低い方−1",
+    note: "方向駒＋反対側の駒の力＋隠し王（最初の7手・返されたら−30）・回復は両端の低い方−1",
     rules: {
       // ユーザーが遊び比べて既定に選んだ組み合わせ（URL: take=flip&gate=0&dmg=sum&heal=avg&hp1=125&hp2=130&fu=10&gin=0&kin=2&hi=3
       // &limit=0&king=1&kpen=hp&kdmg=30&kdue=5&dir=piece&yoko=10&kaku=4&vkin=5&vhi=3&anc=atk）から、

@@ -320,7 +320,7 @@ test.describe("PC 幅（設定・音・2 人対戦）", () => {
     const all = statsOf(s);
     const stats = page.locator("#result-stats .stats");
     for (const p of [0, 1] as const) {
-      await expect(stats.nth(p)).toContainText(`端の駒の上乗せ合計 ${all[p].anchorTotal}`);
+      await expect(stats.nth(p)).toContainText(`反対側の駒の分合計 ${all[p].anchorTotal}`);
       await expect(stats.nth(p)).toContainText(all[p].kingHit ? "相手の王返した" : "相手の王返せなかった");
     }
     await page.screenshot({ path: `${SHOT}/pc-impact-anchor-stats.png` });

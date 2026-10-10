@@ -245,9 +245,9 @@ test.describe("PC 幅", () => {
     await page.locator("#btn-rules").click();
     await expect(page.locator("#rules-title")).toHaveText("標準のルール");
     await expect(page.locator("#rules")).toContainText("王を返されたら体力 −30 通常のダメージに加えて減る");
-    await expect(page.locator("#rules")).toContainText("回復 = 挟んだ両端の低い方 − 1 両端は置いた駒と反対端の自分の駒。0 未満は 0");
+    await expect(page.locator("#rules")).toContainText("回復 = 挟んだ両端の低い方 − 1 両端は置いた駒と反対側の自分の駒。0 未満は 0");
     await expect(page.locator("#rules")).toContainText("7 手目までに選ばなかったら、7 手目に置いた駒が自動で王になる");
-    await expect(page.locator("#rules")).toContainText("端の駒の力:");
+    await expect(page.locator("#rules")).toContainText("反対側の自分の駒もダメージに足す");
     await page.screenshot({ path: `${SHOT}/pc-default-rules.png` });
     expect(errors).toEqual([]);
   });
