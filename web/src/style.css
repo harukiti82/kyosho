@@ -4631,6 +4631,8 @@ button.tarot:focus-visible {
   text-align: left;
   clip-path: var(--slant-sm);
   position: relative;
+  /* 光の筋（::after）が横にずれても、ページの横幅に数えない（clip-path は見た目だけ切る） */
+  overflow: hidden;
 }
 .ps-num {
   font-family: var(--font-piece);

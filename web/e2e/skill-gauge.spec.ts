@@ -210,6 +210,10 @@ test.describe("スキルのゲージが溜まる演出", () => {
     await page.locator(".cell.open").first().hover();
     await expect(chip).not.toHaveClass(/just-full/);
     expect(await chip.evaluate((c) => getComputedStyle(c, "::after").animationName)).toBe("gauge-shine");
+    // 光の筋が右端まで横切ったところでも、ページは横に広がらない
+    await freezeAt(page, 840);
+    if (pre(page) === "sp") await noHorizontalScroll(page, 375);
+    await resume(page);
 
     // 満タンの人の手番まで進めて使う。0 に戻るが、伸びる演出・「+N」は出ない
     for (let i = 0; i < 4 && (await page.locator("#skill-use").count()) === 0; i++) {
