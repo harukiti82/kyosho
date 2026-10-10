@@ -160,6 +160,21 @@ test("スキルありの部屋: 両者が選ぶ（先に選んだ側は相手待
   await guest.page.screenshot({ path: `${SHOT}/${pre}-online-skill-ready-guest.png` });
   if (guest.touch) await noHorizontalScroll(guest.page, width);
 
+  // ゲージが溜まる演出（名札のバーが伸びる .grow）を両者の画面で記録する（届いた view の差分から出す）
+  for (const p of [host, guest]) {
+    await p.page.evaluate(() => {
+      const w = window as unknown as { __grow: string[] };
+      w.__grow = [];
+      new MutationObserver((ms) => {
+        for (const m of ms) {
+          for (const n of m.addedNodes) {
+            if (!(n instanceof HTMLElement)) continue;
+            for (const c of n.querySelectorAll<HTMLElement>(".plate-skill.grow")) w.__grow.push(c.closest(".player-card")?.id ?? "");
+          }
+        }
+      }).observe(document.documentElement, { childList: true, subtree: true });
+    });
+  }
   // 打ってゲージを溜め、先に使えるようになった人が使う。相手の画面にも同じカードの演出が出る
   let used = false;
   for (let i = 0; i < 120 && !used; i++) {
@@ -190,6 +205,11 @@ test("スキルありの部屋: 両者が選ぶ（先に選んだ側は相手待
     await synced(mover, other);
   }
   expect(used).toBe(true);
+  // 自分の手でも相手の手でも、両者のゲージが伸びる演出がどちらの画面にも出た
+  for (const p of [host, guest]) {
+    const grew = await p.page.evaluate(() => (window as unknown as { __grow: string[] }).__grow);
+    expect(new Set(grew)).toEqual(new Set(["player-0", "player-1"]));
+  }
 
   // 使わずに終局まで打つ（満タンのままでも終局画面が出て、名札のカードは押せない）
   await playToEnd(host, guest);

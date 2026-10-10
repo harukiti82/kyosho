@@ -2,6 +2,7 @@
 // すべて画面に固定した演出層（#fx、overflow: hidden）か transform / opacity のアニメーションで行い、レイアウトを動かさない。
 // Math.random は CPU の乱数と共有なので使わない（粒の向きは番号から決める）。
 
+import { FULL_FLASH_MS, GAIN_TEXT_MS, GROW_MS, ORB_MS, ORB_STAGGER_MS } from "./gauge";
 import { TIER_RANK, type Tier } from "./impact";
 import { h } from "./dom";
 import type { Outcome, OutcomeTone } from "./outcome";
@@ -105,6 +106,22 @@ export interface SkillCastOptions {
   reduce: boolean;
 }
 
+export interface GaugeFxOptions {
+  /** 溜まった人の名札のゲージ（.ps-gauge）と、カードの札（.plate-skill） */
+  gauge: HTMLElement;
+  chip: HTMLElement;
+  /** 演出の後のゲージの割合（0〜1。光の粒と「+N」が向かう先端） */
+  to: number;
+  /** 「+N」。出さないなら null */
+  text: string | null;
+  /** 溜めマスの点が入ったマス（光の粒が飛び出す） */
+  orbs: HTMLElement[];
+  /** バーが伸び始めるまでの遅れ（ミリ秒）。「+N」はここで出る */
+  growAt: number;
+  /** この手で満タンになった（伸び切ったところで札の周りに光の輪） */
+  full: boolean;
+}
+
 export class Fx {
   private timers: number[] = [];
   private finaleEl: HTMLElement | null = null;
@@ -161,6 +178,57 @@ export class Fx {
       h("p", { class: "cast-who" }, [h("span", { class: `fin-stone p${o.owner}`, attrs: { "aria-hidden": "true" } }), o.who]),
     );
     this.add(root, ms);
+  }
+
+  /**
+   * スキルのゲージが溜まった演出（名札のバーが伸びるのは App 側の CSS）: 溜めマスから光の粒がゲージの先端へ飛び、
+   * 伸び始めに「+N」が先端から浮かび、満タンになったら札の周りに光の輪が広がる。入力は止めない（fxLock とは無関係）。
+   * 動きを減らす設定では呼ばない
+   */
+  gaugeGain(o: GaugeFxOptions) {
+    const g = o.gauge.getBoundingClientRect();
+    const tipX = g.left + g.width * Math.min(1, Math.max(0, o.to));
+    const tipY = g.top + g.height / 2;
+    o.orbs.forEach((cell, i) => {
+      const c = cell.getBoundingClientRect();
+      const x = c.left + c.width / 2;
+      const y = c.top + c.height / 2;
+      const orb = h("span", { class: "fx-gauge-orb" });
+      orb.style.left = `${x}px`;
+      orb.style.top = `${y}px`;
+      orb.style.setProperty("--dx", `${Math.round(tipX - x)}px`);
+      orb.style.setProperty("--dy", `${Math.round(tipY - y)}px`);
+      orb.style.setProperty("--orb-ms", `${ORB_MS}ms`);
+      orb.style.animationDelay = `${i * ORB_STAGGER_MS}ms`;
+      this.add(orb, ORB_MS + i * ORB_STAGGER_MS + 100);
+      // 粒が出るマスも一瞬光らせる（溜まる場所だと分かるように）
+      const ring = h("span", { class: "fx-zone-ring" });
+      ring.style.left = `${x}px`;
+      ring.style.top = `${y}px`;
+      ring.style.width = ring.style.height = `${Math.round(c.width * 0.9)}px`;
+      ring.style.animationDelay = `${i * ORB_STAGGER_MS}ms`;
+      this.add(ring, 600 + i * ORB_STAGGER_MS);
+    });
+    if (o.text) {
+      const gain = h("span", { class: "fx-gauge-gain", text: o.text });
+      // 画面の端で切れないよう寄せる
+      gain.style.left = `${Math.min(Math.max(tipX, 24), window.innerWidth - 24)}px`;
+      gain.style.top = `${g.top}px`;
+      gain.style.setProperty("--gain-ms", `${GAIN_TEXT_MS}ms`);
+      gain.style.animationDelay = `${o.growAt}ms`;
+      this.add(gain, o.growAt + GAIN_TEXT_MS + 100);
+    }
+    if (o.full) {
+      const r = o.chip.getBoundingClientRect();
+      const flare = h("span", { class: "fx-gauge-flare" });
+      flare.style.left = `${r.left}px`;
+      flare.style.top = `${r.top}px`;
+      flare.style.width = `${r.width}px`;
+      flare.style.height = `${r.height}px`;
+      flare.style.setProperty("--flare-ms", `${FULL_FLASH_MS}ms`);
+      flare.style.animationDelay = `${o.growAt + GROW_MS}ms`;
+      this.add(flare, o.growAt + GROW_MS + FULL_FLASH_MS + 100);
+    }
   }
 
   /** 抽選の演出を消す */

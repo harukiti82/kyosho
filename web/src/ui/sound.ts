@@ -203,6 +203,12 @@ export class Sound {
     });
   }
 
+  /** スキルのゲージが満タンになった音。控えめに上がる高い 2 音（delay 秒後） */
+  gaugeFull(delay = 0) {
+    if (this.muted) return;
+    [1175, 1760].forEach((f, i) => this.tone({ freq: f, type: "sine", at: i * 0.08, dur: 0.3, gain: 0.07 }, delay));
+  }
+
   /** 決着の音。win: 短いファンファーレ / lose: 低く短い下降音 / draw: 落ち着いた 2 音 */
   finale(kind: OutcomeKind) {
     if (this.muted) return;

@@ -1883,6 +1883,97 @@ button {
     transform: translate(var(--dx), var(--dy)) scale(0.3);
   }
 }
+/* スキルのゲージ: 溜めマスからゲージの先端へ飛ぶ光の粒・粒が出るマスの菱形の輪・浮かぶ「+N」・満タンの光（App.playGaugeFx） */
+.fx-gauge-orb {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  margin: -6px 0 0 -6px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #fff 0 35%, var(--cyan-300) 60%, rgba(47, 211, 255, 0));
+  box-shadow: 0 0 10px 3px rgba(122, 230, 255, 0.75);
+  opacity: 0;
+  animation: gauge-orb var(--orb-ms, 520ms) cubic-bezier(0.55, 0, 0.7, 0.45) both;
+}
+@keyframes gauge-orb {
+  0% {
+    opacity: 0;
+    transform: translate(0, 0) scale(0.5);
+  }
+  18% {
+    opacity: 1;
+    transform: translate(0, 0) scale(1.35);
+  }
+  100% {
+    opacity: 0.9;
+    transform: translate(var(--dx), var(--dy)) scale(0.45);
+  }
+}
+.fx-zone-ring {
+  position: absolute;
+  border: 2px solid var(--cyan-300);
+  box-shadow: 0 0 8px rgba(122, 230, 255, 0.7);
+  opacity: 0;
+  animation: zone-ring 0.55s ease-out both;
+}
+@keyframes zone-ring {
+  from {
+    opacity: 1;
+    transform: translate(-50%, -50%) rotate(45deg) scale(0.45);
+  }
+  to {
+    opacity: 0;
+    transform: translate(-50%, -50%) rotate(45deg) scale(1);
+  }
+}
+.fx-gauge-gain {
+  position: absolute;
+  font-family: var(--font-display);
+  font-size: 1rem;
+  font-weight: 900;
+  line-height: 1;
+  color: #fff;
+  white-space: nowrap;
+  text-shadow:
+    0 0 6px rgba(47, 211, 255, 0.95),
+    0 1px 2px rgba(4, 17, 46, 0.9);
+  opacity: 0;
+  animation: gauge-gain var(--gain-ms, 1100ms) ease-out both;
+}
+@keyframes gauge-gain {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -40%) scale(0.7);
+  }
+  15% {
+    opacity: 1;
+    transform: translate(-50%, -110%) scale(1.12);
+  }
+  70% {
+    opacity: 1;
+    transform: translate(-50%, -150%) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -190%) scale(1);
+  }
+}
+.fx-gauge-flare {
+  position: absolute;
+  background: radial-gradient(ellipse at 50% 50%, rgba(255, 255, 255, 0.85), rgba(122, 230, 255, 0.45) 55%, rgba(47, 211, 255, 0) 72%);
+  opacity: 0;
+  animation: gauge-flare var(--flare-ms, 900ms) ease-out both;
+}
+@keyframes gauge-flare {
+  from {
+    opacity: 1;
+    transform: scale(1, 1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1.35, 3.2);
+  }
+}
 /* 特大: 画面全体の発光 */
 .fx-flash {
   position: absolute;
@@ -4539,6 +4630,7 @@ button.tarot:focus-visible {
   line-height: 1;
   text-align: left;
   clip-path: var(--slant-sm);
+  position: relative;
 }
 .ps-num {
   font-family: var(--font-piece);
@@ -4559,12 +4651,97 @@ button.tarot:focus-visible {
   background: rgba(122, 230, 255, 0.18);
   clip-path: var(--slant-sm);
 }
+/* 溜まった量は横の拡大で描く（幅を変えない）。溜まった直後は --g0 から --g へ伸ばす（.grow、--grow-at は伸び始めまでの遅れ） */
 .ps-gauge i {
   position: absolute;
-  inset: 0 auto 0 0;
-  width: calc(var(--g) * 100%);
+  inset: 0;
   background: linear-gradient(90deg, #1e9fd0, var(--cyan-400));
-  transition: width 0.45s ease-out;
+  transform: scaleX(var(--g));
+  transform-origin: 0 50%;
+}
+/* 伸びる先端の光（ゲージ全幅の板を先端の位置まで横にずらす） */
+.ps-tip {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  background: linear-gradient(90deg, transparent calc(100% - 0.9rem), rgba(255, 255, 255, 0.95) calc(100% - 0.15rem), transparent);
+  transform: translateX(calc((var(--g) - 1) * 100%));
+  pointer-events: none;
+}
+.plate-skill.grow .ps-gauge i,
+button.plate-skill.ready.grow .ps-gauge i {
+  animation: gauge-grow 0.6s cubic-bezier(0.22, 0.8, 0.3, 1) var(--grow-at, 0ms) both;
+}
+.plate-skill.grow.full .ps-gauge i {
+  animation:
+    gauge-grow 0.6s cubic-bezier(0.22, 0.8, 0.3, 1) var(--grow-at, 0ms) both,
+    gauge-glow 1.2s ease-in-out calc(var(--grow-at, 0ms) + 0.6s) infinite;
+}
+.plate-skill.grow .ps-tip {
+  animation: gauge-tip 0.6s cubic-bezier(0.22, 0.8, 0.3, 1) var(--grow-at, 0ms) both;
+}
+@keyframes gauge-grow {
+  from {
+    transform: scaleX(var(--g0));
+  }
+}
+@keyframes gauge-tip {
+  from {
+    opacity: 0;
+    transform: translateX(calc((var(--g0) - 1) * 100%));
+  }
+  12%,
+  70% {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+    transform: translateX(calc((var(--g) - 1) * 100%));
+  }
+}
+/* 満タンになった瞬間: 札全体が白く光る（::before）。満タンの間は光の筋がときどき札を横切る（::after。最初の 1 本は満タンになった瞬間） */
+.plate-skill::before,
+.plate-skill::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+.plate-skill::before {
+  background: #fff;
+}
+.plate-skill::after {
+  background: linear-gradient(105deg, transparent 30%, rgba(255, 255, 255, 0.55) 50%, transparent 70%);
+  transform: translateX(-100%);
+}
+.plate-skill.just-full::before {
+  animation: gauge-full-flash 0.9s ease-out calc(var(--grow-at, 0ms) + 0.6s) both;
+}
+.plate-skill.full::after {
+  animation: gauge-shine 2.8s ease-in-out calc(var(--grow-at, 0ms) + 0.6s) infinite;
+}
+@keyframes gauge-full-flash {
+  0% {
+    opacity: 0;
+  }
+  15% {
+    opacity: 0.85;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes gauge-shine {
+  0% {
+    opacity: 1;
+    transform: translateX(-100%);
+  }
+  30%,
+  100% {
+    opacity: 1;
+    transform: translateX(100%);
+  }
 }
 .ps-state {
   flex: none;
@@ -4612,6 +4789,16 @@ button.plate-skill.ready.aiming {
 @keyframes skill-ready {
   50% {
     background: #fff;
+  }
+}
+/* 動きを減らす設定: 伸ばさず・光らせず、値と満タンの色だけ */
+@media (prefers-reduced-motion: reduce) {
+  .plate-skill .ps-gauge i,
+  .plate-skill .ps-tip,
+  .plate-skill::before,
+  .plate-skill::after,
+  button.plate-skill.ready {
+    animation: none !important;
   }
 }
 /* この手番で使ったスキル（置くまで）。手番の名札は白いのでシアンの板 */

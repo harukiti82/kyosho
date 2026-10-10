@@ -71,6 +71,7 @@ import { dirIcon } from "./diricon";
 import { clockLevel, clockText, cpuTurnSeconds, turnSecondsText, TurnClock } from "./clock";
 import { byId, h } from "./dom";
 import { finaleMs, Fx, fxTiming, skillCastMs, speakerIcon, TOSS_LAND_MS, tossMs, type FxTiming } from "./fx";
+import { animDone, gainText, gaugeGains, growDelay, GROW_MS, snapOf, zoneSources, type GaugeAnims, type GaugeGain, type GaugeSnap } from "./gauge";
 import { OnlineDialog } from "./online";
 import { hitOf, shownHp, statsOf, tierOf, tierText, type HitBreakdown, type PlayerStats, type Tier } from "./impact";
 import { flipRecord, outcomeOf, recordText, type Outcome } from "./outcome";
@@ -179,6 +180,12 @@ export class App {
   private readonly pick = new SkillPick();
   /** スキルの指定を選んでいる（補充で戻す駒・王の移し替えで移す先）。選んでいなければ null */
   private aim: "refill" | "kingmove" | null = null;
+  /** 名札に最後に描いたスキルのゲージ（溜まった量は、次の 1 手の後の局面との差で出す） */
+  private gaugeSnap: GaugeSnap | null = null;
+  /** 名札のゲージが伸びている演出（名札を描き直しても途中から続ける）。人ごと */
+  private gaugeAnims: GaugeAnims = [null, null];
+  /** 再接続した後の最初の局面ではゲージを演出しない（切れている間に進んだ分をまとめて見せない） */
+  private gaugeQuiet = false;
   /** 名札の時計（手番の人の名札に移す） */
   private readonly clockEl = h("span", { class: "turn-clock", attrs: { id: "turn-clock", role: "timer" } }, [
     h("span", { class: "clock-dial", attrs: { "aria-hidden": "true" } }),
@@ -526,6 +533,8 @@ export class App {
     this.aim = null;
     this.pick.close();
     this.seenEvents = 0;
+    this.gaugeSnap = null;
+    this.gaugeAnims = [null, null];
     this.undo = null;
     // 遊び方は start が lesson を渡したときだけ続ける（ほかの対局・オンラインの部屋では閉じる）
     this.lesson = null;
@@ -619,6 +628,7 @@ export class App {
     this.fx.clear();
     document.querySelectorAll(".flyer").forEach((f) => f.remove());
     this.clock.clear();
+    this.gaugeAnims = [null, null];
     this.game = back;
     this.seenEvents = back.history.length;
     this.focus = null;
@@ -713,10 +723,13 @@ export class App {
     const hold = plan?.hold ?? 0;
     window.clearTimeout(this.fxTimer);
     this.fxLock = hold > 0;
+    // スキルのゲージが溜まった分（前回描いた名札との差。描く前に決めて、名札のバーを伸ばしながら描く）
+    const gauge = fresh ? this.startGaugeAnims(g, fresh, plan!) : null;
     this.animatePly = g.ply;
     this.render();
     this.animatePly = -1;
     if (fresh) this.playMoveEffects(fresh, plan!);
+    if (gauge) this.playGaugeFx(gauge);
     if (hold > 0) {
       this.fxTimer = window.setTimeout(() => {
         this.fxLock = false;
@@ -952,6 +965,40 @@ export class App {
     this.playSkillCast(g.turn, use.id);
   }
 
+  /**
+   * 新しい 1 手でスキルのゲージが溜まった人ごとに、名札のバーを伸ばす演出の時刻を決める（描く前に呼ぶ）。
+   * 増えた量は前回描いた名札のゲージ（gaugeSnap）と今の局面の差で、待った・再接続・使って 0 に戻ったときは演出しない。
+   * 打った人は溜めマスの光が着いてから、受けた人は着手の演出（特大の溜め）が弾けてから伸ばす。動きを減らす設定では値だけ変える
+   */
+  private startGaugeAnims(g: GameState, m: MoveEvent, plan: ImpactPlan): { m: MoveEvent; gains: [GaugeGain | null, GaugeGain | null]; delays: [number, number] } | null {
+    const gains = gaugeGains(this.gaugeSnap, this.gameNo, g.ply, g.skills);
+    if (!gains[0] && !gains[1]) return null;
+    if (plan.reduce) return null;
+    const now = Date.now();
+    const orbs = zoneSources(m, gains[m.player]).length;
+    const delays: [number, number] = [0, 0];
+    for (const p of [0, 1] as const) {
+      const gain = gains[p];
+      if (!gain) continue;
+      delays[p] = p === m.player ? growDelay(orbs, 0) : growDelay(0, plan.burstAt);
+      this.gaugeAnims[p] = { ...gain, key: this.gameNo, start: now + delays[p] };
+    }
+    return { m, gains, delays };
+  }
+
+  /** ゲージが溜まった演出の #fx 層の分（溜めマスの光の粒・「+N」・満タンの光の輪）と満タンの音。描いた後に呼ぶ */
+  private playGaugeFx(o: { m: MoveEvent; gains: [GaugeGain | null, GaugeGain | null]; delays: [number, number] }) {
+    for (const p of [0, 1] as const) {
+      const gain = o.gains[p];
+      const chip = this.el.players[p].querySelector<HTMLElement>(".plate-skill");
+      const gauge = chip?.querySelector<HTMLElement>(".ps-gauge");
+      if (!gain || !chip || !gauge) continue;
+      const orbs = p === o.m.player ? zoneSources(o.m, gain).map(([r, c]) => this.cells[r][c]) : [];
+      this.fx.gaugeGain({ gauge, chip, to: gain.to / gain.max, text: gainText(gain), orbs, growAt: o.delays[p], full: gain.full });
+      if (gain.full) this.sound.gaugeFull((o.delays[p] + GROW_MS) / 1000);
+    }
+  }
+
   /** スキルを使った演出（カードを表に返して名前を見せる）。終わるまで入力・CPU・時計を待たせる */
   private playSkillCast(p: Player, id: SkillId) {
     const g = this.game!;
@@ -1001,19 +1048,27 @@ export class App {
     const usable = mine && block === null;
     const state = armed ? "発動" : guard ? "鉄壁中" : full ? "満タン" : `あと${gaugeLeft(side)}`;
     const t = skillText(card, g.rules);
+    // 溜まった演出の途中なら、伸び始めの時刻からの経過で続きを描く（名札は描き直すたびに作り直す）
+    const anim = this.gaugeAnims[p];
+    const now = Date.now();
+    const grow = anim && anim.key === this.gameNo && anim.to === side.gauge && !animDone(anim, now) ? anim : null;
     const children = [
       h("span", { class: "ps-num", text: spec.numeral, attrs: { "aria-hidden": "true" } }),
       h("span", { class: "ps-name", text: spec.name }),
-      h("span", { class: "ps-gauge", attrs: { "aria-hidden": "true", style: `--g:${gaugeRatio(side)}` } }, [h("i")]),
+      h("span", { class: "ps-gauge", attrs: { "aria-hidden": "true", style: `--g:${gaugeRatio(side)}${grow ? `;--g0:${grow.from / grow.max}` : ""}` } }, [
+        h("i"),
+        h("b", { class: "ps-tip" }),
+      ]),
       h("span", { class: "ps-state", text: state }),
     ];
-    const cls = `plate-skill t-${card}${full ? " full" : ""}${armed ? " armed" : ""}${usable ? " ready" : ""}${this.aim ? " aiming" : ""}`;
+    const cls = `plate-skill t-${card}${full ? " full" : ""}${armed ? " armed" : ""}${usable ? " ready" : ""}${this.aim ? " aiming" : ""}${grow ? ` grow${grow.full ? " just-full" : ""}` : ""}`;
+    const style = grow ? `--grow-at:${grow.start - now}ms` : "";
     const label = `${spec.name}（${t.point}）ゲージ ${Math.floor(side.gauge / GAUGE_UNIT)} / ${spec.length}`;
     if (!usable) {
       const why = mine && block ? `。${this.blockText(g, block)}` : "";
-      return h("div", { class: cls, attrs: { role: "img", "aria-label": `${label}${why}`, title: `${t.point}。${t.note}${why}` } }, children);
+      return h("div", { class: cls, attrs: { role: "img", "aria-label": `${label}${why}`, title: `${t.point}。${t.note}${why}`, style } }, children);
     }
-    const b = h("button", { class: cls, attrs: { type: "button", id: "skill-use", "aria-label": `${spec.name}を使う。${t.point}`, title: `押して使う。${t.point}` } }, children);
+    const b = h("button", { class: cls, attrs: { type: "button", id: "skill-use", "aria-label": `${spec.name}を使う。${t.point}`, title: `押して使う。${t.point}`, style } }, children);
     b.addEventListener("click", () => this.onSkillClick());
     return b;
   }
@@ -1224,6 +1279,8 @@ export class App {
           if (st === "reconnecting" && !this.game) {
             this.lobby.busy("接続中…", `サーバーにつながりません。再接続 ${attempt} 回目`);
           }
+          // つなぎ直した後に届く局面のゲージは演出しない
+          if (st === "reconnecting") this.gaugeQuiet = true;
           if (this.game) this.render();
           // つながっていない間は終局画面の再戦のボタンも押せない
           this.renderResultActions();
@@ -1282,6 +1339,11 @@ export class App {
       this.room = { ...this.room!, id: m.roomId, opponent: m.opponent };
       this.renderNet();
       return;
+    }
+    // つなぎ直した後の最初の局面: 前回描いたゲージを忘れて、差を演出しない
+    if (this.gaugeQuiet) {
+      this.gaugeQuiet = false;
+      this.gaugeSnap = null;
     }
     this.room = { id: m.roomId, phase: m.phase, gameNo: m.gameNo, opponent: m.opponent, rematch: m.rematch, record: m.record };
     s.human = m.you;
@@ -2052,6 +2114,8 @@ export class App {
         ]),
       );
     }
+    // 次の 1 手で溜まった量は、ここで描いたゲージとの差で出す
+    this.gaugeSnap = g.skills ? snapOf(this.gameNo, g.ply, g.skills) : null;
   }
 
   /** この端末で通算を数える対局（CPU 対戦は強さごと・2 人対戦）。オンライン対戦・遊び方（実戦も）は null */
