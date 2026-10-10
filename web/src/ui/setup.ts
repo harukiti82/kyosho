@@ -419,6 +419,7 @@ export class SetupDialog {
         amount: num("kingAmount", LIMITS.kingAmount, prev.king.amount),
         deadline: num("kingDeadline", LIMITS.kingDeadline, prev.king.deadline),
       },
+      skills: f.get("skills") === "1",
     };
   }
 

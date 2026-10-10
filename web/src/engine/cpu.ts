@@ -2,10 +2,12 @@
 // 評価 = 自分の (ダメージ + 回復) − 相手の最善応手の (ダメージ + 回復)。同点はランダム。ダメージは damageOf（端の駒の上乗せ込み）。
 // 隠し王ありでは、相手の王の「候補」（公開情報）と自分の王だけを見て罰を評価に足す（PlayerView は相手の王の正体を持たない）。
 // 強さは 3 段階（chooseMove）。イージーは 1 手読み＋ときどき適当な手、ハードは候補を絞った 3 手読み＋決着の読み。
+// スキルのカードを持つときは skillcpu.ts（ノーマルはスキル込みの 2 手読み。スキルを使うかは chooseSkillUse）。
 
 import { applyLines, damageOf, emptyCells, healOf, pieceLines, rawLines, SIZE, targetsOf, type Board, type Cell, type Line } from "./board";
 import { availableKinds, bestReply, type PlayerView } from "./game";
 import { other, type Hand, type PieceKind, type Player } from "./rules";
+import { chooseSkillLookahead, plainView } from "./skillcpu";
 
 /** CPU の強さ */
 export type CpuLevel = "easy" | "normal" | "hard";
@@ -90,8 +92,15 @@ export function chooseLookahead(view: PlayerView, rng: () => number = Math.rando
   return chooseWith(view, rng, lookaheadCandidates);
 }
 
-/** 強さに合わせて 1 手選ぶ。ノーマルは chooseLookahead と同じ（同じ乱数で同じ手） */
+/**
+ * 強さに合わせて 1 手選ぶ。ノーマルは chooseLookahead と同じ（同じ乱数で同じ手）。
+ * スキルのカードを持つときは、ノーマルはスキル込みの 2 手読み、イージー・ハードはこの手番の全方向だけを見る
+ */
 export function chooseMove(view: PlayerView, level: CpuLevel, rng: () => number = Math.random): Choice | null {
+  if (view.skills?.sides[view.turn].card) {
+    if (level === "normal") return chooseSkillLookahead(view, rng);
+    view = plainView(view);
+  }
   if (level === "easy") return chooseEasy(view, rng);
   if (level === "hard") return chooseWith(view, rng, hardCandidates);
   return chooseLookahead(view, rng);

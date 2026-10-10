@@ -532,7 +532,7 @@ export class App {
     if (p === v.viewer) return v.myKing;
     const on = g.rules.king.on;
     const status = !on ? "off" : v.oppKing.revealed ? "revealed" : "hidden";
-    return { status, cell: null, auto: false, nextMove: movesBy(g, p) + 1, canDesignate: false, forcedNow: false };
+    return { status, cell: null, auto: false, nextMove: movesBy(g, p) + 1, canDesignate: false, forcedNow: false, seen: v.oppKing.scouted };
   }
 
   private place(r: number, c: number, kind: PieceKind, king = false) {
