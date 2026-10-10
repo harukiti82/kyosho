@@ -272,4 +272,55 @@ test.describe("スキル", () => {
       expect(errors).toEqual([]);
     });
   }
+
+  test("満タンでも使えないときは「満タン」の代わりに理由を出して光らせない。押すと理由のトースト。押せる高さは広い", async ({ page }) => {
+    const errors: string[] = [];
+    page.on("pageerror", (e) => errors.push(String(e)));
+    // 使えるようになった光（.just-full）が出たら記録する
+    await page.addInitScript(() => {
+      const w = window as unknown as { __justFull: string[] };
+      w.__justFull = [];
+      new MutationObserver((ms) => {
+        for (const m of ms) {
+          for (const n of m.addedNodes) {
+            if (n instanceof HTMLElement) for (const c of n.querySelectorAll(".plate-skill.just-full")) w.__justFull.push(c.closest(".player-card")?.id ?? "");
+          }
+        }
+      }).observe(document, { childList: true, subtree: true });
+    });
+    // 補充は使い切った駒（数字 3 以下）しか戻せない。歩・横で打って、飛・角を残したまま満タンにする
+    await startWith(page, "refill");
+    const chip = page.locator("#player-0 .plate-skill");
+    for (let i = 0; i < 300 && !(await chip.evaluate((c) => c.classList.contains("full"))); i++) {
+      if (await page.locator("#result").evaluate((d) => (d as HTMLDialogElement).open)) throw new Error("満タンになる前に終局した");
+      if ((await page.locator(".board.acting").count()) > 0) await humanMove(page, ["fu", "yoko"]);
+      await page.clock.runFor(1000);
+    }
+    await page.clock.runFor(2000);
+    await expect(page.locator(".board.acting")).toBeVisible();
+    await expect(chip).toHaveClass(/\bheld\b/);
+    await expect(chip.locator(".ps-state")).toHaveText("戻せる駒なし");
+    // 押せない札: #skill-use はなく、光の筋も回らない。使えるようになった光は一度も出ていない
+    await expect(page.locator("#skill-use")).toHaveCount(0);
+    expect(await chip.evaluate((c) => getComputedStyle(c, "::after").animationName)).toBe("none");
+    expect(await page.evaluate(() => (window as unknown as { __justFull: string[] }).__justFull)).not.toContain("player-0");
+    // 押せる高さ: 見た目の帯（19px 前後）より広い鍵（PC 30px 以上・タッチ 42px 以上）。帯の上の余白を押しても鍵に当たる
+    const hit = page.locator("#player-0 .skill-hit");
+    const box = (await hit.boundingBox())!;
+    const band = (await chip.boundingBox())!;
+    expect(box.height).toBeGreaterThanOrEqual(isTouch(page) ? 42 : 30);
+    expect(band.height).toBeLessThan(24);
+    const x = band.x + band.width / 2;
+    const y = box.y + 3;
+    expect(y).toBeLessThan(band.y);
+    expect(await page.evaluate(([px, py]) => !!document.elementFromPoint(px, py)?.closest(".skill-hit"), [x, y])).toBe(true);
+    if (isTouch(page)) await page.touchscreen.tap(x, y);
+    else await page.mouse.click(x, y);
+    await expect(page.locator("#toast")).toHaveText("補充　戻せる駒がない");
+    // 押しても盤はそのまま（打っていない）
+    await expect(page.locator(".board.acting")).toBeVisible();
+    if (isTouch(page)) await noHorizontalScroll(page, 375);
+    await page.screenshot({ path: `${SHOT}/${pre(page)}-skill-held.png` });
+    expect(errors).toEqual([]);
+  });
 });

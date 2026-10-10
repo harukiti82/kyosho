@@ -4671,7 +4671,7 @@ button.tarot:focus-visible {
   pointer-events: none;
 }
 .plate-skill.grow .ps-gauge i,
-button.plate-skill.ready.grow .ps-gauge i {
+.plate-skill.ready.grow .ps-gauge i {
   animation: gauge-grow 0.6s cubic-bezier(0.22, 0.8, 0.3, 1) var(--grow-at, 0ms) both;
 }
 .plate-skill.grow.full .ps-gauge i {
@@ -4763,29 +4763,73 @@ button.plate-skill.ready.grow .ps-gauge i {
     opacity: 0.55;
   }
 }
-button.plate-skill.ready {
+/* 満タンでも使えない（戻せる駒がない・体力が満タン・偵察の期限前など）: 残りの欄に理由を出し、白いバーは控えめで光らない */
+.plate-skill.full.held .ps-gauge i {
+  background: rgba(255, 255, 255, 0.4);
+  animation: none;
+}
+.plate-skill.grow.full.held .ps-gauge i {
+  animation: gauge-grow 0.6s cubic-bezier(0.22, 0.8, 0.3, 1) var(--grow-at, 0ms) both;
+}
+.plate-skill.full.held::after {
+  animation: none;
+}
+.plate-skill.full.held .ps-state {
+  /* 札の地は名札の手番に関係なく紺なので、名札の文字色の変数（手番では紺になる）は使わない */
+  color: rgba(242, 250, 255, 0.72);
+}
+/* 自分のカードの鍵: 斜めに切った札（clip-path は当たり判定も切る）を包み、上下に透明な余白を足して押せる高さを広げる（負の余白でレイアウトは変えない） */
+.skill-hit {
+  /* 余白が重なる体力ゲージ（位置指定あり）より手前に出す。名札の中（isolation）だけで重なる */
+  position: relative;
+  z-index: 1;
+  display: block;
+  width: 100%;
+  min-width: 0;
+  margin: -6px 0;
+  padding: 6px 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
   cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+@media (pointer: coarse) {
+  .skill-hit {
+    margin: -12px 0;
+    padding: 12px 0;
+  }
+}
+.skill-hit:focus-visible {
+  outline: none;
+}
+.skill-hit:not(.ready):focus-visible .plate-skill {
+  background: var(--navy-700);
+}
+.plate-skill.ready {
   background: var(--cyan-400);
   color: var(--navy-900);
   animation: skill-ready 1.4s ease-in-out infinite;
 }
-button.plate-skill.ready .ps-num,
-button.plate-skill.ready .ps-name,
-button.plate-skill.ready .ps-state {
+.plate-skill.ready .ps-num,
+.plate-skill.ready .ps-name,
+.plate-skill.ready .ps-state {
   color: var(--navy-900);
 }
-button.plate-skill.ready .ps-gauge {
+.plate-skill.ready .ps-gauge {
   background: rgba(4, 17, 46, 0.25);
 }
-button.plate-skill.ready .ps-gauge i {
+.plate-skill.ready .ps-gauge i {
   background: var(--navy-900);
   animation: none;
 }
-button.plate-skill.ready:hover,
-button.plate-skill.ready:focus-visible,
-button.plate-skill.ready.aiming {
+.skill-hit.ready:hover .plate-skill,
+.skill-hit.ready:focus-visible .plate-skill,
+.plate-skill.ready.aiming {
   background: #fff;
-  outline: none;
   animation: none;
 }
 @keyframes skill-ready {
@@ -4799,7 +4843,7 @@ button.plate-skill.ready.aiming {
   .plate-skill .ps-tip,
   .plate-skill::before,
   .plate-skill::after,
-  button.plate-skill.ready {
+  .plate-skill.ready {
     animation: none !important;
   }
 }

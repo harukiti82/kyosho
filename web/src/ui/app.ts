@@ -915,6 +915,58 @@ export class App {
     }
   }
 
+  /**
+   * p のカードを p の手番なら使えるか: 使えない理由（満タンでなければ "charging"）、使えるなら null。相手の番かどうかは見ない。
+   * 隠し情報は見ている人の分だけ使う（オンラインの相手の王の移し替えは分からないので、使えるものとして扱う）
+   */
+  private cardBlock(g: GameState, p: Player): SkillBlock | null {
+    const sk = g.skills;
+    if (!sk?.ready || !sk.sides[p].card) return "off";
+    const base = this.online ? (g as unknown as PlayerView) : viewFor(g, p);
+    const view: PlayerView = { ...base, turn: p, skills: { ...base.skills!, armed: g.turn === p ? sk.armed : null } };
+    const b = skillBlock(view);
+    if (this.online && base.viewer !== p && (b === "noKing" || b === "noRoom")) return null;
+    return b;
+  }
+
+  /** p のカードが満タンで、p の手番なら使える（名札の満タンの光・使えるようになった演出） */
+  private cardReady(g: GameState, p: Player): boolean {
+    return this.cardBlock(g, p) === null;
+  }
+
+  /** 満タンでも使えない理由の短い文（名札の残りの欄。「満タン」の代わりに出す） */
+  private blockShort(g: GameState, p: Player, b: SkillBlock): string {
+    const q = other(p);
+    switch (b) {
+      case "fullHp":
+        return "体力満タン";
+      case "noRefill":
+        return "戻せる駒なし";
+      case "noTarget":
+        return kingRevealed(g, q) ? "王は判明" : `偵察は${Math.max(1, g.rules.king.deadline - movesBy(g, q))}手後`;
+      case "noKing":
+        return this.kingOf(g, p).status === "revealed" ? "王は公開済み" : "王が未定";
+      case "noRoom":
+        return "移せる駒なし";
+      default:
+        return "満タン";
+    }
+  }
+
+  /** 使えない名札のカードを押した: 理由をトーストで知らせる（タッチ端末では title が見えないため） */
+  private explainSkill(p: Player) {
+    const g = this.game;
+    const card = g?.skills?.sides[p].card;
+    if (!g || !card || g.result) return;
+    let reason: string | null = null;
+    if (g.turn !== p) reason = "相手の番";
+    else if (this.canAct()) {
+      const b = skillBlock(this.viewOf(g));
+      reason = b ? this.blockText(g, b) : null;
+    }
+    if (reason) this.showToast(`${SKILLS[card].name}　${reason}`);
+  }
+
   /** 名札のカードを押した: 使う（補充は戻す駒、王の移し替えは移す先を選んでから） */
   private onSkillClick() {
     if (this.checkTimeout()) return;
@@ -971,7 +1023,7 @@ export class App {
    * 打った人は溜めマスの光が着いてから、受けた人は着手の演出（特大の溜め）が弾けてから伸ばす。動きを減らす設定では値だけ変える
    */
   private startGaugeAnims(g: GameState, m: MoveEvent, plan: ImpactPlan): { m: MoveEvent; gains: [GaugeGain | null, GaugeGain | null]; delays: [number, number] } | null {
-    const gains = gaugeGains(this.gaugeSnap, this.gameNo, g.ply, g.skills);
+    const gains = gaugeGains(this.gaugeSnap, this.gameNo, g.ply, g.skills, [this.cardReady(g, 0), this.cardReady(g, 1)]);
     if (!gains[0] && !gains[1]) return null;
     if (plan.reduce) return null;
     const now = Date.now();
@@ -986,7 +1038,7 @@ export class App {
     return { m, gains, delays };
   }
 
-  /** ゲージが溜まった演出の #fx 層の分（溜めマスの光の粒・「+N」・満タンの光の輪）と満タンの音。描いた後に呼ぶ */
+  /** ゲージが溜まった演出の #fx 層の分（溜めマスの光の粒・「+N」・使えるようになった光の輪）と、使えるようになった音。描いた後に呼ぶ */
   private playGaugeFx(o: { m: MoveEvent; gains: [GaugeGain | null, GaugeGain | null]; delays: [number, number] }) {
     for (const p of [0, 1] as const) {
       const gain = o.gains[p];
@@ -1046,7 +1098,9 @@ export class App {
     const mine = this.canAct() && g.turn === p;
     const block = mine ? skillBlock(this.viewOf(g)) : null;
     const usable = mine && block === null;
-    const state = armed ? "発動" : guard ? "鉄壁中" : full ? "満タン" : `あと${gaugeLeft(side)}`;
+    // 満タンでも使えない（戻せる駒がない・体力が満タン・偵察の期限前など）なら、「満タン」の代わりに理由を出して光を控える
+    const held = full && !armed && !g.result ? this.cardBlock(g, p) : null;
+    const state = armed ? "発動" : guard ? "鉄壁中" : !full ? `あと${gaugeLeft(side)}` : held ? this.blockShort(g, p, held) : "満タン";
     const t = skillText(card, g.rules);
     // 溜まった演出の途中なら、伸び始めの時刻からの経過で続きを描く（名札は描き直すたびに作り直す）
     const anim = this.gaugeAnims[p];
@@ -1061,15 +1115,23 @@ export class App {
       ]),
       h("span", { class: "ps-state", text: state }),
     ];
-    const cls = `plate-skill t-${card}${full ? " full" : ""}${armed ? " armed" : ""}${usable ? " ready" : ""}${this.aim ? " aiming" : ""}${grow ? ` grow${grow.full ? " just-full" : ""}` : ""}`;
+    const cls = `plate-skill t-${card}${full ? " full" : ""}${held ? " held" : ""}${armed ? " armed" : ""}${usable ? " ready" : ""}${this.aim ? " aiming" : ""}${grow ? ` grow${grow.full ? " just-full" : ""}` : ""}`;
     const style = grow ? `--grow-at:${grow.start - now}ms` : "";
     const label = `${spec.name}（${t.point}）ゲージ ${Math.floor(side.gauge / GAUGE_UNIT)} / ${spec.length}`;
-    if (!usable) {
-      const why = mine && block ? `。${this.blockText(g, block)}` : "";
+    const why = mine && block ? `。${this.blockText(g, block)}` : held ? `。${this.blockText(g, held)}` : "";
+    // 相手（CPU・オンラインの相手）のカードは押せない札。自分のカードは押せる大きさの鍵の中に札を入れる（札は斜めに切るので、当たり判定は外の鍵で広げる）
+    if (!this.isHuman(p) || g.result) {
       return h("div", { class: cls, attrs: { role: "img", "aria-label": `${label}${why}`, title: `${t.point}。${t.note}${why}`, style } }, children);
     }
-    const b = h("button", { class: cls, attrs: { type: "button", id: "skill-use", "aria-label": `${spec.name}を使う。${t.point}`, title: `押して使う。${t.point}`, style } }, children);
-    b.addEventListener("click", () => this.onSkillClick());
+    const chip = h("span", { class: cls, attrs: { style } }, children);
+    if (usable) {
+      const b = h("button", { class: "skill-hit ready", attrs: { type: "button", id: "skill-use", "aria-label": `${spec.name}を使う。${t.point}`, title: `押して使う。${t.point}` } }, [chip]);
+      b.addEventListener("click", () => this.onSkillClick());
+      return b;
+    }
+    // 使えないときも押せて、理由をトーストで出す
+    const b = h("button", { class: "skill-hit", attrs: { type: "button", "aria-disabled": "true", "aria-label": `${label}${why}`, title: `${t.point}。${t.note}${why}` } }, [chip]);
+    b.addEventListener("click", () => this.explainSkill(p));
     return b;
   }
 
@@ -2115,7 +2177,7 @@ export class App {
       );
     }
     // 次の 1 手で溜まった量は、ここで描いたゲージとの差で出す
-    this.gaugeSnap = g.skills ? snapOf(this.gameNo, g.ply, g.skills) : null;
+    this.gaugeSnap = g.skills ? snapOf(this.gameNo, g.ply, g.skills, [this.cardReady(g, 0), this.cardReady(g, 1)]) : null;
   }
 
   /** この端末で通算を数える対局（CPU 対戦は強さごと・2 人対戦）。オンライン対戦・遊び方（実戦も）は null */
