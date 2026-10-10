@@ -108,6 +108,7 @@ server/               ← 画面（web/dist の静的アセット）と /api（�
 
 - 現在の作業状況（毎ターン上書き）: @.agent/activeContext.md
 - 完了タスクの時系列（毎ターン追記）: @.agent/progress.md
+- 古い時系列（progress.md から移した分。必要時に Read）: `.agent/progress-archive.md`
 
 セッション開始時に必ず両方読み、応答終了前に `activeContext` は最新状態で**上書き**、
 作業が一段落していれば `progress` の末尾に**1〜3 行で追記**する。
