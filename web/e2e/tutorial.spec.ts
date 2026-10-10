@@ -7,6 +7,7 @@ import { cellName, parseCell } from "../src/engine/board";
 import { lastMoveOf, playMove } from "../src/engine/game";
 import type { PieceKind } from "../src/engine/rules";
 import { FINISHED_TEXT, LESSONS, TUTORIAL_KEY, type Lesson, type LessonId } from "../src/ui/lessons";
+import { RECORD_KEY } from "../src/ui/record";
 import { cellAt, noHorizontalScroll, play, seedPage, waitHumanTurnOrEnd } from "./helpers";
 
 const SHOT = "screenshots";
@@ -153,6 +154,9 @@ test("遊び方: メニューから始め、全ステップを違う手と正解
   expect(ended).toBe(true);
   await expect(page.locator("#result")).toHaveAttribute("open", "");
   await expect(page.locator("#coach-msg.ok")).toHaveText(FINISHED_TEXT);
+  // 遊び方の実戦は通算に数えない（終局画面にも名札にも出さない）
+  expect(await page.evaluate((k) => localStorage.getItem(k), RECORD_KEY)).toBeNull();
+  await expect(page.locator("#result-detail .score th", { hasText: "通算" })).toHaveCount(0);
   await page.screenshot({ path: `${SHOT}/${prefix(page)}-tutorial-${last + 1}-match-result.png` });
   await page.locator("#result-view").click();
   await page.screenshot({ path: `${SHOT}/${prefix(page)}-tutorial-${last + 1}-match-board.png` });

@@ -23,6 +23,7 @@ import { dirIcon } from "./diricon";
 import { byId, h } from "./dom";
 import { cpuTurnSeconds, DEFAULT_MULTI_SECONDS, isCpuTime, isMultiTime, type CpuTime, type MultiTime } from "./clock";
 import { decodeRules, encodeRules, QUERY_BASE } from "./query";
+import { recordSummary, type RecordBook } from "./record";
 import { ruleLines, verb, type Sentence } from "./ruletext";
 
 /** cpu: CPU 対戦 / pvp: 同じ端末で 2 人 / online: 招待リンクで遠隔の相手と */
@@ -172,10 +173,16 @@ export class SetupDialog {
     hostField: byId("host-field"),
     shareStatus: byId("share-status"),
     shareUrl: byId<HTMLInputElement>("share-url"),
+    recordSum: byId("record-sum"),
+    recordClear: byId<HTMLButtonElement>("record-clear"),
+    recordConfirm: byId("record-confirm"),
+    recordStatus: byId("record-status"),
   };
 
   constructor(
     private readonly store: KeyValueStore,
+    /** CPU 対戦と 2 人対戦の通算（一覧と「通算を消す」） */
+    private readonly book: RecordBook,
     private readonly onShowRules: (r: RuleSet) => void,
     /** 保存した（メニューのルール名などを更新する） */
     private readonly onSaved: (s: Saved) => void,
@@ -230,6 +237,8 @@ export class SetupDialog {
     this.openDetailsIfCustom();
     this.el.shareStatus.textContent = "";
     this.el.shareUrl.hidden = true;
+    this.el.recordStatus.textContent = "";
+    this.showRecord(false);
     if (!this.el.dialog.open) this.el.dialog.showModal();
   }
 
@@ -320,6 +329,31 @@ export class SetupDialog {
       this.onShowRules(this.rules);
     });
     byId("setup-copy").addEventListener("click", () => void this.copyUrl());
+    // 通算を消す: 画面内の確認（やめる・消す）の後、保存を待たずにすぐ消す
+    this.el.recordClear.addEventListener("click", () => {
+      this.el.recordStatus.textContent = "";
+      this.showRecord(true);
+      byId("record-keep").focus();
+    });
+    byId("record-keep").addEventListener("click", () => {
+      this.showRecord(false);
+      this.el.recordClear.focus();
+    });
+    byId("record-erase").addEventListener("click", () => {
+      this.book.clear();
+      this.showRecord(false);
+      this.el.recordStatus.textContent = "消しました";
+      this.el.recordStatus.focus();
+    });
+  }
+
+  /** 通算の一覧と「通算を消す」（confirm なら確認の鍵に替える）。数えた対局がなければ消す鍵は押せない */
+  private showRecord(confirm: boolean) {
+    const lines = recordSummary(this.book.get());
+    this.el.recordSum.replaceChildren(...(lines.length > 0 ? lines : ["なし"]).map((t) => h("li", { text: t })));
+    this.el.recordClear.hidden = confirm;
+    this.el.recordClear.disabled = lines.length === 0;
+    this.el.recordConfirm.hidden = !confirm;
   }
 
   private input(name: string) {

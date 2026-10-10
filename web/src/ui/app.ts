@@ -82,6 +82,7 @@ import {
   type Progress,
 } from "./lessons";
 import { Menu } from "./menu";
+import { gamesOf, recordFor, RecordBook, recordViewer, type RecordKey } from "./record";
 import { cryptoRandom, drawSeat, fillSentences, SetupDialog, type PlaySettings } from "./setup";
 import { Sound } from "./sound";
 import { Undo, UNDO_LIMIT } from "./undo";
@@ -198,6 +199,10 @@ export class App {
   private readonly tokens = safeStore(() => window.sessionStorage);
   /** この端末で作った部屋の記録（自分の招待リンクを開いたときの注意書き） */
   private readonly local = safeStore(() => window.localStorage);
+  /** CPU 対戦（強さごと）と 2 人対戦の通算（この端末の localStorage） */
+  private readonly book = new RecordBook(this.local);
+  /** 通算に数えた対局の通し番号（gameNo。同じ対局を二度数えない・名札の「2 局目から」をこの対局を除いて数える） */
+  private countedGame = 0;
 
   // ---- 遊び方（チュートリアル） ----
   /** 開いているステップ（チュートリアル中でなければ null） */
@@ -247,6 +252,7 @@ export class App {
     });
     this.setup = new SetupDialog(
       this.local,
+      this.book,
       (r) => this.showRules(r),
       (s) => {
         this.menu.setRuleName(ruleName(s.rules));
@@ -661,6 +667,8 @@ export class App {
 
   private afterChange() {
     const g = this.game!;
+    // 決着したら通算に数える（名札をこの対局の結果を足した値で描く）
+    if (g.result) this.countResult(g);
     this.notifyNewEvents(g.history);
     const last = lastMoveOf(g);
     const fresh = last?.ply === g.ply && g.ply > 0 ? last : undefined;
@@ -1727,19 +1735,50 @@ export class App {
     }
   }
 
-  /** オンライン対戦の部屋での、席 p の人から見た通算（オンライン対戦でなければ null） */
-  private recordOf(p: Player): MatchRecord | null {
-    const room = this.room;
-    if (!this.online || !room) return null;
-    return p === this.settings!.human ? room.record : flipRecord(room.record);
+  /** この端末で通算を数える対局（CPU 対戦は強さごと・2 人対戦）。オンライン対戦・遊び方（実戦も）は null */
+  private recordKey(): RecordKey | null {
+    const s = this.settings;
+    if (!s || this.lesson || s.mode === "online") return null;
+    return s.mode === "cpu" ? { mode: "cpu", level: s.level ?? DEFAULT_CPU_LEVEL } : { mode: "pvp" };
   }
 
-  /** 名札の通算（オンライン対戦の同じ部屋で 2 局目から） */
+  /** 決着した対局を通算に 1 局数える（CPU 対戦・2 人対戦。待ったを使った対局も数える） */
+  private countResult(g: GameState) {
+    const key = this.recordKey();
+    if (!key || !g.result || this.countedGame === this.gameNo) return;
+    this.countedGame = this.gameNo;
+    this.book.add(key, recordViewer(key, this.settings!.human), g.result.winner);
+  }
+
+  /**
+   * 席 p の人から見た通算。オンライン対戦はこの部屋の（1 局目から）、CPU 対戦・2 人対戦はこの端末の（この対局より前に
+   * 同じ強さ・2 人対戦で 1 局以上終えた 2 局目から）。出さないときは null
+   */
+  private recordOf(p: Player): MatchRecord | null {
+    const room = this.room;
+    if (this.online) return room ? (p === this.settings!.human ? room.record : flipRecord(room.record)) : null;
+    const key = this.recordKey();
+    if (!key) return null;
+    const rec = recordFor(this.book.get(), key);
+    const before = gamesOf(rec) - (this.countedGame === this.gameNo ? 1 : 0);
+    if (before < 1) return null;
+    return p === recordViewer(key, this.settings!.human) ? rec : flipRecord(rec);
+  }
+
+  /** 名札の通算（オンライン対戦は同じ部屋の 2 局目から。CPU 対戦・2 人対戦は recordOf のとおり 2 局目から） */
   private plateRecord(p: Player): HTMLElement | null {
     const rec = this.recordOf(p);
-    if (!rec || this.room!.gameNo < 2) return null;
+    if (!rec || (this.online && this.room!.gameNo < 2)) return null;
     const text = recordText(rec);
-    return h("span", { class: "plate-record", text, attrs: { title: `この部屋の通算 ${text}` } });
+    return h("span", { class: "plate-record", text, attrs: { title: `${this.recordScope()}の通算 ${text}` } });
+  }
+
+  /** 通算をどの範囲で数えたか（名札の title） */
+  private recordScope(): string {
+    const s = this.settings!;
+    if (s.mode === "online") return "この部屋";
+    if (s.mode === "pvp") return "この端末の2人対戦";
+    return `CPU ${CPU_LEVEL_NAME[s.level ?? DEFAULT_CPU_LEVEL]}との対局`;
   }
 
   /** 名札の短い名前（2 人対戦は先手・後手、それ以外は あなた／CPU・相手）。正式な名前は title と読み上げ */
@@ -2374,7 +2413,7 @@ export class App {
     if (!this.el.result.open) this.el.result.showModal();
   }
 
-  /** 終局画面の成績表: 対局者を列に、体力・石数・王（隠し王のとき）・通算（オンライン対戦）を行に。下に手数とルール */
+  /** 終局画面の成績表: 対局者を列に、体力・石数・王（隠し王のとき）・通算を行に。下に手数とルール */
   private renderScore(g: GameState, d0: number, d1: number) {
     const discs = [d0, d1];
     const winner = g.result?.winner ?? null;
@@ -2388,7 +2427,7 @@ export class App {
     const row = (label: string, cells: [string, string]) =>
       h("tr", {}, [h("th", { text: label, attrs: { scope: "row" } }), h("td", { text: cells[0] }), h("td", { text: cells[1] })]);
     const king = g.rules.king.on ? row("王", [this.kingResult(g, 0), this.kingResult(g, 1)]) : null;
-    // オンライン対戦は同じ部屋での通算（再戦を続けた分）
+    // 通算: オンライン対戦は同じ部屋（再戦を続けた分）、CPU 対戦は同じ強さ・2 人対戦は席ごとのこの端末の分（2 局目から）
     const r0 = this.recordOf(0);
     const r1 = this.recordOf(1);
     const record = r0 && r1 ? row("通算", [recordText(r0), recordText(r1)]) : null;
