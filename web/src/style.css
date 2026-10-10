@@ -4591,6 +4591,64 @@ button.tarot:focus-visible {
   grid-template-columns: minmax(0, 9rem);
   justify-content: center;
 }
+/*
+ * 配る動き（SkillPick）: 1 枚ずつ上から飛んできて、裏（.tarot-cover）から表に返る。transform / opacity だけ。
+ * fill は backwards（終わった後は選んだカードの持ち上がり＝ aria-pressed の transform に任せる）
+ */
+.tarot-row.dealing {
+  perspective: 900px;
+}
+.tarot-row.dealing .tarot {
+  animation: tarot-deal var(--deal-ms, 520ms) cubic-bezier(0.2, 0.75, 0.3, 1) calc(var(--deal-i, 0) * var(--deal-step, 180ms)) backwards;
+}
+.tarot-cover {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  opacity: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(90deg, rgba(122, 230, 255, 0.3) 0 1px, transparent 1px) 50% 50% / 20% 12.5%,
+    linear-gradient(180deg, rgba(122, 230, 255, 0.3) 0 1px, transparent 1px) 50% 50% / 20% 12.5%,
+    linear-gradient(170deg, var(--navy-700), var(--navy-950));
+  box-shadow: inset 0 0 0 1px var(--rim), inset 0 0 0 6px var(--navy-950), inset 0 0 0 7px var(--cyan-400);
+}
+.tarot-row.dealing .tarot-cover {
+  animation: tarot-cover var(--deal-ms, 520ms) linear calc(var(--deal-i, 0) * var(--deal-step, 180ms)) backwards;
+}
+@keyframes tarot-deal {
+  0% {
+    opacity: 0;
+    transform: translateY(-2.2rem) rotateY(180deg) scale(0.86);
+  }
+  40% {
+    opacity: 1;
+    transform: translateY(0) rotateY(180deg) scale(1);
+    /* 返す間は対称の曲線にして、真横（90 度）を 70% ちょうどに（裏の絵を消す時刻と合わせる） */
+    animation-timing-function: cubic-bezier(0.45, 0, 0.55, 1);
+  }
+  100% {
+    opacity: 1;
+    transform: none;
+  }
+}
+/* 裏の絵は、カードが真横を向く（回転の半分を過ぎる）までだけ見せる */
+@keyframes tarot-cover {
+  0%,
+  69% {
+    opacity: 1;
+  }
+  71%,
+  100% {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tarot-row.dealing .tarot,
+  .tarot-row.dealing .tarot-cover {
+    animation: none;
+  }
+}
 .skill-pick {
   width: min(calc(100vw - 32px), 30rem);
 }

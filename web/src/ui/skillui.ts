@@ -1,4 +1,4 @@
-// スキルのカード（タロットカード風）の表示: カードの面・絵柄・対局の前に 3 枚から 1 枚を選ぶダイアログ・名札のゲージ。
+// スキルのカード（タロットカード風）の表示: カードの面・絵柄・対局の前に 3 枚から 1 枚を選ぶダイアログ（配る動きと効果音）・名札のゲージ。
 // タロットは名前と意味の対応だけを借り、絵柄は石・駒・盤の格子で描くゲーム独自のもの。ルールの計算はしない（engine の値を読むだけ）。
 
 import type { Player, RuleSet } from "../engine/rules";
@@ -101,6 +101,18 @@ export function tarotCard(id: SkillId, rules: RuleSet, opts: { button?: boolean;
   return h("div", { class: cls, attrs: { "data-skill": id, role: "img", "aria-label": label } }, children);
 }
 
+/** カードを配る動き: 1 枚ずつずらす間隔と、1 枚が飛んできて表に返る長さ（ミリ秒） */
+export const DEAL_STEP_MS = 180;
+export const DEAL_MS = 520;
+
+/** 選ぶ画面の効果音（sound.ts の Sound。消音・最初の操作の前は Sound の側で鳴らさない） */
+export interface PickSound {
+  deal(delay?: number): void;
+  hover(): void;
+  select(): void;
+  decide(): void;
+}
+
 export interface PickView {
   /** 選ぶ人の呼び方（「あなた」「先手」など） */
   who: string;
@@ -123,7 +135,7 @@ export class SkillPick {
   private sel: SkillId | null = null;
   private view: PickView | null = null;
 
-  constructor() {
+  constructor(private readonly sound: PickSound) {
     // Esc では閉じない（選ばないと始まらない。メニューへは「メニュー」）
     this.dialog.addEventListener("cancel", (e) => e.preventDefault());
   }
@@ -157,13 +169,37 @@ export class SkillPick {
       v.stone !== null ? h("i", { class: `seg-stone p${v.stone}`, attrs: { "aria-hidden": "true" } }) : null,
       waiting ? "相手が選んでいます" : `${v.who}のカード`,
     ]);
-    const cards = (waiting ? [v.chosen!] : v.offer).map((id) => {
+    // 配られたカードは 1 枚ずつ飛んできて表に返る（動きを減らす設定では並べるだけ）。相手を待つ間の自分のカードは配らない
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const deal = !waiting && !reduce;
+    const cards = (waiting ? [v.chosen!] : v.offer).map((id, i) => {
       const card = tarotCard(id, v.rules, { button: !waiting, cls: waiting ? "chosen" : "" });
-      if (!waiting) card.addEventListener("click", () => this.select(id));
+      if (!waiting) {
+        card.addEventListener("click", () => this.select(id));
+        // 合わせた音はマウスとキーボードだけ（タッチは選んだ音だけ）
+        card.addEventListener("pointerenter", (e) => {
+          if (e.pointerType === "mouse") this.sound.hover();
+        });
+        card.addEventListener("focus", () => {
+          if (card.matches(":focus-visible")) this.sound.hover();
+        });
+      }
+      if (deal) {
+        card.style.setProperty("--deal-i", String(i));
+        card.append(h("span", { class: "tarot-cover", attrs: { "aria-hidden": "true" } }));
+      }
       return card;
     });
     const detail = h("div", { class: "pick-detail", attrs: { id: "skill-pick-detail", "aria-live": "polite" } });
-    this.body.replaceChildren(head, h("div", { class: `tarot-row${waiting ? " one" : ""}` }, cards), detail);
+    const row = h("div", { class: `tarot-row${waiting ? " one" : ""}${deal ? " dealing" : ""}` }, cards);
+    row.style.setProperty("--deal-step", `${DEAL_STEP_MS}ms`);
+    row.style.setProperty("--deal-ms", `${DEAL_MS}ms`);
+    this.body.replaceChildren(head, row, detail);
+    if (!waiting) {
+      // 1 枚ごとに配る音（動きを減らす設定では 1 回だけ）
+      if (deal) cards.forEach((_, i) => this.sound.deal((i * DEAL_STEP_MS) / 1000));
+      else this.sound.deal();
+    }
     const menu = h("button", { class: "btn ghost", text: "メニュー", attrs: { type: "button", id: "skill-pick-menu" } });
     menu.addEventListener("click", () => v.onMenu());
     if (waiting) {
@@ -174,13 +210,16 @@ export class SkillPick {
     const ok = h("button", { class: "btn primary", text: "このカードにする", attrs: { type: "button", id: "skill-pick-ok" } }) as HTMLButtonElement;
     ok.disabled = true;
     ok.addEventListener("click", () => {
-      if (this.sel) v.onPick(this.sel);
+      if (!this.sel) return;
+      this.sound.decide();
+      v.onPick(this.sel);
     });
     this.actions.replaceChildren(menu, ok);
     this.showDetail(null);
   }
 
   private select(id: SkillId) {
+    if (this.sel !== id) this.sound.select();
     this.sel = id;
     for (const b of this.body.querySelectorAll<HTMLElement>(".tarot")) b.setAttribute("aria-pressed", String(b.dataset.skill === id));
     const ok = this.actions.querySelector<HTMLButtonElement>("#skill-pick-ok");

@@ -176,8 +176,10 @@ export class App {
   private undo: Undo | null = null;
   /** 対局の通し番号（再戦で棋譜の長さが 0 に戻っても、時計を新しい手番として数え直す） */
   private gameNo = 0;
+  /** 効果音（カードを選ぶダイアログも鳴らすので、その前に作る） */
+  private readonly sound = new Sound();
   /** スキルのカードを選ぶダイアログ（スキルありのルールで、対局の前） */
-  private readonly pick = new SkillPick();
+  private readonly pick = new SkillPick(this.sound);
   /** スキルの指定を選んでいる（補充で戻す駒・王の移し替えで移す先）。選んでいなければ null */
   private aim: "refill" | "kingmove" | null = null;
   /** 名札に最後に描いたスキルのゲージ（溜まった量は、次の 1 手の後の局面との差で出す） */
@@ -235,7 +237,6 @@ export class App {
   private readonly cells: HTMLButtonElement[][] = [];
   private readonly setup: SetupDialog;
   private readonly menu: Menu;
-  private readonly sound = new Sound();
   private readonly fx = new Fx(byId("fx"));
   private readonly el = {
     game: byId("game"),
@@ -1424,7 +1425,8 @@ export class App {
       const after = m.view.skills;
       this.game = m.view as unknown as GameState;
       if (before && after && !before.ready && after.ready) {
-        // 両者が選び終えた
+        // 両者が選び終えた。先に選んで待っていた人には知らせの音（後に選んだ人は決めた音が鳴っている）
+        if (before.sides[m.you].card) this.sound.opponentReady();
         this.announceCards(this.game);
       }
       if (after?.armed && !before?.armed && !m.view.result) {

@@ -141,9 +141,28 @@ test("スキルありの部屋: 両者が選ぶ（先に選んだ側は相手待
   await expect(host.page.locator("#skill-pick .pick-who")).toHaveText("相手が選んでいます");
   await expect(host.page.locator(`#skill-pick .tarot[data-skill=${hostCard}]`)).toBeVisible();
 
+  // 鳴らした音の周波数を記録する（効果音は最初の操作の後だけ鳴る。再読み込みした作成者は待つ間に一度画面に触れる）
+  await host.page.locator("#skill-pick .pick-who").click();
+  for (const p of [host, guest]) {
+    await p.page.evaluate(() => {
+      const w = window as unknown as { __freqs: number[] };
+      w.__freqs = [];
+      const orig = AudioParam.prototype.setValueAtTime;
+      AudioParam.prototype.setValueAtTime = function (v: number, t: number) {
+        if (v > 100) w.__freqs.push(Math.round(v));
+        return orig.call(this, v, t);
+      };
+    });
+  }
+  const freqs = (p: Player) => p.page.evaluate(() => (window as unknown as { __freqs: number[] }).__freqs);
+
   // 参加者が選ぶ: 両者の画面が閉じ、両者の名札にカードとゲージ。作成者のカードはここで初めて参加者に届く
   const guestCard = preferred(offerOf(guest));
   await pickCard(guest, guestCard);
+  // 先に選んで待っていた作成者には知らせの音、後に選んだ参加者には決めた音だけ
+  await expect.poll(() => freqs(host)).toEqual(expect.arrayContaining([1047, 1397]));
+  expect(await freqs(guest)).toEqual(expect.arrayContaining([784, 1175]));
+  expect(await freqs(guest)).not.toContain(1047);
   for (const p of [host, guest]) {
     await expect(p.page.locator("#skill-pick")).toBeHidden();
     await expect.poll(() => p.last!.view.skills!.ready).toBe(true);

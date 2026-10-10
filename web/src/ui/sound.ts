@@ -39,6 +39,8 @@ export class Sound {
   private master: GainNode | null = null;
   private noiseBuf: AudioBuffer | null = null;
   private gestured = false;
+  /** 最後にカードに合わせた音を鳴らした時刻（AudioContext の秒） */
+  private lastHover = -1;
   muted = readMuted();
 
   constructor() {
@@ -201,6 +203,44 @@ export class Sound {
       this.tone({ freq: f, type: "triangle", at: 0.1 + i * 0.08, dur: 0.35, gain: 0.14 });
       this.tone({ freq: f * 2, type: "sine", at: 0.1 + i * 0.08, dur: 0.3, gain: 0.04 });
     });
+  }
+
+  /** カードを 1 枚配る音（delay 秒後）。紙が滑る擦れと小さな打音 */
+  deal(delay = 0) {
+    if (this.muted) return;
+    this.noise(0.07, 0.07, 3200, delay);
+    this.tone({ freq: 659, to: 523, type: "triangle", at: 0.03, dur: 0.08, gain: 0.07 }, delay);
+  }
+
+  /** カードに合わせた音（ホバー・フォーカス）。続けて動かしてもうるさくならないよう 90 ミリ秒の間は鳴らさない */
+  hover() {
+    if (this.muted) return;
+    const ctx = this.ensure();
+    if (!ctx || ctx.currentTime - this.lastHover < 0.09) return;
+    this.lastHover = ctx.currentTime;
+    this.tone({ freq: 1319, type: "sine", dur: 0.05, gain: 0.035 });
+  }
+
+  /** カードを選んだ音（決める前） */
+  select() {
+    if (this.muted) return;
+    this.tone({ freq: 988, type: "triangle", dur: 0.09, gain: 0.08 });
+    this.tone({ freq: 1976, type: "sine", dur: 0.07, gain: 0.02 });
+  }
+
+  /** カードを決めた音。上がる 2 音 */
+  decide() {
+    if (this.muted) return;
+    [784, 1175].forEach((f, i) => {
+      this.tone({ freq: f, type: "triangle", at: i * 0.07, dur: 0.22, gain: 0.1 });
+      this.tone({ freq: f * 2, type: "sine", at: i * 0.07, dur: 0.18, gain: 0.025 });
+    });
+  }
+
+  /** オンラインで相手が選び終えた知らせ。柔らかい 2 音 */
+  opponentReady() {
+    if (this.muted) return;
+    [1047, 1397].forEach((f, i) => this.tone({ freq: f, type: "sine", at: i * 0.1, dur: 0.25, gain: 0.06 }));
   }
 
   /** スキルのゲージが満タンになった音。控えめに上がる高い 2 音（delay 秒後） */
