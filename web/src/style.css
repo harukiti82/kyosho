@@ -28,6 +28,8 @@
   --heal: #63c472;
   --warn: #f5c12e;
   --gold: #d9aa45;
+  /* 副将（王の金に対して銀） */
+  --vice: #dce7f2;
   --anchor: #5fe3ff;
   --othello: rgba(230, 248, 255, 0.6);
   /* 形: 角は丸めず、帯・鍵は -12° の斜め（見出し・メニューは傾けない） */
@@ -5127,4 +5129,52 @@ button.tarot:focus-visible {
 }
 .fx-skill.reduce .cast-back {
   display: none;
+}
+
+/* ---- 副将（スキルありで隠し王ありのルール。王の金に対して銀の「副」） ---- */
+.vice-box {
+  display: contents;
+}
+.vice-icon {
+  background: linear-gradient(170deg, #f7fbff, var(--vice) 55%, #9fb2c6);
+  color: var(--navy-900);
+}
+.vice-tag.seen {
+  color: var(--warn);
+}
+.vice-toggle .king-piece {
+  color: var(--navy-900);
+}
+.vice-toggle .king-piece::before {
+  background: linear-gradient(170deg, #f7fbff, var(--vice) 60%, #8ea3b9);
+}
+.vice-toggle:disabled .king-piece {
+  opacity: 0.6;
+}
+/* 自分の副将の印（石の左上。王の印は右上） */
+.vice-mark {
+  position: absolute;
+  z-index: 2;
+  top: 2%;
+  left: 2%;
+  display: grid;
+  place-items: center;
+  width: 30%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: var(--vice);
+  color: var(--navy-900);
+  font-family: var(--font-piece);
+  font-size: 2.6cqi;
+  font-weight: 800;
+  line-height: 1;
+  box-shadow: 0 0 0 1.5px #fff;
+  pointer-events: none;
+}
+.king-cand.scouted.vice {
+  background: var(--vice);
+}
+.vice-pop {
+  background: var(--vice);
+  color: var(--navy-900);
 }

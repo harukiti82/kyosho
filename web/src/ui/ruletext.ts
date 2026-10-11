@@ -2,7 +2,7 @@
 // 各行を要点と補足に分けて返し、DOM への流し込みは呼び出し側（ui/setup.ts の fillSentences）が textContent で行う。
 
 import { kindsByValue, kindsInRules, KIND_ORDER, PIECES, REACH_MARK, type PieceKind, type RuleSet } from "../engine/rules";
-import { BASE_SKILLS, FLIP_POINTS, KINGMOVE_RANGE, SCOUT_PENALTY_RATE, SKILL_HEAL, SKILL_ORDER, SKILLS, type SkillId } from "../engine/skills";
+import { BASE_SKILLS, FLIP_POINTS, KINGMOVE_RANGE, SCOUT_PENALTY_RATE, SKILL_HEAL, SKILL_ORDER, SKILLS, VICE_DEADLINE, VICE_PENALTY, type SkillId } from "../engine/skills";
 
 /**
  * ルールの 1 行: 要点の一言（大きく太く。1 行に 1 か所だけ）と、その下に小さく添える補足（括弧で囲まず、薄い字）。
@@ -54,6 +54,12 @@ export function kingLine(r: RuleSet): Sentence {
 /** 反対側の駒の力（攻撃に上乗せ）のルールカードの 1 行。遊び方と同じく「反対側」と言う */
 export const anchorLine = (): Sentence => ({ point: "反対側の自分の駒もダメージに足す", note: "挟んだ列の、置いた駒と反対側にある自分の駒の数字" });
 
+/** 副将（スキルありで隠し王ありのルール）のルールカードの 1 行 */
+export const viceLine = (r: RuleSet): Sentence => ({
+  point: `副将を${verb(r).hitIf}体力−${VICE_PENALTY}`,
+  note: `王を決めた後、${VICE_DEADLINE}手以内に自分の駒を1つ副将にする。相手に見えない`,
+});
+
 /** スキルのルールカードの 1 行 */
 export const skillLine = (): Sentence => ({ point: "ゲージが満タンでスキルを使う", note: "配られた3枚から1枚を選ぶ。返した枚数と受けたダメージで溜まる" });
 
@@ -74,11 +80,12 @@ export function skillText(id: SkillId, r: RuleSet): { short: string; point: stri
     case "wall":
       return { short: "相手の次の手を半減", point: "相手の次の手のダメージが半分", note: `駒は${verb(r).hit.replace("された", "る").replace("られた", "られる")}。小数は切り捨て` };
     case "scout": {
-      const pen = r.king.penalty === "lose" ? "" : `。その王を${verb(r).past.replace("した", "す").replace("った", "る")}まで罰が ${SCOUT_PENALTY_RATE} 倍の体力−${r.king.amount * SCOUT_PENALTY_RATE}`;
+      const hit = verb(r).past.replace("した", "す").replace("った", "る");
+      const pen = r.king.penalty === "lose" ? "" : `。その王を${hit}まで罰が ${SCOUT_PENALTY_RATE} 倍`;
       return {
-        short: "相手の王が見える",
+        short: "相手の王・副将が見える",
         point: "相手の王の場所が自分にだけ分かる",
-        note: `相手が最初の${r.king.deadline}手を打ち終えてから使える${pen}。王が分かった後は相手のゲージを半分にする`,
+        note: `相手が最初の${r.king.deadline}手を打ち終えてから使える${pen}。その後は相手の今の副将が分かり、${hit}まで罰が ${SCOUT_PENALTY_RATE} 倍`,
       };
     }
     case "kingmove":
@@ -101,7 +108,7 @@ export function skillText(id: SkillId, r: RuleSet): { short: string; point: stri
 /** 始めの体力（例: 「先手 129・後手 130 から」「どちらも 20 から」） */
 const hpStart = (r: RuleSet) => (r.hp[0] === r.hp[1] ? `どちらも ${r.hp[0]} から` : `先手 ${r.hp[0]}・後手 ${r.hp[1]} から`);
 
-/** ルールカードの 3〜8 行（一目で今のルールが分かる短文） */
+/** ルールカードの 3〜9 行（一目で今のルールが分かる短文） */
 export function ruleLines(r: RuleSet): Sentence[] {
   const v = verb(r);
   const lines: Sentence[] = [];
@@ -116,6 +123,7 @@ export function ruleLines(r: RuleSet): Sentence[] {
   else lines.push({ point: "挟むと体力を回復", note: `挟んだ両端の駒の${r.heal === "avg" ? "平均" : "低い方−1"}だけ` });
   if (r.king.on) lines.push(kingLine(r));
   if (r.skills) lines.push(skillLine());
+  if (r.skills && r.king.on) lines.push(viceLine(r));
   const limit = r.maxPlies > 0 ? `。${r.maxPlies} 手で終われば体力の多い方が勝ち` : "";
   lines.push({ point: "体力が 0 で負け", note: `${hpStart(r)}${limit}` });
   return lines;
@@ -208,6 +216,19 @@ export function skillDetails(r: RuleSet): Sentence[] {
     { point: "溜めマスでは多く溜まる", note: "盤の星の 4 マス c3・f3・c6・f6。置くか、その上の相手の駒を返すと 1 回ごとにカードの溜めマス点" },
     { point: "満タンになったら自分の手番の始めに使える", note: "使ってから駒を置く。1 手番に 1 回。使うとゲージは 0 から溜め直す" },
   ];
+  if (r.king.on) {
+    const v = verb(r);
+    out.push(
+      {
+        point: `副将: 王を決めた後、自分の手で ${VICE_DEADLINE} 手以内に盤の自分の駒を 1 つ副将にする`,
+        note: `王の駒は選べない。相手には見えない。${VICE_DEADLINE} 手目までに決めなければ、その手で置いた駒が副将になる`,
+      },
+      {
+        point: `副将を${v.hitIf}体力 −${VICE_PENALTY}`,
+        note: `通常のダメージに加えて減る。王と同じ手なら両方。${v.hitIf}、また ${VICE_DEADLINE} 手以内に次の副将を決める`,
+      },
+    );
+  }
   for (const id of SKILL_ORDER) {
     if (!r.king.on && (id === "scout" || id === "kingmove")) continue;
     const t = skillText(id, r);

@@ -7,8 +7,8 @@
 
 import { chooseLookahead, chooseMove, CPU_LEVEL_NAME, CPU_LEVELS, type CpuLevel } from "../src/engine/cpu";
 import { SIZE } from "../src/engine/board";
-import { createGame, kingInfo, playMove, setSkills, skillPool, useSkill, viewFor, type EndReason, type GameState } from "../src/engine/game";
-import { chooseSkillUse } from "../src/engine/skillcpu";
+import { createGame, kingInfo, playMove, setSkills, setVice, skillPool, useSkill, viewFor, type EndReason, type GameState } from "../src/engine/game";
+import { chooseSkillUse, chooseVice } from "../src/engine/skillcpu";
 import { SKILL_ORDER, SKILLS, type SkillId } from "../src/engine/skills";
 import { cloneRules, kindsInRules, PIECES, presetById, type PieceKind, type Player, type PresetId } from "../src/engine/rules";
 
@@ -64,18 +64,23 @@ function versus(args: string[]) {
 }
 
 /**
- * シミュレーター（kyosho-skillsim）のスキル側の勝率。r7.txt の solo（大回復は長さ 80 の行）、
- * 補充 56・偵察 30（ほかの 7 枚相手）・連続行動 26・運命の輪 36・巻き戻し 30 はユーザーの採用値の行。
- * 補充（数字の制限なし）と連続行動 36 は仮の値でシミュレーターの行がまだないので、前の値の行のまま
+ * シミュレーター（kyosho-skillsim）のスキル側の勝率。r24.txt（final14b.json の推奨値・副将の罰 15・新しい偵察）の
+ * 「各カード対スキルなし」（SIM_RATE）と「各カード対ほかの 10 枚」（SIM_MIX）。11 枚混在の先手勝率は 47.2%
  */
 const SIM_RATE: Record<SkillId, number> = {
-  firstaid: 54.7, bigheal: 52.4, strong: 55.5, omni: 55.9, refill: 54.6, wall: 54.1, scout: 53.0, kingmove: 53.8,
-  fool: 55.2, wheel: 53.8, judge: 49.8,
+  firstaid: 54.0, bigheal: 51.5, strong: 55.5, omni: 54.6, refill: 55.4, wall: 54.5, scout: 55.2, kingmove: 53.5,
+  fool: 53.1, wheel: 54.6, judge: 50.4,
+};
+const SIM_MIX: Record<SkillId, number> = {
+  firstaid: 51.4, bigheal: 48.1, strong: 52.8, omni: 52.1, refill: 53.1, wall: 50.1, scout: 52.3, kingmove: 49.6,
+  fool: 50.3, wheel: 51.0, judge: 46.1,
 };
 
-/** CPU（ノーマル）の 1 手: 手番の頭にスキルを使うか決め（運命の輪の指定も続けて）、打つ。使ったら used を 1 足す */
+/** CPU（ノーマル）の 1 手: 手番の頭に副将を決めるか・スキルを使うか決め（運命の輪の指定も続けて）、打つ。使ったら used を 1 足す */
 function cpuStep(s: GameState, rand: () => number, used: { n: number }): GameState {
   const p = s.turn;
+  const vice = chooseVice(viewFor(s, p), rand);
+  if (vice) s = setVice(s, vice);
   for (let k = 0; k < 2 && !s.result; k++) {
     const use = chooseSkillUse(viewFor(s, p), rand);
     if (!use) break;
@@ -128,7 +133,7 @@ function skillMix(args: string[]) {
   const card: Record<string, { n: number; won: number }> = {};
   let first = 0;
   const plies: number[] = [];
-  const x = { wheel: 0, fizzle: 0, fool: 0, foolSecond: 0, foolEnd2: 0, judge: 0, judgeBack: 0, scoutFind: 0, scoutDrain: 0 };
+  const x = { wheel: 0, fizzle: 0, fool: 0, foolSecond: 0, foolEnd2: 0, judge: 0, judgeBack: 0, scoutFind: 0, scoutVice: 0, viceHit: 0, viceScouted: 0, viceAuto: 0 };
   for (let i = 0; i < games; i++) {
     const rand = rng(i + 1);
     const cards = [pool[Math.floor(rand() * pool.length)], pool[Math.floor(rand() * pool.length)]] as [SkillId, SkillId];
@@ -152,8 +157,14 @@ function skillMix(args: string[]) {
         x.judgeBack += n.back ?? 0;
       }
       if (n.scout === "find") x.scoutFind++;
-      if (n.scout === "drain") x.scoutDrain++;
+      if (n.scout === "vice") x.scoutVice++;
     }
+    for (const e of s.history) {
+      if (e.type !== "move" || !e.vice) continue;
+      x.viceHit++;
+      if (e.vice.scouted) x.viceScouted++;
+    }
+    for (const p of [0, 1] as Player[]) if (s.kings[p].vice?.auto) x.viceAuto++;
     const w = s.result.winner;
     if (w === 0) first++;
     else if (w === null) first += 0.5;
@@ -166,15 +177,18 @@ function skillMix(args: string[]) {
   }
   console.log(`## 11 枚混在: スキルあり・2 手読み同士・${games} 局（カードは両者とも ${pool.length} 枚から 1 枚）`);
   console.log(`先手勝率 ${pct(first, games)}・平均手数 ${avg(plies)}`);
-  console.log("| カード | 局数 | 勝率（持った側） |");
-  console.log("|---|---|---|");
+  console.log("| カード | 局数 | 勝率（持った側） | シミュレーター（対ほかの 10 枚） |");
+  console.log("|---|---|---|---|");
   for (const id of pool) {
     const c = card[id];
-    if (c) console.log(`| ${SKILLS[id].name} | ${c.n} | ${pct(c.won, c.n)} |`);
+    if (c) console.log(`| ${SKILLS[id].name} | ${c.n} | ${pct(c.won, c.n)} | ${SIM_MIX[id]}% |`);
   }
   console.log(
     `運命の輪 ${x.wheel} 回（不発 ${pct(x.fizzle, x.wheel)}）・連続行動 ${x.fool} 回（2 手目 ${x.foolSecond}、2 手目で決着 ${x.foolEnd2}）・` +
-      `巻き戻し ${x.judge} 回（戻した手 平均 ${x.judge ? (x.judgeBack / x.judge).toFixed(1) : "—"}）・偵察 特定 ${x.scoutFind} 回 / ゲージ半分 ${x.scoutDrain} 回`,
+      `巻き戻し ${x.judge} 回（戻した手 平均 ${x.judge ? (x.judgeBack / x.judge).toFixed(1) : "—"}）・偵察 王 ${x.scoutFind} 回 / 副将 ${x.scoutVice} 回`,
+  );
+  console.log(
+    `副将を返した ${(x.viceHit / games).toFixed(2)} 回/局（うち特定済み ${(x.viceScouted / games).toFixed(2)}）・終局時に期限の自動で決まっていた副将 ${x.viceAuto}`,
   );
 }
 

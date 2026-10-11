@@ -124,11 +124,11 @@ describe("既定（標準）と共有済みの URL の互換", () => {
 
 describe("ルールカードの文言", () => {
   const card = (id: string) => ruleLines(PRESETS.find((p) => p.id === id)!.rules).map(sentenceText);
-  it("プリセットは 3〜5 行（方向駒は方向の 1 行が増えて 6 行、拠点・標準は端の駒の 1 行が増えて 7 行、スキルありはさらに 1 行で 8 行）", () => {
+  it("プリセットは 3〜5 行（方向駒は方向の 1 行が増えて 6 行、拠点・標準は端の駒の 1 行が増えて 7 行、スキルありはスキルと副将の 2 行で 9 行）", () => {
     expect(ruleLines(rulesOf("dir"))).toHaveLength(6);
     expect(ruleLines(rulesOf("anchor"))).toHaveLength(7);
     expect(ruleLines(rulesOf("std"))).toHaveLength(7);
-    expect(ruleLines(rulesOf("skill"))).toHaveLength(8);
+    expect(ruleLines(rulesOf("skill"))).toHaveLength(9);
     for (const p of PRESETS.filter((p) => !["dir", "anchor", "std", "skill"].includes(p.id))) {
       const n = ruleLines(p.rules).length;
       expect(n).toBeGreaterThanOrEqual(3);
@@ -175,23 +175,34 @@ describe("ルールカードの文言", () => {
       "体力が 0 で負け 先手 129・後手 130 から",
     ]);
   });
-  it("スキルあり: 標準の行の後にスキルの 1 行。詳細にゲージと 11 枚の効果", () => {
-    expect(card("skill")).toEqual([...card("std").slice(0, 6), "ゲージが満タンでスキルを使う 配られた3枚から1枚を選ぶ。返した枚数と受けたダメージで溜まる", card("std")[6]]);
+  it("スキルあり: 標準の行の後にスキルと副将の 1 行ずつ。詳細にゲージ・副将と 11 枚の効果", () => {
+    expect(card("skill")).toEqual([
+      ...card("std").slice(0, 6),
+      "ゲージが満タンでスキルを使う 配られた3枚から1枚を選ぶ。返した枚数と受けたダメージで溜まる",
+      "副将を返されたら体力−15 王を決めた後、7手以内に自分の駒を1つ副将にする。相手に見えない",
+      card("std")[6],
+    ]);
     const details = ruleDetails(rulesOf("skill")).map(sentenceText).join("\n");
     expect(details).toContain("1 手で 1 枚 +1・2 枚 +2・3 枚 +4・4 枚以上 +7。受けたダメージ 1 点ごとに +0.15");
     expect(details).toContain(
-      "偵察: 相手の王の場所が自分にだけ分かる 相手が最初の7手を打ち終えてから使える。その王を返すまで罰が 2 倍の体力−60。王が分かった後は相手のゲージを半分にする",
+      "偵察: 相手の王の場所が自分にだけ分かる 相手が最初の7手を打ち終えてから使える。その王を返すまで罰が 2 倍。その後は相手の今の副将が分かり、返すまで罰が 2 倍。タロットの隠者。ゲージ 36・溜めマス 4",
     );
-    expect(details).toContain("補充: 減った駒を 1 つ駒台に戻す 始めの数より減った駒ならどれでも。タロットの節制。ゲージ 56・溜めマス 4");
-    expect(details).toContain("連続行動: この手番に 2 手続けて打てる 2 手目のダメージは半分。小数は切り捨て。タロットの愚者。ゲージ 36・溜めマス 4");
+    expect(details).toContain("副将: 王を決めた後、自分の手で 7 手以内に盤の自分の駒を 1 つ副将にする 王の駒は選べない。相手には見えない。7 手目までに決めなければ、その手で置いた駒が副将になる");
+    expect(details).toContain("副将を返されたら体力 −15 通常のダメージに加えて減る。王と同じ手なら両方。返されたら、また 7 手以内に次の副将を決める");
+    expect(details).toContain("補充: 減った駒を 1 つ駒台に戻す 始めの数より減った駒ならどれでも。タロットの節制。ゲージ 48・溜めマス 4");
+    expect(details).toContain("連続行動: この手番に 2 手続けて打てる 2 手目のダメージは半分。小数は切り捨て。タロットの愚者。ゲージ 42・溜めマス 4");
     expect(details).toContain(
       "運命の輪: 8 枚のどれかの効果が出る 応急手当・大回復・強打・全方向・補充・鉄壁・偵察・王の移し替えから同じ確率。その場で使えない効果は不発。タロットの運命の輪。ゲージ 36・溜めマス 4",
     );
     expect(details).toContain("巻き戻し: 自分の直前の手と相手の応手を戻す 戻した局面から打ち直す。相手の王の指定は残る。タロットの審判。ゲージ 30・溜めマス 4");
     expect(details).toContain("鉄壁: 相手の次の手のダメージが半分 駒は返る。小数は切り捨て");
     expect(details).toContain("大回復: 体力を 10 回復 始めの体力は超えない。タロットの女帝。ゲージ 80・溜めマス 12");
-    // 隠し王なしなら偵察・王の移し替えは出さない
-    expect(ruleDetails(rulesOf("skill", { king: { on: false, penalty: "hp", amount: 20, deadline: 5 } })).map(sentenceText).join("")).not.toContain("偵察");
+    // 隠し王なしなら偵察・王の移し替え・副将は出さない
+    const noKing = rulesOf("skill", { king: { on: false, penalty: "hp", amount: 20, deadline: 5 } });
+    expect(ruleDetails(noKing).map(sentenceText).join("")).not.toContain("偵察");
+    expect([...ruleLines(noKing), ...ruleDetails(noKing)].map(sentenceText).join("")).not.toContain("副将");
+    // スキルなしのルールにも副将は出さない
+    expect([...ruleLines(rulesOf("std")), ...ruleDetails(rulesOf("std"))].map(sentenceText).join("")).not.toContain("副将");
   });
   it("取る＋強さ制限は「取れない」", () => {
     expect(ruleLines(rulesOf("v10", { gate: true })).map(sentenceText)).toContain("強い駒を含む列は取れない 置いた駒より数字が大きい駒を含む列");

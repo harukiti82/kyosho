@@ -1,8 +1,8 @@
-// スキルを持つ CPU。使うか・どう使うか（chooseSkillUse）と、スキル込みの 2 手読み（skillLookahead）。
+// スキルを持つ CPU。使うか・どう使うか（chooseSkillUse）と、スキル込みの 2 手読み（skillLookahead）、副将の決め方（chooseVice）。
 // リポジトリ外のシミュレーター（kyosho-skillsim の sim.ts の plan / lookahead）の規則を写したもの。
 // スキルなしの対局では使わない（cpu.ts の手は変わらない）。乱数は引数で受ける。
 
-import { applyLines, damageOf, emptyCells, healOf, pieceLines, rawLines, SIZE, targetsOf, type Cell } from "./board";
+import { applyLines, damageOf, emptyCells, healOf, pieceLines, rawLines, SIZE, targetsOf, type Cell, type Line } from "./board";
 import {
   armedEffect,
   attackable,
@@ -11,8 +11,8 @@ import {
   kingMoveCells,
   moveRules,
   refillKinds,
-  scoutMode,
   skillBlock,
+  viceCells,
   type MoveEvent,
   type PlayerView,
 } from "./game";
@@ -22,12 +22,13 @@ import {
   gaugeMax,
   GAUGE_UNIT,
   isZone,
-  drainGauge,
+  SCOUT_PENALTY_RATE,
   secondDamage,
   shieldDamage,
   SKILL_HEAL,
   SKILLS,
   strongDamage,
+  VICE_PENALTY,
   type SkillId,
   type SkillUse,
 } from "./skills";
@@ -51,8 +52,6 @@ const GAUGE_VALUE: Record<SkillId, number> = {
 const THRESHOLD = { omni: 2, strong: 6, wall: 6, kingmove: 1, fool: 6 } as const;
 /** 巻き戻しは、自分の前の手の後に相手の応手で受けた体力の減りがこれ以上のときに使う（sim.ts の JTH） */
 export const JUDGE_TAKEN = 15;
-/** 偵察の 2 回目以降（相手のゲージを半分）は、減らせる量が相手のゲージの長さのこの割合以上のときに使う（sim.ts の SC2TH） */
-const DRAIN_NEED = 0.3;
 /** 回復は、足りない体力が効果の量のこの割合以上のときに使う */
 const HEAL_NEED = 0.6;
 /** 補充は、戻す駒の数字のこの倍を得点に足して比べる */
@@ -95,6 +94,44 @@ function penaltyOf(view: PlayerView, victim: Player): number {
   return king.penalty === "lose" ? Math.max(1, view.hp[victim]) : king.amount;
 }
 
+/**
+ * 相手の副将を返したときの罰の見込み（sim.ts の viceKnown）: 偵察で特定していればそのマスに罰 2 倍、
+ * 決まっていると分かっていれば相手の駒（偵察で分かった王を除く）1 つごとに罰 ÷ 駒の数。決まっていなければなし
+ */
+function oppViceHint(view: PlayerView): { cells: Set<number>; pen: number } {
+  const ov = view.oppVice;
+  if (!ov.set) return { cells: new Set(), pen: 0 };
+  if (ov.scouted && ov.cell) return { cells: new Set([key(ov.cell[0], ov.cell[1])]), pen: VICE_PENALTY * SCOUT_PENALTY_RATE };
+  const q = other(view.turn);
+  const ok = view.oppKing;
+  const kc = ok.scouted && !ok.revealed ? key(ok.candidates[0][0], ok.candidates[0][1]) : -1;
+  const cells = new Set<number>();
+  for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) if (view.board[r][c]?.owner === q && key(r, c) !== kc) cells.add(key(r, c));
+  return { cells, pen: cells.size > 0 ? VICE_PENALTY / cells.size : 0 };
+}
+
+/** bestReply の score に、返されるマス（自分の王・副将）ごとの罰を足したもの（sim.ts の bestReply2） */
+function bestReplyPens(view: PlayerView, board: PlayerView["board"], q: Player, pens: { cell: Cell; penalty: number }[]): { damage: number; score: number } {
+  const { rules } = view;
+  let damage = 0;
+  let score = 0;
+  for (const [r, c] of emptyCells(board)) {
+    const raw = rawLines(board, r, c, q, rules.values);
+    if (raw.length === 0) continue;
+    for (const k of availableKinds(view.hands[q])) {
+      const lines = pieceLines(raw, k, rules);
+      if (lines.length === 0) continue;
+      const d = damageOf(board, lines, rules);
+      damage = Math.max(damage, d);
+      const ts = targetsOf(lines);
+      let pen = 0;
+      for (const e of pens) if (ts.some(([y, x]) => y === e.cell[0] && x === e.cell[1])) pen += e.penalty;
+      score = Math.max(score, d + healOf(lines, rules.values[k], rules) + pen);
+    }
+  }
+  return { damage, score };
+}
+
 /** cpu.ts の lookaheadCandidates に、スキルの what-if とゲージの価値を足したもの */
 function lookahead(view: PlayerView, o: Opt = {}): { best: number; cands: Choice[] } {
   const { rules, board } = view;
@@ -109,6 +146,11 @@ function lookahead(view: PlayerView, o: Opt = {}): { best: number; cands: Choice
   const oppPenalty = oc.size > 0 ? penaltyOf(view, q) / oc.size : 0;
   const myPenalty = rules.king.on ? penaltyOf(view, p) : 0;
   const allRules = { ...rules, dirs: "all" as const };
+  // 副将: 相手の副将を返す見込みと、自分の副将を返される危険（相手が場所を知っているとみなす。偵察されていれば 2 倍）
+  const vk = oppViceHint(view);
+  const mv = view.myVice;
+  const myVicePen = mv.cell ? { cell: mv.cell, penalty: VICE_PENALTY * (mv.seen ? SCOUT_PENALTY_RATE : 1) } : null;
+  const viceHits = (ls: Line[]) => ls.reduce((n, l) => n + l.cells.filter(([y, x]) => vk.cells.has(key(y, x))).length, 0);
   let best = -Infinity;
   let cands: Choice[] = [];
   for (const [r, c] of emptyCells(board)) {
@@ -125,6 +167,7 @@ function lookahead(view: PlayerView, o: Opt = {}): { best: number; cands: Choice
       let own = d + healOf(lines, rules.values[kind], rules);
       const hits = (ls: typeof lines) => ls.reduce((n, l) => n + l.cells.filter(([y, x]) => oc.has(key(y, x))).length, 0);
       if (oppPenalty > 0) own += oppPenalty * (o.penMul ?? 1) * hits(lines);
+      if (vk.pen > 0) own += vk.pen * viceHits(lines);
       if (card && o.gaugeW && o.room && o.room > 0) {
         const ts = targetsOf(lines);
         const zoneHits = (isZone(r, c) ? 1 : 0) + ts.filter(([y, x]) => isZone(y, x)).length;
@@ -145,7 +188,11 @@ function lookahead(view: PlayerView, o: Opt = {}): { best: number; cands: Choice
           for (const k2 of availableKinds(h2)) {
             const l2 = pieceLines(raw2, k2, rules);
             if (l2.length === 0) continue;
-            const s2 = secondDamage(damageOf(next, l2, rules)) + healOf(l2, rules.values[k2], rules) + (oppPenalty > 0 ? oppPenalty * hits(l2) : 0);
+            const s2 =
+              secondDamage(damageOf(next, l2, rules)) +
+              healOf(l2, rules.values[k2], rules) +
+              (oppPenalty > 0 ? oppPenalty * hits(l2) : 0) +
+              (vk.pen > 0 ? vk.pen * viceHits(l2) : 0);
             if (s2 > b2) {
               b2 = s2;
               after = applyLines(next, p, r2, c2, k2, l2, rules);
@@ -157,7 +204,9 @@ function lookahead(view: PlayerView, o: Opt = {}): { best: number; cands: Choice
           next = after;
         }
       }
-      const br = bestReply(rules, next, oppHand, q, myKing ? { cell: myKing, penalty: myPenalty } : undefined);
+      const br = myVicePen
+        ? bestReplyPens(view, next, q, [...(myKing ? [{ cell: myKing, penalty: myPenalty }] : []), myVicePen])
+        : bestReply(rules, next, oppHand, q, myKing ? { cell: myKing, penalty: myPenalty } : undefined);
       const reply = o.shield ? br.score - (br.damage - shieldDamage(br.damage)) : br.score;
       const s = own - reply;
       if (s > best) {
@@ -270,7 +319,7 @@ function takenSinceMyMove(view: PlayerView): number {
 
 /**
  * 手番の CPU がこの手番の頭でスキルを使うなら、その指定。使わない・使えないなら null。
- * 回復は足りない体力が効果の 6 割以上、偵察は特定できればいつも（2 回目以降は相手のゲージを十分減らせるとき）、
+ * 回復は足りない体力が効果の 6 割以上、偵察は使えればいつも（王を特定・その後は副将を特定）、
  * 運命の輪は満タンならいつも、巻き戻しは相手の応手で JUDGE_TAKEN 以上減ったとき、ほかは使ったときの読みの得点が使わないときより閾値以上よいとき。
  * 運命の輪で補充・王の移し替えが出て指定を待っているなら、その指定を返す
  */
@@ -279,7 +328,6 @@ export function chooseSkillUse(view: PlayerView, rng: () => number): SkillUse | 
   if (sk?.armed?.aim) return wheelAim(view, rng);
   if (skillBlock(view)) return null;
   const p = view.turn;
-  const q = other(p);
   const id = sk!.sides[p].card!;
   const gw = gaugeWeight(id);
   const normal = lookahead(view, { gaugeW: gw, room: 0 });
@@ -302,12 +350,9 @@ export function chooseSkillUse(view: PlayerView, rng: () => number): SkillUse | 
       return better({ strong: true }, THRESHOLD.strong) ? { id } : null;
     case "wall":
       return better({ shield: true }, THRESHOLD.wall) ? { id } : null;
-    case "scout": {
-      if (scoutMode(view) === "find") return { id };
-      const side = sk!.sides[q];
-      const cut = side.gauge - drainGauge(side.gauge);
-      return side.card && cut >= DRAIN_NEED * gaugeMax(side.card) ? { id } : null;
-    }
+    case "scout":
+      // 王を特定できるなら王、王が分かった・返した後は相手の今の副将（使えるならいつも）
+      return { id };
     case "kingmove": {
       // 今の王が次の手で返されうるときだけ、返されない駒へ（盤の端・隅を優先）
       const t = kingMoveTarget(view, rng);
@@ -332,4 +377,24 @@ function wheelAim(view: PlayerView, rng: () => number): SkillUse {
     return { id: "wheel", kind: best!.kind };
   }
   return { id: "wheel", to: kingMoveTarget(view, rng)!.to };
+}
+
+/**
+ * 副将を決めるなら、そのマス（sim.ts の viceDesignate の safe 方針）。決める期間の手番の頭に呼ぶ（連続行動の 2 手目は決めない）。
+ * 期限が近いほど高い確率（1 ÷ 期限までの残りの手数）で、次の相手の手で返されない駒（なければ全部）のうち盤の端・隅の駒から選ぶ
+ */
+export function chooseVice(view: PlayerView, rng: () => number): Cell | null {
+  const v = view.myVice;
+  if (v.status !== "unset" || view.result || view.skills?.second) return null;
+  if (rng() >= 1 / v.left) return null;
+  const pieces = viceCells(view);
+  if (pieces.length === 0) return null;
+  const q = other(view.turn);
+  const threatened = new Set(attackable(view.rules, view.board, view.hands[q], q).map(([y, x]) => key(y, x)));
+  const safe = pieces.filter(([y, x]) => !threatened.has(key(y, x)));
+  const pool = safe.length > 0 ? safe : pieces;
+  const edge = ([y, x]: Cell) => (y === 0 || y === SIZE - 1 ? 1 : 0) + (x === 0 || x === SIZE - 1 ? 1 : 0);
+  const most = Math.max(...pool.map(edge));
+  const top = pool.filter((c) => edge(c) === most);
+  return top[Math.floor(rng() * top.length)];
 }
