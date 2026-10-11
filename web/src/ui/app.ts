@@ -1570,6 +1570,13 @@ export class App {
       this.seenEvents = Math.min(this.seenEvents, m.view.history.length);
       // 運命の輪の指定（補充の駒・王の移し替えの先）が通った。演出はないので、ここで次の操作を受ける
       if (before?.armed?.aim && !after?.armed?.aim) this.sending = false;
+      // 副将の指定が通った（決めた人にだけ届く）。演出はないので、ここで次の操作を受ける
+      const vice = m.view.myVice;
+      if ((prev as unknown as PlayerView).myVice?.status !== "set" && vice.status === "set" && vice.cell) {
+        this.sending = false;
+        const piece = m.view.board[vice.cell[0]][vice.cell[1]];
+        if (piece) this.showToast(`${cellName(vice.cell[0], vice.cell[1])} の${pieceLabel(m.view.rules, piece.kind)}を副将にしました。${this.foe()}には見えません`);
+      }
       if (after?.armed && !before?.armed && !m.view.result) {
         // スキルを使った（自分の送った分の返事か、相手）。演出の後に打てる
         this.sending = false;
@@ -1698,6 +1705,7 @@ export class App {
       game_over: "対局はもう終わっています",
       illegal_move: `その手は打てません。${m.message}`,
       illegal_skill: `そのスキルは使えません。${m.message}`,
+      illegal_vice: `その駒は副将にできません。${m.message}`,
       opponent_left: "相手が退室しました",
     };
     this.showToast(text[m.code] ?? m.message);

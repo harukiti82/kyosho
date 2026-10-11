@@ -7,7 +7,7 @@
 
 import { expect, test, type APIRequestContext, type Browser, type TestInfo } from "@playwright/test";
 import type { Cell } from "../../src/engine/board";
-import { legalCells, playableKinds, targetsAt, type GameState } from "../../src/engine/game";
+import { legalCells, movesBy, playableKinds, targetsAt, type GameState } from "../../src/engine/game";
 import type { PieceKind, Player as Seat } from "../../src/engine/rules";
 import { gaugeMax, SKILLS, type SkillId } from "../../src/engine/skills";
 import type { CreateRoomResponse, StateMessage } from "../../src/net/protocol";
@@ -539,4 +539,55 @@ test("運命の輪: 引いた効果が両者の演出に出て、棋譜に残る
     await synced(mover, other);
   }
   expect(spun).toBe(true);
+});
+
+test("副将: 決めた人にだけ届き、相手には場所も決めた時期も届かない（相手の王の期限の後は、決めたことだけ）", async ({ browser }, info) => {
+  const pre = prefix(info);
+  const host = await newPlayer(browser, info, "host");
+  const guest = await newPlayer(browser, info, "guest");
+  const url = await createRoomFromSetup(host, "skill", "first");
+  await joinFromInvite(guest, url);
+  await waitPlaying(host, guest);
+  await pickCard(host, preferred(offerOf(host)));
+  await pickCard(guest, preferred(offerOf(guest)));
+  for (const p of [host, guest]) await expect(p.page.locator("#skill-pick")).toBeHidden();
+  // 両者とも最初の手で王を決める
+  await move(host, null, true);
+  await synced(host, guest);
+  await move(guest, null, true);
+  await synced(guest, host);
+  // 作成者（先手）が副将を決める。届くのは作成者にだけ
+  await expect(host.page.locator(".board.acting")).toBeVisible();
+  await expect(host.page.locator("#vice-toggle .king-cap")).toHaveText("あと7手");
+  const seen = statesOf(guest).length;
+  await tap(host, "#vice-toggle");
+  const target = host.page.locator(".cell.skill-target").first();
+  const at = await target.evaluate((c) => [Number((c as HTMLElement).dataset.r), Number((c as HTMLElement).dataset.c)] as [number, number]);
+  await tap(host, ".cell.skill-target");
+  await expect.poll(() => host.last!.view.myVice.status).toBe("set");
+  expect(host.last!.view.myVice.cell).toEqual(at);
+  await expect(host.page.locator(`.cell[data-r="${at[0]}"][data-c="${at[1]}"] .vice-mark`)).toBeVisible();
+  await expect(host.page.locator("#player-0 .vice-tag")).not.toHaveClass(/unset/);
+  await host.page.screenshot({ path: `${SHOT}/${pre}-online-skill-vice.png` });
+  await host.page.waitForTimeout(300);
+  expect(statesOf(guest).length).toBe(seen);
+  await expect(guest.page.locator(".vice-mark")).toHaveCount(0);
+  // 作成者が王の期限（7 手）を打ち終えるまで打つ
+  for (let i = 0; i < 12 && movesBy(host.last!.view, 0) < 7 && !host.last!.view.result; i++) {
+    const mover = moverOf(host, guest);
+    await move(mover);
+    await synced(mover, mover === host ? guest : host);
+  }
+  // 参加者に届いた state には、作成者の副将の場所はない。作成者が 7 手を打つ前（王が返されていなければ）は、決めたかどうかも出ない
+  for (const m of statesOf(guest)) {
+    expect(m.view.oppVice.cell).toBeNull();
+    expect(m.view.oppVice.scouted).toBe(false);
+    if (movesBy(m.view, 0) < 7 && !m.view.oppKing.revealed) expect(m.view.oppVice.set).toBe(false);
+  }
+  for (const f of guest.frames) expect(f).not.toContain('"kings"');
+  // 副将を返されていなければ、7 手の後は「?」
+  if (host.last!.view.myVice.status === "set" && movesBy(host.last!.view, 0) >= 7) {
+    await expect.poll(() => guest.last!.view.oppVice.set).toBe(true);
+    await expect(guest.page.locator("#player-0 .vice-tag.unknown, #player-1 .vice-tag.unknown")).toHaveCount(1);
+  }
 });
