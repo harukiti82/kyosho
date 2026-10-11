@@ -50,6 +50,69 @@ async function playPlies(room: Awaited<ReturnType<typeof startedRoom>>, start: [
   return last;
 }
 
+describe("配り直し", () => {
+  it("選ぶ前に 1 回だけ。新しい 3 枚は前の 3 枚と重ならず、送り主にだけ届く（相手には何も届かない）。2 回目は拒否", async () => {
+    const room = await startedRoom(SKILL);
+    const before = room.hostState.view.skills!.sides[0].offer;
+    const raw = room.guest.raw.length;
+    room.host.send({ type: "reroll" });
+    const h1 = await room.host.expect("state");
+    const after = h1.view.skills!.sides[0].offer;
+    expect(after).toHaveLength(3);
+    for (const id of after) expect(before).not.toContain(id);
+    expect(h1.view.skills!.sides[0].rerolled).toBe(true);
+    // 相手には state も届かない（配り直したことを知らせない）
+    expect(await room.guest.quiet(200)).toBe(true);
+    expect(room.guest.raw.length).toBe(raw);
+    // 2 回目・形の違う送信
+    room.host.send({ type: "reroll" });
+    await room.host.expectError("illegal_skill");
+    expect((await stored(room.roomId)).game.skills!.sides[0].offer).toEqual(after);
+    // 前の 3 枚は選べず、新しい 3 枚から選べる
+    room.host.send({ type: "pick", card: before[0] });
+    await room.host.expectError("illegal_skill");
+    room.host.send({ type: "pick", card: after[1] });
+    const [h2, g2] = await Promise.all([room.host.expect("state"), room.guest.expect("state")]);
+    expect(h2.view.skills!.sides[0].card).toBe(after[1]);
+    // 相手の view と生の通信には、配り直したかも前の 3 枚・新しい 3 枚も出ない
+    expect(g2.view.skills!.sides[0]).toEqual({ offer: [], card: null, gauge: 0 });
+    for (const text of room.guest.raw) expect(text).not.toContain("rerolled");
+    // 選んだ後は配り直せない
+    room.host.send({ type: "reroll" });
+    await room.host.expectError("illegal_skill");
+  });
+
+  it("相手が先に選んだ後でも配り直せる。選び終えた後は相手のカードだけが見え、配り直したかは見えない", async () => {
+    const room = await startedRoom(SKILL);
+    room.guest.send({ type: "pick", card: room.guestState.view.skills!.sides[1].offer[0] });
+    await Promise.all([room.host.expect("state"), room.guest.expect("state")]);
+    room.host.send({ type: "reroll" });
+    const h1 = await room.host.expect("state");
+    expect(await room.guest.quiet(200)).toBe(true);
+    room.host.send({ type: "pick", card: h1.view.skills!.sides[0].offer[0] });
+    const [h2, g2] = await Promise.all([room.host.expect("state"), room.guest.expect("state")]);
+    expect(h2.view.skills!.ready).toBe(true);
+    expect(g2.view.skills!.sides[0]).toEqual({ offer: [], card: h1.view.skills!.sides[0].offer[0], gauge: 0 });
+    for (const text of room.guest.raw) expect(text).not.toContain("rerolled");
+    // 両者が選んだ後は配り直せない
+    room.guest.send({ type: "reroll" });
+    await room.guest.expectError("illegal_skill");
+  });
+
+  it("配り直した後に再接続しても、新しい 3 枚と配り直し済みが残る。スキルなしの部屋では拒否", async () => {
+    const room = await startedRoom(SKILL);
+    room.host.send({ type: "reroll" });
+    const h1 = await room.host.expect("state");
+    room.host.close();
+    const again = await Client.join(room.roomId, room.hostToken);
+    expect(again.state.view.skills!.sides[0]).toMatchObject({ offer: h1.view.skills!.sides[0].offer, rerolled: true });
+    again.client.close();
+    const plain = await startedRoom("std");
+    plain.host.send({ type: "reroll" });
+    await plain.host.expectError("illegal_skill");
+  });
+});
+
 describe("スキルのカード", () => {
   it("部屋の対局で 3 枚ずつ配り、自分の分だけが届く。選び終えるまで手を受けず、相手の選んだカードは見せない", async () => {
     const room = await startedRoom(SKILL);

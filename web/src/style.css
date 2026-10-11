@@ -4681,6 +4681,26 @@ button.tarot:focus-visible {
 .pick-detail p {
   margin: 0;
 }
+/* 配り直し（1 局 1 回）: 見出しの行の右端の小さい鍵。使った後は沈めて押せない */
+.btn.pick-reroll {
+  margin-left: auto;
+  min-height: 2rem;
+  padding: 0.2rem 0.75rem;
+  font-size: 0.78rem;
+}
+@media (pointer: coarse) {
+  .btn.pick-reroll {
+    min-height: 2.5rem;
+  }
+}
+.btn.pick-reroll:disabled,
+.btn.pick-reroll:disabled:hover {
+  background: var(--surface-2);
+  color: var(--ink-dim);
+  box-shadow: none;
+  opacity: 0.55;
+  cursor: default;
+}
 
 /* 名札のスキル: 番号・名前・斜めに切ったゲージ・残り（満タンは白く光る）。手番で使えるときは白い板に反転して押せる */
 .plate-skill {

@@ -824,7 +824,7 @@ const emptySide = (): SkillSide => ({ offer: [], card: null, gauge: 0 });
 const newSkills = (): SkillsState => ({ sides: [emptySide(), emptySide()], ready: false, armed: null, shielded: [false, false] });
 
 /**
- * viewer に見せるスキルの状態。相手の配られたカードは見せず、相手の選んだカードは両者が選び終えるまで見せない。
+ * viewer に見せるスキルの状態。相手の配られたカード・配り直したかは見せず、相手の選んだカードは両者が選び終えるまで見せない。
  * 巻き戻しで戻す局面（undo。王を含む）は消し、戻せるか（undoable）だけを見せる
  */
 function skillsFor(sk: SkillsState, viewer: Player): SkillsState {
@@ -844,20 +844,43 @@ export const skillPool = (rules: RuleSet): SkillId[] =>
 /** 運命の輪が引く効果（運命の輪を除く 10 枚。隠し王なしのルールでは偵察・王の移し替えも除く） */
 export const wheelPool = (rules: RuleSet): WheelEffect[] => skillPool(rules).filter((id): id is WheelEffect => id !== "wheel");
 
+/** pool から OFFER_SIZE 枚を重ならずに引く（pool の並びで rng を OFFER_SIZE 回使う） */
+function drawOffer(pool: SkillId[], rng: () => number): SkillId[] {
+  for (let i = 0; i < Math.min(OFFER_SIZE, pool.length); i++) {
+    const j = i + Math.min(pool.length - i - 1, Math.floor(rng() * (pool.length - i)));
+    [pool[i], pool[j]] = [pool[j], pool[i]];
+  }
+  return pool.slice(0, OFFER_SIZE);
+}
+
 /** 両者に OFFER_SIZE 枚ずつ配る（各自のカードは重ならない。両者の間では重なってよい）。スキルなし・配り済みなら例外 */
 export function dealSkills(state: GameState, rng: () => number): GameState {
   const sk = state.skills;
   if (!sk) throw new Error("スキルなしのルールです");
   if (sk.sides.some((s) => s.offer.length > 0 || s.card)) throw new Error("もう配りました");
-  const deal = (): SkillId[] => {
-    const pool = skillPool(state.rules);
-    for (let i = 0; i < Math.min(OFFER_SIZE, pool.length); i++) {
-      const j = i + Math.min(pool.length - i - 1, Math.floor(rng() * (pool.length - i)));
-      [pool[i], pool[j]] = [pool[j], pool[i]];
-    }
-    return pool.slice(0, OFFER_SIZE);
-  };
+  const deal = () => drawOffer(skillPool(state.rules), rng);
   const sides: [SkillSide, SkillSide] = [{ ...sk.sides[0], offer: deal() }, { ...sk.sides[1], offer: deal() }];
+  return { ...state, skills: { ...sk, sides } };
+}
+
+/** p が配り直しを使えないなら理由、使えるなら null（選ぶ前に 1 局 1 回） */
+export function rerollBlock(sk: SkillsState | undefined, p: Player): "off" | "picked" | "rerolled" | null {
+  if (!sk || sk.sides[p].offer.length === 0) return "off";
+  if (sk.ready || sk.sides[p].card) return "picked";
+  return sk.sides[p].rerolled ? "rerolled" : null;
+}
+
+/**
+ * p が配られた 3 枚を配り直す（選ぶ前に 1 局 1 回）。新しい 3 枚は、配られていた 3 枚を除いた残りから引く（同じ札は戻らず、前の 3 枚にも戻れない）。
+ * 乱数は引数（画面は crypto、サーバーは crypto）。配り直したことは相手に見せない（viewFor が消す）。使えないなら例外
+ */
+export function rerollSkills(state: GameState, p: Player, rng: () => number): GameState {
+  const block = rerollBlock(state.skills, p);
+  if (block) throw new Error(block === "rerolled" ? "配り直しは 1 回までです" : block === "picked" ? "もう選びました" : "配られていません");
+  const sk = state.skills!;
+  const old = sk.sides[p].offer;
+  const sides: [SkillSide, SkillSide] = [sk.sides[0], sk.sides[1]];
+  sides[p] = { ...sides[p], offer: drawOffer(skillPool(state.rules).filter((id) => !old.includes(id)), rng), rerolled: true };
   return { ...state, skills: { ...sk, sides } };
 }
 

@@ -81,6 +81,8 @@ export function parseClientMessage(data: string | ArrayBuffer): Parsed {
     case "pick":
       if (typeof x.card !== "string" || !Object.hasOwn(SKILLS, x.card)) return bad("card がスキルではありません");
       return { ok: true, msg: { type: "pick", card: x.card as SkillId } };
+    case "reroll":
+      return { ok: true, msg: { type: "reroll" } };
     case "skill": {
       if (typeof x.id !== "string" || !Object.hasOwn(SKILLS, x.id)) return bad("id がスキルではありません");
       if (x.kind !== undefined && (typeof x.kind !== "string" || !Object.hasOwn(PIECES, x.kind))) return bad("kind が駒の種類ではありません");
@@ -102,6 +104,6 @@ export function parseClientMessage(data: string | ArrayBuffer): Parsed {
     case "leave":
       return { ok: true, msg: { type: "leave" } };
     default:
-      return bad("type は join / move / pick / skill / rematch / leave です");
+      return bad("type は join / move / pick / reroll / skill / rematch / leave です");
   }
 }

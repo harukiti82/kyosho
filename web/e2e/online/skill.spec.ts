@@ -498,6 +498,42 @@ test("巻き戻しと連続行動: 2 手目は同じ人の番（相手の画面�
   }
 });
 
+test("配り直し: 相手が先に選んだ後でも 1 回だけ配り直せる。新しい 3 枚は自分にだけ届き、相手には何も届かない", async ({ browser }, info) => {
+  const pre = prefix(info);
+  const host = await newPlayer(browser, info, "host");
+  const guest = await newPlayer(browser, info, "guest");
+  const url = await createRoomFromSetup(host, "skill", "first");
+  await joinFromInvite(guest, url);
+  await waitPlaying(host, guest);
+  // 参加者が先に選ぶ
+  await pickCard(guest, preferred(offerOf(guest)));
+  await expect(guest.page.locator("#skill-pick .pick-who")).toHaveText("相手が選んでいます");
+  await expect(guest.page.locator("#skill-pick-reroll")).toHaveCount(0);
+  const before = offerOf(host);
+  const seen = guest.frames.length;
+  const reroll = host.page.locator("#skill-pick-reroll");
+  await expect(reroll).toBeEnabled();
+  await tap(host, "#skill-pick-reroll");
+  await expect.poll(() => host.last!.view.skills!.sides[host.last!.you].rerolled).toBe(true);
+  const after = offerOf(host);
+  expect(after).toHaveLength(3);
+  for (const id of after) expect(before).not.toContain(id);
+  const ids = () => host.page.locator("#skill-pick .tarot").evaluateAll((cs) => cs.map((c) => (c as HTMLElement).dataset.skill));
+  await expect.poll(ids).toEqual(after);
+  await expect(reroll).toBeDisabled();
+  await host.page.evaluate(() => document.getAnimations().forEach((a) => a.finish()));
+  if (host.touch) await noHorizontalScroll(host.page, info.project.use.viewport!.width);
+  await host.page.screenshot({ path: `${SHOT}/${pre}-online-skill-pick-reroll.png` });
+  // 相手には state が届かない（配り直したことを知らせない）
+  await host.page.waitForTimeout(500);
+  expect(guest.frames.slice(seen).filter((f) => f.includes('"type":"state"'))).toEqual([]);
+  // 新しい 3 枚から選んで始まる。相手の受け取った通信には配り直したかも前の 3 枚も出ない
+  await pickCard(host, preferred(after));
+  for (const p of [host, guest]) await expect(p.page.locator("#skill-pick")).toBeHidden();
+  expect(statesOf(guest).at(-1)!.view.skills!.sides[0].card).toBe(preferred(after));
+  for (const f of guest.frames) expect(f).not.toContain("rerolled");
+});
+
 test("運命の輪: 引いた効果が両者の演出に出て、棋譜に残る（補充・王の移し替えなら選んでから置く。連続行動・巻き戻しも出る）", async ({ browser, request, baseURL }, info) => {
   const pre = prefix(info);
   const { room, seat } = await findRoom(request, baseURL!, "wheel", null);

@@ -12,6 +12,8 @@ import {
   playTimeout,
   previewMove,
   refillKinds,
+  rerollBlock,
+  rerollSkills,
   kingMoveCells,
   setSkills,
   skillBlock,
@@ -23,7 +25,7 @@ import {
   type MoveEvent,
 } from "../src/engine/game";
 import { chooseMove } from "../src/engine/cpu";
-import { chooseSkillUse, viceWith } from "../src/engine/skillcpu";
+import { chooseSkillPick, chooseSkillUse, viceWith, wantsReroll, WEAK_CARDS } from "../src/engine/skillcpu";
 import { NO_KING, type Hand, type PieceKind, type Player } from "../src/engine/rules";
 import { gaugeMax, GAUGE_UNIT, SKILLS, SKILL_ORDER, type SkillId, type SkillsState, type WheelEffect } from "../src/engine/skills";
 import { at, rulesOf } from "./helpers";
@@ -115,6 +117,84 @@ describe("カード", () => {
       const s = dealSkills(createGame(PLAIN), () => (i + 0.5) / 20);
       for (const side of s.skills!.sides) expect(side.offer.filter((id) => id === "scout" || id === "kingmove")).toEqual([]);
     }
+  });
+});
+
+describe("配り直し", () => {
+  const dealt = (rules = rulesOf("skill"), seed = 1) => {
+    let n = seed;
+    return dealSkills(createGame(rules), () => ((n = (n * 7 + 3) % 10), n / 10));
+  };
+  it("選ぶ前に 1 回だけ。新しい 3 枚は前の 3 枚と重ならず、相手の候補は変わらない", () => {
+    for (let i = 0; i < 40; i++) {
+      const s = dealt();
+      const before = s.skills!.sides[0].offer;
+      expect(rerollBlock(s.skills, 0)).toBeNull();
+      const r = rerollSkills(s, 0, () => (i + 0.5) / 40);
+      const after = r.skills!.sides[0].offer;
+      expect(after).toHaveLength(3);
+      expect(new Set(after).size).toBe(3);
+      for (const id of after) expect(before).not.toContain(id);
+      expect(r.skills!.sides[0].rerolled).toBe(true);
+      expect(r.skills!.sides[1]).toEqual(s.skills!.sides[1]);
+      // 2 回目は拒否（前の 3 枚にも戻れない）
+      expect(rerollBlock(r.skills, 0)).toBe("rerolled");
+      expect(() => rerollSkills(r, 0, Math.random)).toThrow("1 回まで");
+      expect(() => pickSkill(r, 0, before[0])).toThrow();
+      // 新しい 3 枚から選べる
+      expect(pickSkill(r, 0, after[2]).skills!.sides[0].card).toBe(after[2]);
+    }
+  });
+  it("新しい 3 枚は残りの 8 枚から引く（十分な回数で 8 枚とも出て、前の 3 枚は出ない）", () => {
+    const s = dealt();
+    const before = s.skills!.sides[0].offer;
+    const seen = new Set<SkillId>();
+    for (let i = 0; i < 400; i++) for (const id of rerollSkills(s, 0, () => ((i * 37) % 400) / 400 + 0.0001).skills!.sides[0].offer) seen.add(id);
+    expect([...seen].sort()).toEqual(SKILL_ORDER.filter((id) => !before.includes(id)).sort());
+    expect(seen.size).toBe(8);
+  });
+  it("隠し王なしのルールでも偵察・王の移し替えは出ない（残り 6 枚から）", () => {
+    for (let i = 0; i < 20; i++) {
+      const r = rerollSkills(dealt(PLAIN), 1, () => (i + 0.5) / 20);
+      expect(r.skills!.sides[1].offer.filter((id) => id === "scout" || id === "kingmove")).toEqual([]);
+    }
+  });
+  it("選んだ後・両者が選んだ後は配り直せない。相手が先に選んでいても自分は配り直せる", () => {
+    let s = dealt();
+    s = pickSkill(s, 1, s.skills!.sides[1].offer[0]);
+    expect(rerollBlock(s.skills, 1)).toBe("picked");
+    expect(() => rerollSkills(s, 1, Math.random)).toThrow();
+    // 相手（後手）が先に選んだ後でも、先手は配り直してから選べる
+    const r = rerollSkills(s, 0, () => 0.5);
+    expect(r.skills!.sides[1].card).toBe(s.skills!.sides[1].card);
+    const done = pickSkill(r, 0, r.skills!.sides[0].offer[0]);
+    expect(done.skills!.ready).toBe(true);
+    expect(rerollBlock(done.skills, 0)).toBe("picked");
+    expect(() => rerollSkills(done, 0, Math.random)).toThrow();
+    // スキルなしのルール・配る前
+    expect(rerollBlock(createGame(rulesOf("std")).skills, 0)).toBe("off");
+    expect(rerollBlock(createGame(rulesOf("skill")).skills, 0)).toBe("off");
+  });
+  it("配り直したか・新しい 3 枚は相手の view に出ない", () => {
+    const s = dealt();
+    const r = rerollSkills(s, 0, () => 0.3);
+    expect(viewFor(r, 1)).toEqual(viewFor(s, 1));
+    expect(viewFor(r, 1).skills!.sides[0]).toEqual({ offer: [], card: null, gauge: 0 });
+    expect(JSON.stringify(viewFor(r, 1))).not.toContain("rerolled");
+    // 本人には見える
+    expect(viewFor(r, 0).skills!.sides[0]).toMatchObject({ rerolled: true, offer: r.skills!.sides[0].offer });
+    // 両者が選び終えた後も、配り直したかは相手に見せない
+    const done = pickSkill(pickSkill(r, 0, r.skills!.sides[0].offer[0]), 1, r.skills!.sides[1].offer[0]);
+    expect(JSON.stringify(viewFor(done, 1))).not.toContain("rerolled");
+  });
+  it("CPU は配られた 3 枚がどれも弱いカードのときだけ配り直す。選ぶのは一様に", () => {
+    expect([...WEAK_CARDS].sort()).toEqual(["bigheal", "firstaid", "judge", "scout", "wall"]);
+    expect(wantsReroll(["judge", "bigheal", "scout"])).toBe(true);
+    expect(wantsReroll(["judge", "bigheal", "strong"])).toBe(false);
+    expect(wantsReroll(["omni", "fool", "wheel"])).toBe(false);
+    expect(wantsReroll([])).toBe(false);
+    const offer: SkillId[] = ["omni", "fool", "wheel"];
+    expect([0, 0.4, 0.99].map((x) => chooseSkillPick(offer, () => x))).toEqual(["omni", "fool", "wheel"]);
   });
 });
 

@@ -8,11 +8,12 @@
 // （先手と後手を交代して）同じルール・同じ制限時間の新しい対局を始める。前の対局の GameState（王を含む）は捨てる。
 // 部屋での通算の戦績は、席でなく人（作成者・参加者）ごとに数える。席は再戦で入れ替わるが、作成者の席 host も一緒に入れ替える。
 // スキルありのルールでは、対局を作るたびに両者へカードを 3 枚ずつ配り（dealSkills）、両者が選ぶ（pick）まで手を受けず時計も止める。
+// 選ぶ前に 1 局 1 回の配り直し（reroll）もここの crypto で引き、新しい view は送り主にだけ送る（配り直したことを相手に知らせない）。
 // スキルの使用（skill）も engine の useSkill で検証する。偵察で分かった王・王の移し替えの先は kings の中だけにあり、viewFor が相手に出さない。
 // 運命の輪の引く効果はここの crypto で決め、巻き戻しで戻す局面（skills.undo。王を含む）も viewFor が消す。
 
 import { DurableObject } from "cloudflare:workers";
-import { createGame, dealSkills, pickSkill, playMove, playTimeout, useSkill, viewFor, type GameState } from "../../web/src/engine/game";
+import { createGame, dealSkills, pickSkill, playMove, playTimeout, rerollSkills, useSkill, viewFor, type GameState } from "../../web/src/engine/game";
 import { other, type Player, type RuleSet } from "../../web/src/engine/rules";
 import {
   CLOSE,
@@ -38,10 +39,13 @@ import {
 import { closeQuietly, errorMsg, randomId, randomInt, rejectSocket, send } from "./util";
 import { parseClientMessage } from "./validate";
 
+/** crypto の乱数（[0, 1)）。カードを配る・配り直す・運命の輪で使う */
+const cryptoRng = () => randomInt(2 ** 32) / 2 ** 32;
+
 /** 新しい対局。スキルありならカードを配る（乱数は crypto） */
 function newGame(rules: RuleSet): GameState {
   const g = createGame(rules);
-  return g.skills ? dealSkills(g, () => randomInt(2 ** 32) / 2 ** 32) : g;
+  return g.skills ? dealSkills(g, cryptoRng) : g;
 }
 
 /** storage に保存する部屋の状態 */
@@ -197,6 +201,7 @@ export class Room extends DurableObject<Env> {
     if (msg.type === "rematch") return this.rematch(ws, att.player, room, msg);
     if (msg.type === "leave") return this.leave(att.player, room);
     if (msg.type === "pick") return this.pick(ws, att.player, room, msg);
+    if (msg.type === "reroll") return this.reroll(ws, att.player, room);
     if (msg.type === "skill") return this.skill(ws, att.player, room, msg);
     return this.move(ws, att.player, room, msg);
   }
@@ -373,6 +378,18 @@ export class Room extends DurableObject<Env> {
     this.broadcast();
   }
 
+  /** 配られた 3 枚を配り直す（選ぶ前に 1 局 1 回。engine の rerollSkills が回数を検証）。新しい view は送り主にだけ送る */
+  private async reroll(ws: WebSocket, player: Player, room: RoomRecord): Promise<void> {
+    if (this.refuse(ws)) return;
+    try {
+      room.game = rerollSkills(room.game, player, cryptoRng);
+    } catch (e) {
+      return send(ws, errorMsg("illegal_skill", e instanceof Error ? e.message : "配り直せません"));
+    }
+    await this.save();
+    this.broadcast(undefined, player);
+  }
+
   /** 手番の人がスキルを使う（置く前）。手番は変わらないので時計はそのまま */
   private async skill(ws: WebSocket, player: Player, room: RoomRecord, msg: SkillMessage): Promise<void> {
     if (this.refuse(ws)) return;
@@ -386,7 +403,7 @@ export class Room extends DurableObject<Env> {
     }
     try {
       // 運命の輪の引く効果はサーバーの crypto で決める（画面からは選べない）
-      room.game = useSkill(room.game, { id: msg.id, kind: msg.kind, to: msg.to }, () => randomInt(2 ** 32) / 2 ** 32);
+      room.game = useSkill(room.game, { id: msg.id, kind: msg.kind, to: msg.to }, cryptoRng);
     } catch (e) {
       return send(ws, errorMsg("illegal_skill", e instanceof Error ? e.message : "そのスキルは使えません"));
     }
@@ -468,9 +485,10 @@ export class Room extends DurableObject<Env> {
   }
 
   /**
-   * join 済みの全接続に、それぞれの席から見た状態を送る。gone は切れかけの接続（送らず、接続中とも数えない）
+   * join 済みの全接続に、それぞれの席から見た状態を送る。gone は切れかけの接続（送らず、接続中とも数えない）。
+   * only なら、その席の接続にだけ送る（配り直しなど、相手に知らせない操作の後）
    */
-  private broadcast(gone?: WebSocket): void {
+  private broadcast(gone?: WebSocket, only?: Player): void {
     const room = this.room;
     if (!room) return;
     const sockets = this.ctx.getWebSockets().filter((ws) => ws !== gone && ws.readyState === WebSocket.OPEN);
@@ -483,7 +501,7 @@ export class Room extends DurableObject<Env> {
     const clock = this.clockInfo();
     for (const ws of sockets) {
       const you = attachmentOf(ws).player;
-      if (you === null) continue;
+      if (you === null || (only !== undefined && you !== only)) continue;
       const opp = other(you);
       const msg: StateMessage = {
         type: "state",

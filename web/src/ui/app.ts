@@ -18,6 +18,8 @@ import {
   pickSkill,
   previewMove,
   refillKinds,
+  rerollBlock,
+  rerollSkills,
   skillBlock,
   targetsAt,
   threatenedPieces,
@@ -50,7 +52,7 @@ import {
   type Player,
   type RuleSet,
 } from "../engine/rules";
-import { chooseSkillUse, viceWith } from "../engine/skillcpu";
+import { chooseSkillPick, chooseSkillUse, viceWith, wantsReroll } from "../engine/skillcpu";
 import { gaugeMax, GAUGE_UNIT, isZone, SKILLS, VICE_PENALTY, type SkillBlock, type SkillId, type SkillNote, type SkillUse } from "../engine/skills";
 import {
   browserDeps,
@@ -502,15 +504,16 @@ export class App {
   }
 
   /**
-   * スキルのカードを配る（乱数は crypto。Math.random は CPU の乱数と共有）。CPU 対戦は CPU が配られた 3 枚から 1 枚を引く。
+   * スキルのカードを配る（乱数は crypto。Math.random は CPU の乱数と共有）。CPU 対戦は CPU が配られた 3 枚から 1 枚を引く
+   * （3 枚とも弱いカードなら先に 1 回配り直す。wantsReroll）。
    * 人間（2 人対戦は先手から順に）はカードを選ぶダイアログで選ぶ（syncPick）
    */
   private dealCards(g: GameState, settings: PlaySettings): GameState {
     let next = dealSkills(g, cryptoRandom);
     if (settings.mode === "cpu") {
       const cpu = other(settings.human);
-      const offer = next.skills!.sides[cpu].offer;
-      next = pickSkill(next, cpu, offer[Math.min(offer.length - 1, Math.floor(cryptoRandom() * offer.length))]);
+      if (wantsReroll(next.skills!.sides[cpu].offer)) next = rerollSkills(next, cpu, cryptoRandom);
+      next = pickSkill(next, cpu, chooseSkillPick(next.skills!.sides[cpu].offer, cryptoRandom));
     }
     return next;
   }
@@ -897,7 +900,9 @@ export class App {
       offer: side.offer,
       rules: g.rules,
       chosen: this.online ? side.card : null,
+      reroll: rerollBlock(sk, p) === null,
       onPick: (id) => this.onPick(p, id),
+      onReroll: () => this.onReroll(p),
       onMenu: () => this.showMenu(),
     });
   }
@@ -914,6 +919,18 @@ export class App {
     if (this.game.skills!.ready) this.announceCards(this.game);
     this.render();
     this.scheduleCpu(CPU_DELAY_MS);
+  }
+
+  /** p が配られた 3 枚を配り直す（1 局 1 回。オンラインはサーバーが引いて、新しい 3 枚が自分にだけ届く） */
+  private onReroll(p: Player) {
+    const g = this.game;
+    if (!g?.skills || rerollBlock(g.skills, p)) return;
+    if (this.online) {
+      if (!this.net?.sendReroll()) this.showToast("接続が切れています。つながったら配り直してください");
+      return;
+    }
+    this.game = rerollSkills(g, p, cryptoRandom);
+    this.render();
   }
 
   /** 両者のカードを知らせる（例: あなたは強打、CPUは鉄壁） */

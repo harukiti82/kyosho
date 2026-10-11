@@ -20,6 +20,7 @@ import {
   type JoinedMessage,
   type MoveMessage,
   type PickMessage,
+  type RerollMessage,
   type RematchAction,
   type RematchMessage,
   type RoomInfoResponse,
@@ -291,6 +292,13 @@ export class OnlineSession {
   sendPick(card: SkillId): boolean {
     if (!this.ready) return false;
     this.ws!.send(JSON.stringify({ type: "pick", card } satisfies PickMessage));
+    return true;
+  }
+
+  /** 配られた 3 枚を配り直す（選ぶ前に 1 局 1 回）。つながっていなければ false */
+  sendReroll(): boolean {
+    if (!this.ready) return false;
+    this.ws!.send(JSON.stringify({ type: "reroll" } satisfies RerollMessage));
     return true;
   }
 

@@ -209,7 +209,7 @@ export function ruleDetails(r: RuleSet): Sentence[] {
 export function skillDetails(r: RuleSet): Sentence[] {
   const steps = FLIP_POINTS.slice(1).map((n, i) => `${i + 1} 枚${i === FLIP_POINTS.length - 2 ? "以上" : ""} +${n}`).join("・");
   const out: Sentence[] = [
-    { point: "スキル: 対局の前に配られた 3 枚から 1 枚を選ぶ", note: "選んだカードは相手にも見える。相手のカードは両方が選び終えてから見える" },
+    { point: "スキル: 対局の前に配られた 3 枚から 1 枚を選ぶ", note: "選ぶ前に 1 回だけ、残りのカードから 3 枚を配り直せる。選んだカードは相手にも見える。相手のカードは両方が選び終えてから見える" },
     { point: `ゲージは${verb(r).past}枚数で溜まる`, note: `1 手で ${steps}。受けたダメージ 1 点ごとに +0.15` },
     { point: "溜めマスでは多く溜まる", note: "盤の星の 4 マス c3・f3・c6・f6。置くか、その上の相手の駒を返すと 1 回ごとにカードの溜めマス点" },
     { point: "満タンになったら自分の手番の始めに使える", note: "使ってから駒を置く。1 手番に 1 回。使うとゲージは 0 から溜め直す" },

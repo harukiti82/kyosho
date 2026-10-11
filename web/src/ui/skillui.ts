@@ -135,7 +135,10 @@ export interface PickView {
   rules: RuleSet;
   /** もう選んだカード（オンラインで相手を待っている間） */
   chosen: SkillId | null;
+  /** 配り直しを押せる（1 局 1 回。使った後は押せない鍵を出す） */
+  reroll: boolean;
   onPick: (id: SkillId) => void;
+  onReroll: () => void;
   onMenu: () => void;
 }
 
@@ -178,9 +181,23 @@ export class SkillPick {
   private draw() {
     const v = this.view!;
     const waiting = v.chosen !== null;
-    const head = h("p", { class: "pick-who" }, [
+    // 配り直し（1 局 1 回）。見出しの行の右端に小さく。押したらすぐ押せなくする（二度押し・届くまでの間）。新しい 3 枚は同じ配る動きと音で出す
+    const again = h("button", {
+      class: "btn ghost pick-reroll",
+      text: "配り直し",
+      attrs: { type: "button", id: "skill-pick-reroll", title: v.reroll ? "3 枚を配り直す。1 局 1 回" : "配り直しは 1 局 1 回" },
+    }) as HTMLButtonElement;
+    again.disabled = !v.reroll;
+    again.addEventListener("click", () => {
+      if (again.disabled) return;
+      again.disabled = true;
+      this.sound.select();
+      v.onReroll();
+    });
+    const head = h("div", { class: "pick-who" }, [
       v.stone !== null ? h("i", { class: `seg-stone p${v.stone}`, attrs: { "aria-hidden": "true" } }) : null,
       waiting ? "相手が選んでいます" : `${v.who}のカード`,
+      waiting ? null : again,
     ]);
     // 配られたカードは 1 枚ずつ飛んできて表に返る（動きを減らす設定では並べるだけ）。相手を待つ間の自分のカードは配らない
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;

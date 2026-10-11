@@ -1,4 +1,5 @@
-// スキルを持つ CPU。使うか・どう使うか（chooseSkillUse）と、スキル込みの 2 手読み（skillLookahead）、副将を出す手の決め方（viceWith）。
+// スキルを持つ CPU。配られたカードの配り直しと選び方（wantsReroll / chooseSkillPick）、使うか・どう使うか（chooseSkillUse）と、
+// スキル込みの 2 手読み（skillLookahead）、副将を出す手の決め方（viceWith）。
 // リポジトリ外のシミュレーター（kyosho-skillsim の sim.ts の plan / lookahead）の規則を写したもの。
 // スキルなしの対局では使わない（cpu.ts の手は変わらない）。乱数は引数で受ける。
 
@@ -54,6 +55,18 @@ export const JUDGE_TAKEN = 15;
 const HEAL_NEED = 0.6;
 /** 補充は、戻す駒の数字のこの倍を得点に足して比べる */
 const REFILL_BONUS = 1.5;
+
+/**
+ * CPU が弱いとみなすカード（11 枚混在の 2 手読み同士 `npm run balance -- skillmix 2000` で、持った側の勝率が 48.5% 未満のもの）。
+ * 配られた 3 枚がどれもこれなら配り直す
+ */
+export const WEAK_CARDS: ReadonlySet<SkillId> = new Set<SkillId>(["judge", "bigheal", "scout", "wall", "firstaid"]);
+
+/** CPU が配られた 3 枚を配り直すか（どれも WEAK_CARDS のときだけ。乱数は使わない） */
+export const wantsReroll = (offer: readonly SkillId[]): boolean => offer.length > 0 && offer.every((id) => WEAK_CARDS.has(id));
+
+/** CPU が配られたカードから選ぶ 1 枚（一様に。乱数は引数で 1 回使う） */
+export const chooseSkillPick = (offer: readonly SkillId[], rng: () => number): SkillId => offer[Math.min(offer.length - 1, Math.floor(rng() * offer.length))];
 
 /** ゲージ 1 点の価値（点） */
 const gaugeWeight = (id: SkillId) => (id === "firstaid" || id === "bigheal" ? SKILL_HEAL[id] : GAUGE_VALUE[id]) / SKILLS[id].length;

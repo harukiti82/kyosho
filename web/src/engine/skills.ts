@@ -154,6 +154,8 @@ export interface SkillNote {
 export interface SkillSide {
   /** 配られたカード（選ぶ前の候補。相手には見せない） */
   offer: SkillId[];
+  /** 配り直しを使った（1 局 1 回。相手には見せない）。キーがなければ false */
+  rerolled?: boolean;
   /** 選んだカード。まだ選んでいない・カードなしなら null */
   card: SkillId | null;
   /** ゲージ（GAUGE_UNIT 単位。満タンは gaugeMax(card)） */
