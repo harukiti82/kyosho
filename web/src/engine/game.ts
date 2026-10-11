@@ -37,7 +37,6 @@ import {
   KINGMOVE_RANGE,
   moverGain,
   OFFER_SIZE,
-  SCOUT_PENALTY_RATE,
   secondDamage,
   shieldDamage,
   SKILL_HEAL,
@@ -109,7 +108,7 @@ export interface ViceHit {
   r: number;
   c: number;
   kind: PieceKind;
-  /** 減らした体力（偵察で特定していた副将なら 2 倍） */
+  /** 減らした体力（VICE_PENALTY） */
   penalty: number;
   /** 偵察で特定していた副将。そうでなければキー自体がない */
   scouted?: true;
@@ -154,7 +153,7 @@ export interface ViceState {
   since: number;
   /** 期限の手で自動的に決まった。そうでなければキー自体がない */
   auto?: true;
-  /** 相手が偵察で今の副将を知っている（返すまで罰 2 倍）。知られていなければキー自体がない */
+  /** 相手が偵察で今の副将を知っている（返されるまで）。知られていなければキー自体がない */
   seen?: true;
   /** 副将を出した手を相手の巻き戻しで戻された（指定は戻さない）。次に置く駒がそのまま副将になる。そうでなければキー自体がない */
   kept?: true;
@@ -532,7 +531,6 @@ export function playMove(
   const raw = damageOf(state.board, lines, rules);
   const { damage, mods } = skillDamage(state, raw);
   const armed = state.skills?.armed ?? null;
-  const hunting = state.skills?.hunt?.[p] === true;
   const heal = healOf(lines, rules.values[kind], rules);
   const board = applyLines(state.board, p, r, c, kind, lines, rules);
   const hands: [Hand, Hand] = [{ ...state.hands[0] }, { ...state.hands[1] }];
@@ -548,17 +546,15 @@ export function playMove(
   const qk = kings[q];
   if (rules.king.on && qk.cell && !qk.revealed && targets.some((t) => t.r === qk.cell![0] && t.c === qk.cell![1])) {
     const lose = rules.king.penalty === "lose";
-    // 偵察で特定してから返すまでは罰が SCOUT_PENALTY_RATE 倍
-    const amount = rules.king.amount * (hunting ? SCOUT_PENALTY_RATE : 1);
-    hit = { r: qk.cell[0], c: qk.cell[1], kind: state.board[qk.cell[0]][qk.cell[1]]!.kind, penalty: lose ? 0 : amount, lose };
+    hit = { r: qk.cell[0], c: qk.cell[1], kind: state.board[qk.cell[0]][qk.cell[1]]!.kind, penalty: lose ? 0 : rules.king.amount, lose };
     kings[q] = { ...qk, revealed: true };
   }
-  // 相手の副将を返したら罰（偵察で特定していたら 2 倍）。相手はまた自分の手で VICE_DEADLINE 手以内に次の副将を決める
+  // 相手の副将を返したら罰。相手はまた自分の手で VICE_DEADLINE 手以内に次の副将を決める
   let viceHit: ViceHit | undefined;
   const qv = kings[q].vice;
   if (qv?.cell && targets.some((t) => t.r === qv.cell![0] && t.c === qv.cell![1])) {
     const [y, x] = qv.cell;
-    viceHit = { r: y, c: x, kind: state.board[y][x]!.kind, penalty: VICE_PENALTY * (qv.seen ? SCOUT_PENALTY_RATE : 1) };
+    viceHit = { r: y, c: x, kind: state.board[y][x]!.kind, penalty: VICE_PENALTY };
     if (qv.seen) viceHit.scouted = true;
     kings[q] = { ...kings[q], vice: { cell: null, since: movesBy(state, q), hit: true } };
   }
@@ -1027,7 +1023,6 @@ function applyEffect(state: GameState, effect: BaseSkillId, use: Pick<SkillUse, 
   const sk = state.skills!;
   const sides: [SkillSide, SkillSide] = [sk.sides[0], sk.sides[1]];
   const shielded: [boolean, boolean] = [sk.shielded[0], sk.shielded[1]];
-  const hunt: [boolean, boolean] = [sk.hunt?.[0] === true, sk.hunt?.[1] === true];
   const next: GameState = { ...state };
   const view = viewFor(state, p);
   switch (effect) {
@@ -1057,7 +1052,6 @@ function applyEffect(state: GameState, effect: BaseSkillId, use: Pick<SkillUse, 
         if (!kings[q].cell) throw new Error("相手の王が決まっていません");
         kings[q] = { ...kings[q], seen: true };
         next.kings = kings;
-        hunt[p] = true;
         note.scout = "find";
       } else {
         const kings: [KingState, KingState] = [state.kings[0], state.kings[1]];
@@ -1085,7 +1079,6 @@ function applyEffect(state: GameState, effect: BaseSkillId, use: Pick<SkillUse, 
       break;
   }
   const skills: SkillsState = { ...sk, sides, armed: note, shielded };
-  if (hunt[0] || hunt[1]) skills.hunt = hunt;
   return { ...next, skills };
 }
 
@@ -1127,7 +1120,7 @@ function randomAim(state: GameState, rng: () => number): SkillUse {
 
 /**
  * 打った手の後のスキルの状態（ゲージを足し、この手番で使ったスキル・この手に掛かった鉄壁・連続行動の 2 手目を消す）。
- * 相手の王を返したら偵察の罰 2 倍を終える。巻き戻しのカードを持つ人が打ったら、打つ前の局面（手番の頭）を覚える
+ * 巻き戻しのカードを持つ人が打ったら、打つ前の局面（手番の頭）を覚える
  */
 function skillsAfterMove(before: GameState, move: MoveEvent, lost: number): SkillsState {
   const sk = before.skills!;
@@ -1144,13 +1137,8 @@ function skillsAfterMove(before: GameState, move: MoveEvent, lost: number): Skil
   add(q, victimGain(lost));
   const shielded: [boolean, boolean] = [sk.shielded[0], sk.shielded[1]];
   shielded[p] = false;
-  const { second: _second, hunt, undo, ...rest } = sk;
+  const { second: _second, undo, ...rest } = sk;
   const out: SkillsState = { ...rest, sides, armed: null, shielded };
-  if (hunt) {
-    const h: [boolean, boolean] = [hunt[0], hunt[1]];
-    if (move.king) h[p] = false;
-    if (h[0] || h[1]) out.hunt = h;
-  }
   if (undo || card === "judge") {
     const u: [GameState | null, GameState | null] = undo ? [undo[0], undo[1]] : [null, null];
     // 連続行動の 2 手目は手番の頭ではない（巻き戻しのカードとは同時に持たないので来ない）

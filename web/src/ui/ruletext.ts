@@ -2,7 +2,7 @@
 // 各行を要点と補足に分けて返し、DOM への流し込みは呼び出し側（ui/setup.ts の fillSentences）が textContent で行う。
 
 import { kindsByValue, kindsInRules, KIND_ORDER, PIECES, REACH_MARK, type PieceKind, type RuleSet } from "../engine/rules";
-import { BASE_SKILLS, FLIP_POINTS, KINGMOVE_RANGE, SCOUT_PENALTY_RATE, SKILL_HEAL, SKILL_ORDER, SKILLS, VICE_DEADLINE, VICE_PENALTY, type SkillId } from "../engine/skills";
+import { BASE_SKILLS, FLIP_POINTS, KINGMOVE_RANGE, SKILL_HEAL, SKILL_ORDER, SKILLS, VICE_DEADLINE, VICE_PENALTY, type SkillId } from "../engine/skills";
 
 /**
  * ルールの 1 行: 要点の一言（大きく太く。1 行に 1 か所だけ）と、その下に小さく添える補足（括弧で囲まず、薄い字）。
@@ -79,15 +79,12 @@ export function skillText(id: SkillId, r: RuleSet): { short: string; point: stri
       return { short: "駒を 1 つ戻す", point: "減った駒を 1 つ駒台に戻す", note: "始めの数より減った駒ならどれでも" };
     case "wall":
       return { short: "相手の次の手を半減", point: "相手の次の手のダメージが半分", note: `駒は${verb(r).hit.replace("された", "る").replace("られた", "られる")}。小数は切り捨て` };
-    case "scout": {
-      const hit = verb(r).past.replace("した", "す").replace("った", "る");
-      const pen = r.king.penalty === "lose" ? "" : `。その王を${hit}まで罰が ${SCOUT_PENALTY_RATE} 倍`;
+    case "scout":
       return {
         short: "相手の王・副将が見える",
         point: "相手の王の場所が自分にだけ分かる",
-        note: `相手が最初の${r.king.deadline}手を打ち終えてから使える${pen}。その後は相手が副将を出す期限の後に、今の副将が分かり、${hit}まで罰が ${SCOUT_PENALTY_RATE} 倍`,
+        note: `相手が最初の${r.king.deadline}手を打ち終えてから使える。王が分かった後は、相手が副将を出す期限の後に今の副将の場所が分かる。罰は変わらない`,
       };
-    }
     case "kingmove":
       return { short: `王を ${KINGMOVE_RANGE} マス内へ`, point: "自分の王を近くの自分の駒へ移す", note: `今の王から ${KINGMOVE_RANGE} マス以内。どこへ移したかは相手に見えない` };
     case "fool":

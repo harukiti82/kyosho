@@ -36,7 +36,7 @@ export const SKILLS: Record<SkillId, SkillSpec> = {
   omni: { id: "omni", name: "全方向", tarot: "戦車", numeral: "VII", length: 32, zone: 4 },
   refill: { id: "refill", name: "補充", tarot: "節制", numeral: "XIV", length: 66, zone: 4 },
   wall: { id: "wall", name: "鉄壁", tarot: "皇帝", numeral: "IV", length: 20, zone: 4 },
-  scout: { id: "scout", name: "偵察", tarot: "隠者", numeral: "IX", length: 36, zone: 4 },
+  scout: { id: "scout", name: "偵察", tarot: "隠者", numeral: "IX", length: 24, zone: 4 },
   kingmove: { id: "kingmove", name: "王の移し替え", tarot: "魔術師", numeral: "I", length: 26, zone: 4 },
   fool: { id: "fool", name: "連続行動", tarot: "愚者", numeral: "0", length: 42, zone: 4 },
   wheel: { id: "wheel", name: "運命の輪", tarot: "運命の輪", numeral: "X", length: 36, zone: 4 },
@@ -47,8 +47,6 @@ export const SKILLS: Record<SkillId, SkillSpec> = {
 export const SKILL_HEAL: Readonly<Record<"firstaid" | "bigheal", number>> = { firstaid: 4, bigheal: 20 };
 /** 王の移し替えで移せる距離（縦・横・斜めに何マスまで） */
 export const KINGMOVE_RANGE = 2;
-/** 偵察で相手の王・副将を特定してから、それを返すまでの罰の倍率 */
-export const SCOUT_PENALTY_RATE = 2;
 /** 副将（スキルありで隠し王ありのルールだけ）を返されたときの罰（体力） */
 export const VICE_PENALTY = 15;
 /** 王を決めた後・副将を返された後、自分の手でこの手数以内に置く駒で副将を出す（期限の手で置いた駒が自動で副将になる） */
@@ -143,7 +141,7 @@ export interface SkillNote {
   fizzle?: true;
   /** 運命の輪: 補充・王の移し替えが出て、戻す駒・移す先の指定を待っている（置く前に指定する） */
   aim?: true;
-  /** 偵察: find = 相手の王を特定した（罰 2 倍は王を返すまで）/ vice = 相手の今の副将を特定した（罰 2 倍はその副将を返すまで） */
+  /** 偵察: find = 相手の王の場所が分かった / vice = 相手の今の副将の場所が分かった（どちらも見えるだけで、罰は変わらない） */
   scout?: "find" | "vice";
   /** 巻き戻し: 戻した手数（自分の手と相手の応手） */
   back?: number;
@@ -170,8 +168,6 @@ export interface SkillsState {
   shielded: [boolean, boolean];
   /** 手番の人が連続行動の 2 手目を打つ（ダメージ半分・スキルは使えない）。キーがなければ false */
   second?: boolean;
-  /** 偵察で相手の王を特定してから、その王を返すまで罰が 2 倍。キーがなければ両者 false */
-  hunt?: [boolean, boolean];
   /** 巻き戻しで戻せる（前の自分の手番の頭の局面がある）。公開情報。キーがなければ両者 false */
   undoable?: [boolean, boolean];
   /**

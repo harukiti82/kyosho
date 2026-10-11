@@ -21,7 +21,6 @@ import {
   gaugeMax,
   GAUGE_UNIT,
   isZone,
-  SCOUT_PENALTY_RATE,
   secondDamage,
   shieldDamage,
   SKILL_HEAL,
@@ -73,8 +72,6 @@ interface Opt {
   kingCell?: Cell | null;
   /** 持ち駒に 1 つ足して読む（補充） */
   handPlus?: PieceKind;
-  /** 王を返す罰の倍率（偵察） */
-  penMul?: number;
   /** 自分の手のダメージが半分（連続行動の 2 手目） */
   secondHalf?: boolean;
   /** 自分の手の後に続けてもう 1 手（連続行動。2 手目はダメージ半分で貪欲に選んだものとして読む） */
@@ -94,13 +91,13 @@ function penaltyOf(view: PlayerView, victim: Player): number {
 }
 
 /**
- * 相手の副将を返したときの罰の見込み（sim.ts の viceKnown）: 偵察で特定していればそのマスに罰 2 倍、
+ * 相手の副将を返したときの罰の見込み（sim.ts の viceKnown）: 偵察で特定していればそのマスに罰、
  * 決まっていると分かっていれば相手の駒（偵察で分かった王を除く）1 つごとに罰 ÷ 駒の数。決まっていなければなし
  */
 function oppViceHint(view: PlayerView): { cells: Set<number>; pen: number } {
   const ov = view.oppVice;
   if (!ov.set) return { cells: new Set(), pen: 0 };
-  if (ov.scouted && ov.cell) return { cells: new Set([key(ov.cell[0], ov.cell[1])]), pen: VICE_PENALTY * SCOUT_PENALTY_RATE };
+  if (ov.scouted && ov.cell) return { cells: new Set([key(ov.cell[0], ov.cell[1])]), pen: VICE_PENALTY };
   const q = other(view.turn);
   const ok = view.oppKing;
   const kc = ok.scouted && !ok.revealed ? key(ok.candidates[0][0], ok.candidates[0][1]) : -1;
@@ -145,10 +142,10 @@ function lookahead(view: PlayerView, o: Opt = {}): { best: number; cands: Choice
   const oppPenalty = oc.size > 0 ? penaltyOf(view, q) / oc.size : 0;
   const myPenalty = rules.king.on ? penaltyOf(view, p) : 0;
   const allRules = { ...rules, dirs: "all" as const };
-  // 副将: 相手の副将を返す見込みと、自分の副将を返される危険（相手が場所を知っているとみなす。偵察されていれば 2 倍）
+  // 副将: 相手の副将を返す見込みと、自分の副将を返される危険（相手が場所を知っているとみなす）
   const vk = oppViceHint(view);
   const mv = view.myVice;
-  const myVicePen = mv.cell ? { cell: mv.cell, penalty: VICE_PENALTY * (mv.seen ? SCOUT_PENALTY_RATE : 1) } : null;
+  const myVicePen = mv.cell ? { cell: mv.cell, penalty: VICE_PENALTY } : null;
   const viceHits = (ls: Line[]) => ls.reduce((n, l) => n + l.cells.filter(([y, x]) => vk.cells.has(key(y, x))).length, 0);
   let best = -Infinity;
   let cands: Choice[] = [];
@@ -165,7 +162,7 @@ function lookahead(view: PlayerView, o: Opt = {}): { best: number; cands: Choice
       if (o.secondHalf) d = secondDamage(d);
       let own = d + healOf(lines, rules.values[kind], rules);
       const hits = (ls: typeof lines) => ls.reduce((n, l) => n + l.cells.filter(([y, x]) => oc.has(key(y, x))).length, 0);
-      if (oppPenalty > 0) own += oppPenalty * (o.penMul ?? 1) * hits(lines);
+      if (oppPenalty > 0) own += oppPenalty * hits(lines);
       if (vk.pen > 0) own += vk.pen * viceHits(lines);
       if (card && o.gaugeW && o.room && o.room > 0) {
         const ts = targetsOf(lines);
@@ -227,8 +224,6 @@ function currentOpt(view: PlayerView): Opt {
   const o: Opt = { gaugeW: gaugeWeight(card), room: (gaugeMax(card) - sk.sides[p].gauge) / GAUGE_UNIT };
   if (sk.shielded[p]) o.ownHalf = true;
   if (sk.second) o.secondHalf = true;
-  // 偵察で特定してから王を返すまでは罰 2 倍
-  if (sk.hunt?.[p]) o.penMul = 2;
   switch (armedEffect(sk)) {
     case "strong":
       o.strong = true;

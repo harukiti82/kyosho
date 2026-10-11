@@ -1,5 +1,5 @@
 // e2e（skill-vice.spec.ts）の 2 人対戦で盤に再生する手順を、エンジンで先に探す（DOM なし）。
-// 先手は偵察を持つ。①後手が置いて出した副将を先手が次の手で返す（罰 15）②後手の次の副将を偵察で特定し、返す（罰 30）までの手順。
+// 先手は偵察を持つ。①後手が置いて出した副将を先手が次の手で返す（罰 15）②後手の次の副将を偵察で特定し、返す（罰は同じ 15）までの手順。
 // 画面は同じ手を打てば同じ局面になる（カードの配られ方はゲージにも手にも効かない）
 
 import type { Cell } from "../src/engine/board";
@@ -25,9 +25,9 @@ export type Step =
 
 export interface Plan {
   steps: Step[];
-  /** 罰 15・罰 30 で後手の副将を返した手（steps の添字） */
-  hit15: number;
-  hit30: number;
+  /** 後手の副将を返した手（steps の添字）。hitFirst は 1 本目、hitScouted は偵察で特定した 2 本目 */
+  hitFirst: number;
+  hitScouted: number;
   /** 偵察で副将を特定した手順（steps の添字） */
   scoutVice: number;
   /** 各手順の後の体力（画面と突き合わせる） */
@@ -65,7 +65,7 @@ export function findPlan(seed: number, p1card: SkillId): Plan | null {
   let s = setSkills(createGame(presetById("skill").rules), ["scout", p1card]);
   const steps: Step[] = [];
   const hp: [number, number][] = [];
-  let hit15 = -1;
+  let hitFirst = -1;
   let scoutVice = -1;
   const push = (st: Step, next: GameState) => {
     steps.push(st);
@@ -85,7 +85,7 @@ export function findPlan(seed: number, p1card: SkillId): Plan | null {
           const after = playMove(s, m.r, m.c, m.kind, { vice: true });
           if (after.result || after.turn !== 0) return false;
           const reach = movesOf(after).some((x) => hits(after, x, [m.r, m.c]));
-          return hit15 < 0 ? reach : !reach;
+          return hitFirst < 0 ? reach : !reach;
         });
         if (chosen) {
           play(chosen, false, true);
@@ -107,12 +107,12 @@ export function findPlan(seed: number, p1card: SkillId): Plan | null {
     }
     const vice = s.kings[1].vice;
     const target = vice?.cell;
-    // ①副将を返す（罰 15）②特定した副将を返す（罰 30）
-    const want = hit15 < 0 || vice?.seen ? moves.find((m) => hits(s, m, target)) : undefined;
+    // ①副将を返す ②特定した副将を返す（どちらも罰 15）
+    const want = hitFirst < 0 || vice?.seen ? moves.find((m) => hits(s, m, target)) : undefined;
     if (want) {
       play(want, false, myVice);
-      if (hit15 < 0) hit15 = steps.length - 1;
-      else return { steps, hit15, hit30: steps.length - 1, scoutVice, hp };
+      if (hitFirst < 0) hitFirst = steps.length - 1;
+      else return { steps, hitFirst, hitScouted: steps.length - 1, scoutVice, hp };
       continue;
     }
     // ほかは後手の副将を返さない手のうち、後手の王を返す手、なければゲージが多く溜まる手

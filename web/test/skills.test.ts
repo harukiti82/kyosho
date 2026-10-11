@@ -66,7 +66,7 @@ describe("カード", () => {
       ["全方向", "戦車", 32, 4],
       ["補充", "節制", 66, 4],
       ["鉄壁", "皇帝", 20, 4],
-      ["偵察", "隠者", 36, 4],
+      ["偵察", "隠者", 24, 4],
       ["王の移し替え", "魔術師", 26, 4],
       ["連続行動", "愚者", 42, 4],
       ["運命の輪", "運命の輪", 36, 4],
@@ -249,23 +249,18 @@ describe("8 枚の効果", () => {
       expect(JSON.stringify(s.skills!.armed)).not.toContain("[0,1]");
       expect(last(play(s, "h6")).skill).toEqual({ id: "scout", scout: "find" });
     });
-    it("偵察した手でその王を返すと罰が 2 倍（−60）", () => {
+    it("偵察で特定した王を返しても罰は変わらない（−30）。特定した後の手番でも同じ", () => {
       const s = play(useSkill(hidden(), { id: "scout" }), "c1");
-      expect(last(s).king).toMatchObject({ penalty: 60 });
-      expect(s.hp[1]).toBe(130 - 1 - 60);
-      // 偵察しない手なら −30
+      expect(last(s).king).toMatchObject({ penalty: 30 });
+      expect(s.hp[1]).toBe(130 - 1 - 30);
       expect(play(hidden(), "c1").hp[1]).toBe(130 - 1 - 30);
-    });
-    it("罰 2 倍は偵察した手番の後も、その王を返すまで続く（返したら終わる）", () => {
-      let s = play(useSkill(hidden(), { id: "scout" }), "h6");
-      expect(s.skills!.hunt).toEqual([true, false]);
       // 後手は置けずにパスし、次の先手の手番で王を返す
-      expect(s.turn).toBe(0);
-      expect(s.history.at(-1)).toMatchObject({ type: "pass", player: 1 });
-      s = play(s, "c1");
-      expect(last(s).king).toMatchObject({ penalty: 60 });
-      expect(last(s).skill).toBeUndefined();
-      expect(s.skills!.hunt).toBeUndefined();
+      let later = play(useSkill(hidden(), { id: "scout" }), "h6");
+      expect(later.turn).toBe(0);
+      expect(later.history.at(-1)).toMatchObject({ type: "pass", player: 1 });
+      later = play(later, "c1");
+      expect(last(later).king).toMatchObject({ penalty: 30 });
+      expect(later.skills).not.toHaveProperty("hunt");
     });
     it("王が分かった後は相手の今の副将を特定する（ゲージ半分の効果はない）。副将が未定・特定済みの間は使えず、ゲージも減らない", () => {
       // 1 回目で王を特定した後の手番（場所を知っている）。後手の副将はまだない
@@ -721,10 +716,10 @@ describe("副将", () => {
     expect(next.kings[1].vice).toEqual({ cell: at("h6"), since: 0, hit: true });
   });
 
-  it("偵察で特定した副将を返すと罰 2 倍の 30。返したら次の副将はまた分からない", () => {
+  it("偵察で特定した副将を返しても罰は 15 のまま（特定していた印は棋譜に残る）。返したら次の副将はまた分からない", () => {
     const s = play(withVice(start(), 1, "b1", { seen: true }), "c1");
-    expect(last(s).vice).toEqual({ r: 0, c: 1, kind: "fu", penalty: 30, scouted: true });
-    expect(s.hp[1]).toBe(130 - 1 - 30);
+    expect(last(s).vice).toEqual({ r: 0, c: 1, kind: "fu", penalty: 15, scouted: true });
+    expect(s.hp[1]).toBe(130 - 1 - 15);
     expect(s.kings[1].vice!.seen).toBeUndefined();
     expect(viewFor(s, 0).oppVice.scouted).toBe(false);
   });
