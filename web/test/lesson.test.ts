@@ -406,7 +406,7 @@ describe("遊び方の章: スキルあり", () => {
     expect(nextNeed(l, "fu", false, { viceOn: true })).toEqual({});
     const { next, m } = solve(l);
     expect(viceInfo(next, 0)).toMatchObject({ status: "set", cell: [5, 4], auto: false });
-    expect(l.done(m, g, next)).toBe("この歩1があなたの副将になった。相手に裏返されると、体力が 15 減る。どの駒が副将かは、相手には見えない。");
+    expect(l.done(m, g, next)).toBe("この歩1があなたの副将になった。相手には見えず、裏返されると体力が 15 減る。7 手ごとに新しい副将を置き、前の副将はふつうの駒に戻る。");
   });
 
   it("副将を裏返す: 「?」の金が相手の副将で、裏返すと 6 ダメージ＋体力−15", () => {
@@ -419,7 +419,7 @@ describe("遊び方の章: スキルあり", () => {
     expect(m.vice).toMatchObject({ r: 6, c: 2, kind: "kin", penalty: 15 });
     expect(m.king).toBeUndefined();
     expect(next.hp[1]).toBe(g.hp[1] - m.damage - 15);
-    expect(l.done(m, g, next)).toBe("相手の副将を裏返した。ダメージ 6 に副将の分の 15 が加わり、相手の体力が 21 減った。相手はまた 7 手のうちに、次の副将を置く。");
+    expect(l.done(m, g, next)).toBe("相手の副将を裏返した。ダメージ 6 に副将の分の 15 が加わり、相手の体力が 21 減った。裏返した副将はふつうの駒になり、相手は次の 7 手の区切りで新しい副将を置く。");
   });
 
   it("偵察: お互い 7 手打った局面。使うと相手の王（d3）だけが候補になり、飛で挟むと体力−30", () => {

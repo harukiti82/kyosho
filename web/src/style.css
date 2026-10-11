@@ -5206,6 +5206,13 @@ button.tarot:focus-visible {
 .vice-tag.seen {
   color: var(--warn);
 }
+/* 今の窓でまだ置き直していない: 期限までの手数を小さく添える */
+.vice-due {
+  margin-left: 0.15rem;
+  font-size: 0.62rem;
+  font-weight: 700;
+  color: var(--ink-dim);
+}
 .vice-toggle .king-piece {
   color: var(--navy-900);
 }

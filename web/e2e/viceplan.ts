@@ -1,5 +1,5 @@
 // e2e（skill-vice.spec.ts）の 2 人対戦で盤に再生する手順を、エンジンで先に探す（DOM なし）。
-// 先手は偵察を持つ。①後手が置いて出した副将を先手が次の手で返す（罰 15）②後手の次の副将を偵察で特定し、返す（罰は同じ 15）までの手順。
+// 先手は偵察を持つ。①後手が置いて出した副将を先手が次の手で返す（罰 15）②後手が次の窓で置き直した副将を偵察で特定し、返す（罰は同じ 15）までの手順。
 // 画面は同じ手を打てば同じ局面になる（カードの配られ方はゲージにも手にも効かない）
 
 import type { Cell } from "../src/engine/board";
@@ -8,6 +8,7 @@ import {
   legalCells,
   playableKinds,
   playMove,
+  previewMove,
   setSkills,
   skillBlock,
   targetsAt,
@@ -30,6 +31,8 @@ export interface Plan {
   hitScouted: number;
   /** 偵察で副将を特定した手順（steps の添字） */
   scoutVice: number;
+  /** 偵察で特定した副将のマス */
+  scoutedCell: Cell;
   /** 各手順の後の体力（画面と突き合わせる） */
   hp: [number, number][];
 }
@@ -67,35 +70,40 @@ export function findPlan(seed: number, p1card: SkillId): Plan | null {
   const hp: [number, number][] = [];
   let hitFirst = -1;
   let scoutVice = -1;
+  let scoutedCell: Cell = [0, 0];
   const push = (st: Step, next: GameState) => {
     steps.push(st);
     s = next;
     hp.push([s.hp[0], s.hp[1]]);
   };
   const play = (m: Move, king = false, vice = false) => push({ type: "move", player: s.turn, ...m, king, vice }, playMove(s, m.r, m.c, m.kind, { king, vice }));
-  for (let guard = 0; guard < 120 && !s.result; guard++) {
+  // ダメージの小さい手（対局を長く続け、後手が 21 手を打つまで決着させない）
+  const calm = (moves: Move[]) => {
+    const dmg = (m: Move) => previewMove(s, m.r, m.c, m.kind)?.damage ?? 0;
+    const least = Math.min(...moves.map(dmg));
+    return moves.filter((m) => dmg(m) <= least + 1);
+  };
+  for (let guard = 0; guard < 200 && !s.result; guard++) {
     const p = s.turn;
     const moves = movesOf(s);
-    // 両者とも最初の手で置く駒を王にする
-    const king = viewFor(s, p).myKing.canDesignate;
+    // 先手は最初の手で置く駒を王にする。後手は王を決めず、期限の 7 手目で自動の王にする
+    // （窓が王の期限から始まり、相手に副将を見せる時期と窓の期限が揃う。早く決めると見せたときには置き直している）
+    const king = p === 0 && viewFor(s, p).myKing.canDesignate;
     if (p === 1) {
-      // 後手: 副将を出す期間なら、1 本目は先手が次の手で返せるマス、2 本目は返されないマスに副将を置く
-      if (viceInfo(s, 1).status === "unset") {
+      // 後手: 1 つ目の窓だけ、先手が次の手で返せるマスに副将を置く。2 つ目からは置かず、窓の最後の手で自動で置き直す
+      if (hitFirst < 0 && viceInfo(s, 1).status === "unset") {
         const chosen = moves.find((m) => {
           const after = playMove(s, m.r, m.c, m.kind, { vice: true });
           if (after.result || after.turn !== 0) return false;
-          const reach = movesOf(after).some((x) => hits(after, x, [m.r, m.c]));
-          return hitFirst < 0 ? reach : !reach;
+          return movesOf(after).some((x) => hits(after, x, [m.r, m.c]));
         });
         if (chosen) {
           play(chosen, false, true);
           continue;
         }
       }
-      // 大きく返さない手から乱数で
-      const calm = moves.filter((m) => targetsAt(s, m.r, m.c, m.kind).length <= 2);
-      const pool = calm.length > 0 ? calm : moves;
-      play(pool[Math.floor(rand() * pool.length)], king);
+      const pool = calm(moves);
+      play(pool[Math.floor(rand() * pool.length)]);
       continue;
     }
     // 先手: 副将は出せる最初の手で出す
@@ -103,21 +111,25 @@ export function findPlan(seed: number, p1card: SkillId): Plan | null {
     // 偵察が使えれば使う（王を特定・その後は副将を特定）
     if (skillBlock(viewFor(s, 0)) === null) {
       push({ type: "skill", id: "scout" }, useSkill(s, { id: "scout" }));
-      if (s.skills!.armed?.scout === "vice") scoutVice = steps.length - 1;
+      if (s.skills!.armed?.scout === "vice") {
+        scoutVice = steps.length - 1;
+        scoutedCell = viewFor(s, 0).oppVice.cell!;
+      }
     }
-    const vice = s.kings[1].vice;
-    const target = vice?.cell;
-    // ①副将を返す ②特定した副将を返す（どちらも罰 15）
-    const want = hitFirst < 0 || vice?.seen ? moves.find((m) => hits(s, m, target)) : undefined;
+    // 後手の今の副将（エンジンの真の状態。手順を探すためだけに読む）
+    const vice = viceInfo(s, 1);
+    const target = vice.cell;
+    // ①副将を返す ②偵察で特定した今の副将を返す（どちらも罰 15）
+    const want = hitFirst < 0 || vice.seen ? moves.find((m) => hits(s, m, target)) : undefined;
     if (want) {
       play(want, false, myVice);
       if (hitFirst < 0) hitFirst = steps.length - 1;
-      else return { steps, hitFirst, hitScouted: steps.length - 1, scoutVice, hp };
+      else return { steps, hitFirst, hitScouted: steps.length - 1, scoutVice, scoutedCell, hp };
       continue;
     }
     // ほかは後手の副将を返さない手のうち、後手の王を返す手、なければゲージが多く溜まる手
     const safe = moves.filter((m) => !hits(s, m, target));
-    const pool = safe.length > 0 ? safe : moves;
+    const pool = calm(safe.length > 0 ? safe : moves);
     const kc = s.kings[1].revealed ? null : s.kings[1].cell;
     const gain = (m: Move) => moverGain("scout", [m.r, m.c], targetsAt(s, m.r, m.c, m.kind).map(([r, c]) => ({ r, c })));
     const score = (m: Move) => (hits(s, m, kc) ? 1000 : 0) + gain(m) + rand();

@@ -5,6 +5,7 @@
 // 第 1 引数が skill なら、片側だけスキルを持つ 2 手読み同士でスキル側の勝率を測る（skill 局数 [カード...]。スキル側は 1 局ごとに入れ替える）。
 // カードを「wheel:40」と書くと、そのカードのゲージの長さを 40 にして測る（同じカードの長さを並べて比べる）。
 // 第 1 引数が skillmix なら、両者に 11 枚から 1 枚ずつ引かせた 2 手読み同士で、先手勝率・カードごとの勝率・運命の輪の不発などを測る（skillmix 局数）。
+// skill / skillmix は「hp=139,140」を足すと、プリセット「スキルあり」の体力を変えて測る。
 
 import { chooseLookahead, chooseMove, CPU_LEVEL_NAME, CPU_LEVELS, type CpuLevel } from "../src/engine/cpu";
 import { SIZE } from "../src/engine/board";
@@ -91,11 +92,23 @@ function cpuStep(s: GameState, rand: () => number, used: { n: number }): GameSta
   return playMove(s, ch.r, ch.c, ch.kind, { king: ch.king, vice: viceWith(view, ch, rand) });
 }
 
+/** 引数から「hp=先手,後手」を取り出す（skill / skillmix の体力を変えて測る） */
+function hpArg(args: string[]): [string[], [number, number] | null] {
+  const i = args.findIndex((a) => a.startsWith("hp="));
+  if (i < 0) return [args, null];
+  const hp = args[i].slice(3).split(",").map(Number) as [number, number];
+  if (hp.length !== 2 || hp.some((n) => !(n > 0))) throw new Error("体力は hp=先手,後手（例 hp=139,140）");
+  return [args.filter((_, j) => j !== i), hp];
+}
+
 /** 片側だけスキルを持つ 2 手読み同士（プリセット「スキルあり」）で、カードごとのスキル側の勝率・使った回数 */
-function skills(args: string[]) {
+function skills(all: string[]) {
+  const [args, hp] = hpArg(all);
   const games = Number(args[0] ?? 400);
   const list = args.length > 1 ? args.slice(1) : [...SKILL_ORDER];
   const rules = cloneRules(presetById("skill").rules);
+  if (hp) rules.hp = hp;
+  console.log(`体力 ${rules.hp[0]}・${rules.hp[1]}`);
   console.log(`## スキル側の勝率: スキルあり・2 手読み同士・${games} 局（スキル側を 1 局ごとに先手・後手入れ替え）`);
   console.log("| スキル | 長さ | 勝率（スキル側） | ±SE | シミュレーター | 使った回数/局 | 平均手数 | 先手勝率 |");
   console.log("|---|---|---|---|---|---|---|---|");
@@ -129,15 +142,18 @@ function skills(args: string[]) {
 }
 
 /** 両者が 11 枚から 1 枚ずつ引いた 2 手読み同士（プリセット「スキルあり」）。先手勝率・カードごとの勝率・新しい 3 枚の様子 */
-function skillMix(args: string[]) {
+function skillMix(all: string[]) {
+  const [args, hp] = hpArg(all);
   const games = Number(args[0] ?? 400);
   const rules = cloneRules(presetById("skill").rules);
+  if (hp) rules.hp = hp;
+  console.log(`体力 ${rules.hp[0]}・${rules.hp[1]}`);
   const pool = skillPool(rules);
   const card: Record<string, { n: number; won: number }> = {};
   let first = 0;
   const plies: number[] = [];
   const drawn: Record<string, { n: number; fizzle: number }> = {};
-  const x = { wheel: 0, fizzle: 0, fool: 0, foolSecond: 0, foolEnd2: 0, judge: 0, judgeBack: 0, scoutFind: 0, scoutVice: 0, viceHit: 0, viceScouted: 0, viceAuto: 0 };
+  const x = { wheel: 0, fizzle: 0, fool: 0, foolSecond: 0, foolEnd2: 0, judge: 0, judgeBack: 0, scoutFind: 0, scoutVice: 0, viceHit: 0, viceScouted: 0, viceAuto: 0, vicePlaced: 0 };
   for (let i = 0; i < games; i++) {
     const rand = rng(i + 1);
     const cards = [pool[Math.floor(rand() * pool.length)], pool[Math.floor(rand() * pool.length)]] as [SkillId, SkillId];
@@ -173,7 +189,11 @@ function skillMix(args: string[]) {
       x.viceHit++;
       if (e.vice.scouted) x.viceScouted++;
     }
-    for (const p of [0, 1] as Player[]) if (s.kings[p].vice?.auto) x.viceAuto++;
+    for (const p of [0, 1] as Player[]) {
+      const list = s.kings[p].vice?.list ?? [];
+      x.vicePlaced += list.length;
+      x.viceAuto += list.filter((v) => v.auto).length;
+    }
     const w = s.result.winner;
     if (w === 0) first++;
     else if (w === null) first += 0.5;
@@ -203,7 +223,7 @@ function skillMix(args: string[]) {
       .join("・")}`,
   );
   console.log(
-    `副将を返した ${(x.viceHit / games).toFixed(2)} 回/局（うち特定済み ${(x.viceScouted / games).toFixed(2)}）・終局時に期限の自動で決まっていた副将 ${x.viceAuto}`,
+    `副将を置いた ${(x.vicePlaced / games / 2).toFixed(2)} 回/人・局（うち期限の自動 ${(x.viceAuto / games / 2).toFixed(2)}）・副将を返した ${(x.viceHit / games).toFixed(2)} 回/局（うち特定済み ${(x.viceScouted / games).toFixed(2)}）`,
   );
 }
 

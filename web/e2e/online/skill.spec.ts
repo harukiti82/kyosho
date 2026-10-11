@@ -582,7 +582,7 @@ test("運命の輪: 引いた効果が両者の演出に出て、棋譜に残る
   expect(spun).toBe(true);
 });
 
-test("副将: 鍵を押して置いた駒が副将になり、出した人にだけ分かる。相手には場所も出した時期も届かない（期限の後は、いることだけ）", async ({ browser }, info) => {
+test("副将: 鍵を押して置いた駒が副将になり、置いた人にだけ分かる。相手には場所も置いた時期も届かない（窓の期限の後は、いることだけ）", async ({ browser }, info) => {
   const pre = prefix(info);
   const host = await newPlayer(browser, info, "host");
   const guest = await newPlayer(browser, info, "guest");
@@ -627,8 +627,9 @@ test("副将: 鍵を押して置いた駒が副将になり、出した人にだ
     if (movesBy(m.view, 0) < 14 && !hit) expect(m.view.oppVice.set).toBe(false);
   }
   for (const f of guest.frames) expect(f).not.toContain('"kings"');
-  // 副将を返されていなければ、期限の後は「?」
-  if (host.last!.view.myVice.status === "set" && movesBy(host.last!.view, 0) >= 14) {
+  // 副将を返されていなければ、窓 1 の期限（王の期限 7 手 ＋ 7 手）の後は「?」。窓 2 で置き直したかは見えない
+  const hostHit = host.last!.view.history.some((e) => e.type === "move" && e.player === 1 && e.vice);
+  if (!hostHit && !host.last!.view.result && movesBy(host.last!.view, 0) >= 14) {
     await expect.poll(() => guest.last!.view.oppVice.set).toBe(true);
     await expect(guest.page.locator("#player-0 .vice-tag.unknown, #player-1 .vice-tag.unknown")).toHaveCount(1);
   }

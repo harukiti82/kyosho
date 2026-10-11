@@ -524,7 +524,7 @@ export const SKILL_LESSONS: readonly Lesson[] = [
   {
     id: "vice",
     title: "副将を置く",
-    point: `王の後、${VICE_DEADLINE} 手のうちに副将を置く`,
+    point: `王の後は、${VICE_DEADLINE} 手ごとに副将を置き直す`,
     note: `置かないと、${VICE_DEADLINE} 手目に置いた駒が自動で副将になる。`,
     task: "駒台の右にある副をタップしてから、光っているマスに歩を置く",
     rules: skillRules(),
@@ -540,7 +540,8 @@ export const SKILL_LESSONS: readonly Lesson[] = [
     answers: [{ at: parseCell("e6"), kind: "fu", vice: true }],
     guide: cells("e6"),
     hint: () => "光っているマスに歩を置く",
-    done: (m, g) => `この${label(g, m.kind)}があなたの副将になった。相手に裏返されると、体力が ${VICE_PENALTY} 減る。どの駒が副将かは、相手には見えない。`,
+    done: (m, g) =>
+      `この${label(g, m.kind)}があなたの副将になった。相手には見えず、裏返されると体力が ${VICE_PENALTY} 減る。${VICE_DEADLINE} 手ごとに新しい副将を置き、前の副将はふつうの駒に戻る。`,
   },
   {
     id: "viceHit",
@@ -564,7 +565,7 @@ export const SKILL_LESSONS: readonly Lesson[] = [
     hint: () => "光っているマスに歩を置いて、「?」の駒を挟む",
     done(m) {
       const extra = m.vice?.penalty ?? 0;
-      return `相手の副将を裏返した。ダメージ ${m.damage} に副将の分の ${extra} が加わり、相手の体力が ${m.damage + extra} 減った。相手はまた ${VICE_DEADLINE} 手のうちに、次の副将を置く。`;
+      return `相手の副将を裏返した。ダメージ ${m.damage} に副将の分の ${extra} が加わり、相手の体力が ${m.damage + extra} 減った。裏返した副将はふつうの駒になり、相手は次の ${VICE_DEADLINE} 手の区切りで新しい副将を置く。`;
     },
   },
   {

@@ -1,5 +1,5 @@
-// 副将（スキルありで隠し王ありのルール）: 王を決めた後に鍵を押して置く駒で副将を出す・期限での自動指定・名札と盤の印、
-// 2 人対戦で副将を返す（罰 15）→ 次の副将の期限が始まる → 偵察で副将を特定 → 返す（罰は同じ 15）。
+// 副将（スキルありで隠し王ありのルール）: 王を決めた後に鍵を押して置く駒で副将を出す・7 手ごとの窓の期限での自動指定と置き直し・名札と盤の印、
+// 2 人対戦で副将を返す（罰 15）→ 次の窓で置き直した副将を偵察で特定 → 返す（罰は同じ 15）。
 // 2 人対戦の手順はエンジンで先に探し（viceplan.ts）、同じ手を盤で打つ。配るカードは crypto を差し替えて決め、時計は page.clock で止める
 
 import { expect, test, type Page } from "@playwright/test";
@@ -125,30 +125,44 @@ test.describe("副将", () => {
     expect(errors).toEqual([]);
   });
 
-  test("期限の手まで出さなければ、その手で置いた駒が自動で副将になる", async ({ page }) => {
+  test("窓の最後の手まで置かなければ、その手で置いた駒が自動で副将になる。次の窓でも自動で置き直し、前の副将はふつうの駒に戻る", async ({ page }) => {
     await startCpu(page);
     await humanMove(page, true);
     await untilActing(page);
-    for (let left = 7; left >= 1; left--) {
-      if (left > 1) await expect(page.locator("#vice-toggle .king-cap")).toHaveText(`あと${left}手`);
-      if (left === 1) {
-        await expect(page.locator("#vice-toggle")).toHaveAttribute("title", /期限の手です/);
-        await expect(page.locator("#vice-toggle .king-cap")).toHaveText("この手で副将");
-        await expect(page.locator("#vice-toggle")).toBeDisabled();
+    for (const k of [1, 2]) {
+      for (let left = 7; left >= 1; left--) {
+        if (left > 1) await expect(page.locator("#vice-toggle .king-cap")).toHaveText(`あと${left}手`);
+        if (left === 1) {
+          await expect(page.locator("#vice-toggle")).toHaveAttribute("title", /期限の手です/);
+          await expect(page.locator("#vice-toggle .king-cap")).toHaveText("この手で副将");
+          await expect(page.locator("#vice-toggle")).toBeDisabled();
+        }
+        // 副将はいつも 1 つ以下
+        const had = await page.locator(".vice-mark").count();
+        expect(had).toBeLessThanOrEqual(1);
+        await humanMove(page);
+        if (left === 1) await expect(page.locator("#toast")).toContainText("が自動で副将になりました");
+        // 前の副将が残っていれば、置き直した手でふつうの駒に戻る
+        if (left === 1 && had === 1) await expect(page.locator("#toast")).toContainText("はふつうの駒に戻りました");
+        await untilActing(page);
       }
-      await humanMove(page);
-      if (left === 1) await expect(page.locator("#toast")).toContainText("が自動で副将になりました");
-      await untilActing(page);
+      // 窓の最後の手の次の手からは次の窓。名札は今の副将と、置き直す期限までの「あと7」
+      await expect(page.locator("#vice-toggle .king-cap")).toHaveText("あと7手");
+      if ((await page.locator("#player-0 .vice-tag.lost").count()) === 0) {
+        await expect(page.locator("#player-0 .vice-tag.unset .vice-due")).toHaveText("あと7");
+        await expect(page.locator(".vice-mark")).toHaveCount(1);
+      }
+      if (k === 2) {
+        if (isTouch(page)) await noHorizontalScroll(page, 375);
+        await page.screenshot({ path: `${SHOT}/${pre(page)}-skill-vice-replace.png` });
+      }
     }
-    await expect(page.locator("#player-0 .vice-tag")).not.toHaveClass(/unset/);
-    // 自動で決まった副将の印（CPU にすぐ返されていれば取り消し線）
-    if ((await page.locator("#player-0 .vice-tag.lost").count()) === 0) await expect(page.locator(".vice-mark")).toHaveCount(1);
   });
 
-  test("2 人対戦: 副将を返すと罰 15、返された側は 7 手以内に次の副将。期限の後に偵察で特定した副将を返しても罰は 15", async ({ page }) => {
+  test("2 人対戦: 副将を返すと罰 15、返された側は次の窓まで副将がない。置き直した副将を偵察で特定して返しても罰は 15", async ({ page }) => {
     const errors: string[] = [];
     page.on("pageerror", (e) => errors.push(String(e)));
-    const plan = findPlan(1, "firstaid")!;
+    const plan = findPlan(16, "firstaid")!;
     expect(plan).not.toBeNull();
     await stubDraws(page, dealFirst("scout"));
     await page.clock.install();
@@ -173,12 +187,11 @@ test.describe("副将", () => {
         if (i === plan.scoutVice) {
           await expect(fx.locator(".cast-result")).toHaveText("副将を特定");
           await page.clock.runFor(2200);
-          // 後手の副将の場所が先手にだけ見える（盤の「副」と名札）
-          const v = plan.steps.slice(0, i).filter((x) => x.type === "move" && x.player === 1 && x.vice).at(-1);
-          if (v?.type !== "move") throw new Error("副将の手順がない");
+          // 後手が置き直した副将の場所が先手にだけ見える（盤の「副」と名札）
+          const [vr, vc] = plan.scoutedCell;
           await expect(page.locator(".vice-cand.scouted")).toHaveCount(1);
-          await expect(page.locator(`.cell[data-r="${v.r}"][data-c="${v.c}"] .vice-cand.scouted`)).toBeVisible();
-          await expect(page.locator("#player-1 .vice-tag.scouted")).toContainText(cellName(v.r, v.c));
+          await expect(page.locator(`.cell[data-r="${vr}"][data-c="${vc}"] .vice-cand.scouted`)).toBeVisible();
+          await expect(page.locator("#player-1 .vice-tag.scouted")).toContainText(cellName(vr, vc));
           if (isTouch(page)) await noHorizontalScroll(page, 375);
           await page.screenshot({ path: `${SHOT}/${pre(page)}-skill-vice-scouted.png` });
         } else {
@@ -191,7 +204,20 @@ test.describe("副将", () => {
       await tapOrClick(page, `#hand-buttons .piece-btn[data-kind=${st.kind}]`);
       if (st.king) await tapOrClick(page, "#king-toggle");
       if (st.vice) await tapOrClick(page, "#vice-toggle");
-      await place(page, st.r, st.c);
+      if (i === plan.hitScouted) {
+        // 特定した副将を返す手の吹き出しに罰の内訳
+        const cell = page.locator(`.cell[data-r="${st.r}"][data-c="${st.c}"]`);
+        if (isTouch(page)) await cell.tap();
+        else {
+          await page.mouse.move(0, 0);
+          await cell.hover();
+        }
+        await expect(page.locator(".pv-bubble .bb-pen")).toHaveText("副将 −15");
+        if (isTouch(page)) await cell.tap();
+        else await cell.click();
+      } else {
+        await place(page, st.r, st.c);
+      }
       if (i === plan.hitFirst || i === plan.hitScouted) {
         // 偵察で特定していても罰は同じ
         await expect(page.locator(".vice-pop")).toHaveText("副将 −15");
@@ -204,10 +230,10 @@ test.describe("副将", () => {
       expect(await hp()).toEqual(plan.hp[i].map((x) => Math.max(0, x)));
       if (i === plan.hitFirst) {
         await expect(page.locator("#log .log-item.move").first()).toContainText("副将を返した・体力−15");
-        // 返された後手: 名札は取り消し線、次の手番で次の副将を決める（あと 7 手）
+        // 返された後手: 名札は取り消し線。今の窓ではもう置いたので、次の窓まで副将はない（副の鍵も出ない）
         await expect(page.locator("#player-1 .vice-tag.lost")).toBeVisible();
         await expect(page.locator(".board.acting")).toBeVisible();
-        await expect(page.locator("#vice-toggle .king-cap")).toHaveText("あと7手");
+        await expect(page.locator("#vice-toggle")).toHaveCount(0);
         if (isTouch(page)) await noHorizontalScroll(page, 375);
         await page.screenshot({ path: `${SHOT}/${pre(page)}-skill-vice-next.png` });
       }

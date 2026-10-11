@@ -253,26 +253,27 @@ describe("スキルの使用", () => {
     // 先手には出したことも届かない（副将を出していない手と同じ view）
     expect(h5.view.oppVice).toEqual({ set: false, wait: 5, scouted: false, cell: null });
     expect(JSON.stringify(h5)).not.toContain('"vice"');
-    expect((await stored(room.roomId)).game.kings[1].vice).toMatchObject({ cell: viceAt });
+    expect((await stored(room.roomId)).game.kings[1].vice!.list.at(-1)).toMatchObject({ cell: viceAt });
     // もう出してあれば出せない
     room.host.send({ type: "move", ...firstLegal(h5.view) });
     const [, g6] = await Promise.all([room.host.expect("state"), room.guest.expect("state")]);
     room.guest.send({ type: "move", ...firstLegal(g6.view), vice: true });
     await room.guest.expectError("illegal_move");
-    // 期限を過ぎたことにして（返されて始まった期間で、期限の手を打ち終えた）、先手が偵察で後手の副将を特定する
+    // 見せる時期を過ぎたことにして（窓の期限の手を打ち終えた）、先手が偵察で後手の副将を特定する
     await patch(room.roomId, (g) => {
       const c = charge(0, "scout")(g);
-      const kings: GameState["kings"] = [c.kings[0], { ...c.kings[1], vice: { ...c.kings[1].vice!, since: -7, hit: true } }];
+      const v = c.kings[1].vice!;
+      const kings: GameState["kings"] = [c.kings[0], { ...c.kings[1], vice: { ...v, list: v.list.map((x) => ({ ...x, due: 0 })) } }];
       return { ...c, kings, skills: { ...c.skills!, sides: [c.skills!.sides[0], { ...c.skills!.sides[1], gauge: 101 }] } };
     });
     room.guest.send({ type: "move", ...firstLegal(g6.view) });
     const [h6] = await Promise.all([room.host.expect("state"), room.guest.expect("state")]);
-    expect(h6.view.oppVice).toEqual({ set: true, wait: 0, scouted: false, cell: null });
+    expect(h6.view.oppVice).toMatchObject({ set: true, scouted: false, cell: null });
     const oppGauge = h6.view.skills!.sides[1].gauge;
     room.host.send({ type: "skill", id: "scout" });
     const [h7, g7] = await Promise.all([room.host.expect("state"), room.guest.expect("state")]);
     expect(h7.view.skills!.armed).toEqual({ id: "scout", scout: "vice" });
-    expect(h7.view.oppVice).toEqual({ set: true, wait: 0, scouted: true, cell: viceAt });
+    expect(h7.view.oppVice).toMatchObject({ set: true, scouted: true, cell: viceAt });
     // ゲージ半減の効果はない
     expect(g7.view.skills!.sides[1].gauge).toBe(oppGauge);
     expect(g7.view.myVice.seen).toBe(true);
@@ -290,8 +291,14 @@ describe("スキルの使用", () => {
     const mine: [number, number][] = [];
     for (let r = 0; r < 8; r++) for (let c = 0; c < 8; c++) if (base.board[r][c]?.owner === 1 && !(base.kings[1].cell![0] === r && base.kings[1].cell![1] === c)) mine.push([r, c]);
     expect(mine.length).toBeGreaterThanOrEqual(2);
-    // 出していない（null）ときも同じ（後手が副将を出す期限の前は、出したかどうかも出ない）
-    const seen = new Set([...mine, null].map((cell) => JSON.stringify(viewFor({ ...base, kings: [base.kings[0], { ...base.kings[1], vice: { cell, since: 1 } }] }, 0))));
+    // 出していない（null）ときも、前の副将から置き直したときも同じ（後手が窓の期限の手を打つ前は、置いたかどうかも出ない）
+    const vice = (cell: [number, number] | null, prev?: [number, number]) => ({
+      since: 1,
+      base: 1,
+      list: [...(prev ? [{ cell: prev, due: 99 }] : []), ...(cell ? [{ cell, due: 99 }] : [])],
+    });
+    const variants = [...mine.map((cell) => vice(cell)), vice(null), vice(mine[1], mine[0])];
+    const seen = new Set(variants.map((v) => JSON.stringify(viewFor({ ...base, kings: [base.kings[0], { ...base.kings[1], vice: v }] }, 0))));
     expect(seen.size).toBe(1);
   });
 

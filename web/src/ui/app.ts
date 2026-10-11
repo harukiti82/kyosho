@@ -9,6 +9,7 @@ import {
   isLegal,
   kingInfo,
   kingMoveCells,
+  knownPenalties,
   lastMoveOf,
   legalCells,
   movesBy,
@@ -607,7 +608,7 @@ export class App {
     const v = g as unknown as PlayerView;
     if (p === v.viewer) return v.myVice;
     const status = !vicesOn(g.rules) ? "off" : v.oppVice.set ? "set" : "unset";
-    return { status, cell: null, auto: false, left: 0, forcedNow: false, kept: false, seen: v.oppVice.scouted };
+    return { status, cell: null, auto: false, left: 0, forcedNow: false, kept: false, seen: v.oppVice.scouted, replaced: null };
   }
 
   private place(r: number, c: number, kind: PieceKind, king = false, vice = false) {
@@ -871,6 +872,7 @@ export class App {
               ? `期限なので、${cellName(e.r, e.c)} の${pieceLabel(g.rules, e.kind)}が自動で副将になりました`
               : `${cellName(e.r, e.c)} の${pieceLabel(g.rules, e.kind)}を副将にしました。${this.foe()}には見えません`,
           );
+          if (vi.replaced) msgs.push(`前の副将 ${cellName(vi.replaced[0], vi.replaced[1])} はふつうの駒に戻りました`);
         }
       }
     }
@@ -990,7 +992,7 @@ export class App {
       case "noVice":
         return this.viceWait(g, g.turn) > 0 ? "相手が副将を出す期限の後に使える" : "相手の副将が決まっていない";
       case "viceSeen":
-        return "相手の副将はもう分かっている";
+        return "相手の今の副将はもう分かっている。次の副将の期限の後にまた使える";
       case "noUndo":
         return "戻す手がない";
       case "noKing":
@@ -1042,8 +1044,10 @@ export class App {
         const wait = this.viceWait(g, p);
         return wait > 0 ? `偵察は${wait}手後` : "副将が未定";
       }
-      case "viceSeen":
-        return "副将は特定済み";
+      case "viceSeen": {
+        const wait = this.viceWait(g, p);
+        return wait > 0 ? `偵察は${wait}手後` : "副将は特定済み";
+      }
       case "noUndo":
         return "戻す手なし";
       case "noKing":
@@ -2285,6 +2289,10 @@ export class App {
     const lines: HTMLElement[] = [];
     if (designating) lines.push(h("span", { class: "bb-line bb-king", text: "王にして置く" }));
     else if (this.viceNow(g)) lines.push(h("span", { class: "bb-line bb-king bb-vice", text: "副将にして置く" }));
+    // 偵察で分かった相手の王・副将を返す手は、その罰（例: 王 −30・副将 −15）
+    const known = knownPenalties(this.viewOf(g), pv.targets);
+    if (known.king !== null) lines.push(h("span", { class: "bb-line bb-king bb-pen", text: known.king === "lose" ? "王 即負け" : `王 −${known.king}` }));
+    if (known.vice !== null) lines.push(h("span", { class: "bb-line bb-king bb-vice bb-pen", text: `副将 −${known.vice}` }));
     if (pv.anchors.length > 0) {
       lines.push(
         // 「＋ 反対側5」を 1 つの塊にし、狭い吹き出しでは塊の間で折り返す（先頭の空白は文の読み取り用で、間は flex の gap）
@@ -2515,7 +2523,14 @@ export class App {
       const vi = this.viceOf(g, p);
       if (vi.cell) {
         const where = cellName(vi.cell[0], vi.cell[1]);
-        return tag(` ${where}`, vi.seen ? `副将は ${where}（相手に知られている）` : `副将は ${where}（相手には見えない）`, vi.seen ? " seen" : "");
+        const title = vi.seen ? `副将は ${where}。相手に知られている` : `副将は ${where}。相手には見えない`;
+        // 今の窓でまだ置き直していなければ、期限までの手数を添える
+        if (vi.status === "unset" && !g.result) {
+          const t = tag(` ${where}`, `${title}。あと ${vi.left} 手のうちに置き直す`, `${vi.seen ? " seen" : ""} unset`);
+          t.append(h("span", { class: "vice-due", text: `あと${vi.left}` }));
+          return t;
+        }
+        return tag(` ${where}`, title, vi.seen ? " seen" : "");
       }
       if (vi.status === "unset" && !g.result) return lostTag() ?? tag(" 未定", `副将はまだ決めていない。あと ${vi.left} 手`, " unset");
     }
@@ -2828,11 +2843,13 @@ export class App {
     const forced = vi.forcedNow;
     const on = forced || this.viceOn;
     const pen = `副将を${verb(g.rules).hitIf}体力−${VICE_PENALTY}`;
+    // 前の副将が残っていれば、置き直すとふつうの駒に戻る
+    const back = vi.cell ? `今の副将 ${cellName(vi.cell[0], vi.cell[1])} はふつうの駒に戻ります。` : "";
     const note = vi.kept
-      ? `巻き戻された手で副将を出したので、この手で置く駒が副将になります。${pen}`
+      ? `巻き戻された手で副将を出したので、この手で置く駒が副将になります。${back}${pen}`
       : forced
-        ? `期限の手です。この手で置く駒が自動で副将になります。${pen}`
-        : `副将にしてから置く（あと ${vi.left} 手のうち 1 手。期限の手に置いた駒は自動で副将）。${pen}`;
+        ? `期限の手です。この手で置く駒が自動で副将になります。${back}${pen}`
+        : `副将にしてから置く。あと ${vi.left} 手のうち 1 手で、期限の手に置いた駒は自動で副将になります。${back}${pen}`;
     const btn = h(
       "button",
       {
