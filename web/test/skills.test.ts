@@ -60,11 +60,11 @@ const gauge = (s: GameState, p: Player) => s.skills!.sides[p].gauge / GAUGE_UNIT
 describe("カード", () => {
   it("11 枚の長さと溜めマス点", () => {
     expect(SKILL_ORDER.map((id) => [SKILLS[id].name, SKILLS[id].tarot, SKILLS[id].length, SKILLS[id].zone])).toEqual([
-      ["応急手当", "星", 20, 4],
-      ["大回復", "女帝", 80, 12],
+      ["応急手当", "星", 40, 4],
+      ["大回復", "女帝", 180, 20],
       ["強打", "力", 26, 4],
       ["全方向", "戦車", 32, 4],
-      ["補充", "節制", 48, 4],
+      ["補充", "節制", 66, 4],
       ["鉄壁", "皇帝", 20, 4],
       ["偵察", "隠者", 36, 4],
       ["王の移し替え", "魔術師", 26, 4],
@@ -128,8 +128,8 @@ describe("ゲージ", () => {
     expect(gauge(play(game({ a3: [0, "fu"], b3: [1, "fu"] }, ["strong", null]), "c3"), 0)).toBe(5);
     // c3 上の相手の駒を含む 2 枚を返す: 2 + 4
     expect(gauge(play(game({ a3: [0, "fu"], b3: [1, "fu"], c3: [1, "fu"] }, ["strong", null]), "d3"), 0)).toBe(6);
-    // 大回復は溜めマス 1 回で 12
-    expect(gauge(play(game({ a3: [0, "fu"], b3: [1, "fu"] }, ["bigheal", null]), "c3"), 0)).toBe(13);
+    // 大回復は溜めマス 1 回で 20
+    expect(gauge(play(game({ a3: [0, "fu"], b3: [1, "fu"] }, ["bigheal", null]), "c3"), 0)).toBe(21);
   });
   it("受けたダメージには王の罰も入る。カードのない人のゲージは増えない", () => {
     const rules = rulesOf("skill", { dirs: "all", anchor: "none", heal: "none", king: { on: true, penalty: "hp", amount: 30, deadline: 1 } });
@@ -156,10 +156,10 @@ describe("ゲージ", () => {
 
 describe("8 枚の効果", () => {
   const base = { a1: [0, "fu"], b1: [1, "fu"] } as const;
-  it("応急手当: 体力 +2。初期体力を超えず、初期値なら使えない", () => {
+  it("応急手当: 体力 +4。初期体力を超えず、初期値なら使えない", () => {
     const at100 = useSkill(full(game(base, ["firstaid", null], { hp: [100, 130] })), { id: "firstaid" });
-    expect(at100.hp[0]).toBe(102);
-    expect(at100.skills!.armed).toEqual({ id: "firstaid", heal: 2 });
+    expect(at100.hp[0]).toBe(104);
+    expect(at100.skills!.armed).toEqual({ id: "firstaid", heal: 4 });
     const at128 = useSkill(full(game(base, ["firstaid", null], { hp: [128, 130] })), { id: "firstaid" });
     expect(at128.hp[0]).toBe(129);
     expect(last(play(at128, "c1")).skill).toEqual({ id: "firstaid", heal: 1 });
@@ -167,9 +167,9 @@ describe("8 枚の効果", () => {
     expect(skillBlock(viewFor(fullHp, 0))).toBe("fullHp");
     expect(() => useSkill(fullHp, { id: "firstaid" })).toThrow();
   });
-  it("大回復: 体力 +10（初期体力まで）", () => {
-    expect(useSkill(full(game(base, ["bigheal", null], { hp: [100, 130] })), { id: "bigheal" }).hp[0]).toBe(110);
-    expect(useSkill(full(game(base, ["bigheal", null], { hp: [125, 130] })), { id: "bigheal" }).hp[0]).toBe(129);
+  it("大回復: 体力 +20（初期体力まで）", () => {
+    expect(useSkill(full(game(base, ["bigheal", null], { hp: [100, 130] })), { id: "bigheal" }).hp[0]).toBe(120);
+    expect(useSkill(full(game(base, ["bigheal", null], { hp: [115, 130] })), { id: "bigheal" }).hp[0]).toBe(129);
   });
   it("強打: その手のダメージ ×1.5（端数切り捨て）。次の手には効かない", () => {
     const stones = { a8: [0, "fu"], b8: [1, "fu"], c8: [1, "fu"], d8: [1, "fu"], e8: [1, "fu"], f8: [1, "fu"], a1: [1, "fu"], b1: [0, "fu"] } as const;
@@ -342,11 +342,11 @@ describe("CPU のスキル", () => {
   it("満タンでなければ使わない。回復は足りない体力が効果の 6 割以上のときだけ", () => {
     const base = { a1: [0, "fu"], b1: [1, "fu"] } as const;
     expect(chooseSkillUse(viewFor(game(base, ["firstaid", null], { hp: [100, 130] }), 0), () => 0.5)).toBeNull();
-    // 応急手当（+2）は 2 以上、大回復（+10）は 6 以上足りないとき
-    expect(chooseSkillUse(viewFor(full(game(base, ["firstaid", null], { hp: [128, 130] })), 0), () => 0.5)).toBeNull();
-    expect(chooseSkillUse(viewFor(full(game(base, ["firstaid", null], { hp: [127, 130] })), 0), () => 0.5)).toEqual({ id: "firstaid" });
-    expect(chooseSkillUse(viewFor(full(game(base, ["bigheal", null], { hp: [124, 130] })), 0), () => 0.5)).toBeNull();
-    expect(chooseSkillUse(viewFor(full(game(base, ["bigheal", null], { hp: [123, 130] })), 0), () => 0.5)).toEqual({ id: "bigheal" });
+    // 応急手当（+4）は 3 以上（2.4 以上）、大回復（+20）は 12 以上足りないとき
+    expect(chooseSkillUse(viewFor(full(game(base, ["firstaid", null], { hp: [127, 130] })), 0), () => 0.5)).toBeNull();
+    expect(chooseSkillUse(viewFor(full(game(base, ["firstaid", null], { hp: [126, 130] })), 0), () => 0.5)).toEqual({ id: "firstaid" });
+    expect(chooseSkillUse(viewFor(full(game(base, ["bigheal", null], { hp: [118, 130] })), 0), () => 0.5)).toBeNull();
+    expect(chooseSkillUse(viewFor(full(game(base, ["bigheal", null], { hp: [117, 130] })), 0), () => 0.5)).toEqual({ id: "bigheal" });
   });
   it("補充は戻せる駒のうち読みが最もよくなる駒を戻す", () => {
     const s = full(game({ a1: [0, "fu"], b1: [1, "fu"] }, ["refill", null], { hands: [{ fu: 3, yoko: 0, kaku: 0, kin: 0, hi: 0 }, {}] }));
@@ -484,12 +484,12 @@ describe("運命の輪", () => {
     expect(last(after).skill).toEqual({ id: "wheel", effect: "firstaid", fizzle: true });
     expect(last(after).damage).toBe(3);
   });
-  it("引いた効果はそのカードと同じに効く（強打 ×1.5・大回復 +10）", () => {
+  it("引いた効果はそのカードと同じに効く（強打 ×1.5・大回復 +20）", () => {
     const strong = spin(full(game(base, ["wheel", null], { rules: kingRules })), 2);
     expect(previewMove(strong, ...at("e8"), "fu")).toMatchObject({ damage: 4, plain: 3, mods: ["strong"] });
     const heal = spin(full(game(base, ["wheel", null], { rules: kingRules, hp: [100, 130] })), 1);
-    expect(heal.hp[0]).toBe(110);
-    expect(heal.skills!.armed).toEqual({ id: "wheel", effect: "bigheal", heal: 10 });
+    expect(heal.hp[0]).toBe(120);
+    expect(heal.skills!.armed).toEqual({ id: "wheel", effect: "bigheal", heal: 20 });
   });
   it("補充が出たら戻す駒を続けて指定する（指定するまで置けない）", () => {
     let s = spin(full(game(base, ["wheel", null], { rules: kingRules, hands: [{ fu: 9, yoko: 10, kaku: 4, kin: 2, hi: 2 }, {}] })), 4);

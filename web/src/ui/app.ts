@@ -3327,7 +3327,7 @@ function lastKingHit(g: GameState, owner: Player) {
 
 
 /** 棋譜のダメージの内訳（上乗せがあるときだけ。例: 「（返した駒2＋反対側の金5）」） */
-/** 棋譜の手と一緒に使ったスキル（例: 「強打・」「補充 飛・」「応急手当 +2・」）。使っていなければ空 */
+/** 棋譜の手と一緒に使ったスキル（例: 「強打・」「補充 飛・」「応急手当 +4・」）。使っていなければ空 */
 function skillLogText(e: MoveEvent): string {
   const sk = e.skill;
   if (!sk) return "";

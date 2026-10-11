@@ -3,7 +3,7 @@
 
 import { expect, test, type Page } from "@playwright/test";
 import { presetById, type PieceKind } from "../src/engine/rules";
-import { BASE_SKILLS, SKILL_ORDER, SKILLS, type BaseSkillId, type SkillId } from "../src/engine/skills";
+import { BASE_SKILLS, SKILL_HEAL, SKILL_ORDER, SKILLS, type BaseSkillId, type SkillId } from "../src/engine/skills";
 import { encodeRules } from "../src/ui/query";
 import { noHorizontalScroll, seedPage, startGame, stubDraws } from "./helpers";
 
@@ -56,13 +56,13 @@ async function chargeUntilReady(page: Page, prefer: PieceKind[] = [], zone = fal
   throw new Error("満タンにならない");
 }
 
-/** 対局を始めて、先頭に配られた id を選ぶ。draws は配る分の後に引く crypto の値（運命の輪） */
-async function startWith(page: Page, id: SkillId, seed = 3, draws: number[] = []) {
+/** 対局を始めて、先頭に配られた id を選ぶ。draws は配る分の後に引く crypto の値（運命の輪）。hp を渡すとスキルありの体力をクエリで上書きする */
+async function startWith(page: Page, id: SkillId, seed = 3, draws: number[] = [], hp?: [number, number]) {
   await stubDraws(page, [...dealFirst(id), ...draws]);
   await seedPage(page, seed);
   await page.clock.install();
-  await page.goto("/");
-  await startGame(page, { preset: "skill", side: 0, level: "easy", cards: false });
+  await page.goto(hp ? `/?${encodeRules({ ...RULES, hp })}` : "/");
+  await startGame(page, hp ? { side: 0, level: "easy", cards: false } : { preset: "skill", side: 0, level: "easy", cards: false });
   const dialog = page.locator("#skill-pick");
   await expect(dialog).toBeVisible();
   await expect(dialog.locator(".tarot")).toHaveCount(3);
@@ -163,25 +163,28 @@ test.describe("スキル", () => {
   });
 
   // 11 枚それぞれ: 満タンまで打って使い、効果が盤・名札・棋譜に出る
-  const CASES: { id: SkillId; name?: string; seed?: number; draws?: number[]; prefer?: PieceKind[]; zone?: boolean; use: (page: Page) => Promise<void> }[] = [
+  const CASES: { id: SkillId; name?: string; seed?: number; draws?: number[]; prefer?: PieceKind[]; zone?: boolean; hp?: [number, number]; use: (page: Page) => Promise<void> }[] = [
     {
       id: "firstaid",
       use: async (page) => {
         const before = Number(await page.locator("#player-0 .hp-num").textContent());
         await tapOrClick(page, "#skill-use");
         await shootCast(page, "firstaid");
-        await expect(page.locator("#player-0 .hp-num")).toHaveText(String(Math.min(RULES.hp[0], before + 2)));
+        await expect(page.locator("#player-0 .hp-num")).toHaveText(String(Math.min(RULES.hp[0], before + SKILL_HEAL.firstaid)));
         await humanMove(page);
         await expect(lastLog(page)).toContainText("応急手当 +");
       },
     },
     {
       id: "bigheal",
+      // ゲージが長い（180）ので、体力 200 の対局で溜めマス（1 回 20 点）を狙って溜める
+      zone: true,
+      hp: [200, 200],
       use: async (page) => {
         const before = Number(await page.locator("#player-0 .hp-num").textContent());
         await tapOrClick(page, "#skill-use");
         await shootCast(page, "bigheal");
-        await expect(page.locator("#player-0 .hp-num")).toHaveText(String(Math.min(RULES.hp[0], before + 10)));
+        await expect(page.locator("#player-0 .hp-num")).toHaveText(String(Math.min(200, before + SKILL_HEAL.bigheal)));
         await humanMove(page);
         await expect(lastLog(page)).toContainText("大回復 +");
       },
@@ -368,7 +371,7 @@ test.describe("スキル", () => {
     test(`${SKILLS[c.id].name}${c.name ? `（${c.name}）` : ""}: 満タンまで溜めて使う`, async ({ page }) => {
       const errors: string[] = [];
       page.on("pageerror", (e) => errors.push(String(e)));
-      await startWith(page, c.id, c.seed, c.draws);
+      await startWith(page, c.id, c.seed, c.draws, c.hp);
       await chargeUntilReady(page, c.prefer, c.zone);
       await expect(page.locator("#skill-use")).toHaveClass(/ready/);
       await expect(page.locator("#skill-use .ps-state")).toHaveText("満タン");

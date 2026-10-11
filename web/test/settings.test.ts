@@ -189,14 +189,14 @@ describe("ルールカードの文言", () => {
     );
     expect(details).toContain("副将: 王を決めた後、自分の手で 7 手以内に置く駒を 1 つ副将にする 王を決めた次の手から。相手には見えない。7 手目まで出さなければ、その手で置いた駒が副将になる");
     expect(details).toContain("副将を返されたら体力 −15 通常のダメージに加えて減る。王と同じ手なら両方。返されたら、また 7 手以内に次の副将を出す");
-    expect(details).toContain("補充: 減った駒を 1 つ駒台に戻す 始めの数より減った駒ならどれでも。タロットの節制。ゲージ 48・溜めマス 4");
+    expect(details).toContain("補充: 減った駒を 1 つ駒台に戻す 始めの数より減った駒ならどれでも。タロットの節制。ゲージ 66・溜めマス 4");
     expect(details).toContain("連続行動: この手番に 2 手続けて打てる 2 手目のダメージは半分。小数は切り捨て。タロットの愚者。ゲージ 42・溜めマス 4");
     expect(details).toContain(
       "運命の輪: 8 枚のどれかの効果が出る 応急手当・大回復・強打・全方向・補充・鉄壁・偵察・王の移し替えから同じ確率。その場で使えない効果は不発。タロットの運命の輪。ゲージ 36・溜めマス 4",
     );
     expect(details).toContain("巻き戻し: 自分の直前の手と相手の応手を戻す 戻した局面から打ち直す。相手の王の指定は残る。タロットの審判。ゲージ 30・溜めマス 4");
     expect(details).toContain("鉄壁: 相手の次の手のダメージが半分 駒は返る。小数は切り捨て");
-    expect(details).toContain("大回復: 体力を 10 回復 始めの体力は超えない。タロットの女帝。ゲージ 80・溜めマス 12");
+    expect(details).toContain("大回復: 体力を 20 回復 始めの体力は超えない。タロットの女帝。ゲージ 180・溜めマス 20");
     // 隠し王なしなら偵察・王の移し替え・副将は出さない
     const noKing = rulesOf("skill", { king: { on: false, penalty: "hp", amount: 20, deadline: 5 } });
     expect(ruleDetails(noKing).map(sentenceText).join("")).not.toContain("偵察");

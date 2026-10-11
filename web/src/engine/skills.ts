@@ -30,11 +30,11 @@ export const BASE_SKILLS: readonly BaseSkillId[] = ["firstaid", "bigheal", "stro
 export const SKILL_ORDER: readonly SkillId[] = [...BASE_SKILLS, "fool", "wheel", "judge"];
 
 export const SKILLS: Record<SkillId, SkillSpec> = {
-  firstaid: { id: "firstaid", name: "応急手当", tarot: "星", numeral: "XVII", length: 20, zone: 4 },
-  bigheal: { id: "bigheal", name: "大回復", tarot: "女帝", numeral: "III", length: 80, zone: 12 },
+  firstaid: { id: "firstaid", name: "応急手当", tarot: "星", numeral: "XVII", length: 40, zone: 4 },
+  bigheal: { id: "bigheal", name: "大回復", tarot: "女帝", numeral: "III", length: 180, zone: 20 },
   strong: { id: "strong", name: "強打", tarot: "力", numeral: "VIII", length: 26, zone: 4 },
   omni: { id: "omni", name: "全方向", tarot: "戦車", numeral: "VII", length: 32, zone: 4 },
-  refill: { id: "refill", name: "補充", tarot: "節制", numeral: "XIV", length: 48, zone: 4 },
+  refill: { id: "refill", name: "補充", tarot: "節制", numeral: "XIV", length: 66, zone: 4 },
   wall: { id: "wall", name: "鉄壁", tarot: "皇帝", numeral: "IV", length: 20, zone: 4 },
   scout: { id: "scout", name: "偵察", tarot: "隠者", numeral: "IX", length: 36, zone: 4 },
   kingmove: { id: "kingmove", name: "王の移し替え", tarot: "魔術師", numeral: "I", length: 26, zone: 4 },
@@ -44,7 +44,7 @@ export const SKILLS: Record<SkillId, SkillSpec> = {
 };
 
 /** 回復の量（初期体力を超えない） */
-export const SKILL_HEAL: Readonly<Record<"firstaid" | "bigheal", number>> = { firstaid: 2, bigheal: 10 };
+export const SKILL_HEAL: Readonly<Record<"firstaid" | "bigheal", number>> = { firstaid: 4, bigheal: 20 };
 /** 王の移し替えで移せる距離（縦・横・斜めに何マスまで） */
 export const KINGMOVE_RANGE = 2;
 /** 偵察で相手の王・副将を特定してから、それを返すまでの罰の倍率 */
