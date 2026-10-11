@@ -242,6 +242,13 @@
                 </div>
               </div>
             </div>
+            <div class="opt">
+              <span class="opt-name" id="opt-skills">スキル</span>
+              <div class="seg" role="radiogroup" aria-labelledby="opt-skills">
+                <label><input type="radio" name="skills" value="0" /><span>なし</span></label>
+                <label title="配られた 3 枚から 1 枚を選び、ゲージが満タンになるたびに使う"><input type="radio" name="skills" value="1" /><span>あり</span></label>
+              </div>
+            </div>
             <!-- 入力できる範囲（各欄の title にも出す。範囲外は保存時に範囲内へ直す） -->
             <p class="sr-only">体力 5〜200、駒の数 0〜40、駒の数字 1〜20、手数 0〜300、王の罰 1〜200、期限 1〜20。範囲外の値は範囲内に直ります</p>
           </div>
@@ -335,6 +342,15 @@
           <button type="submit" class="btn primary" id="setup-save">保存</button>
         </div>
       </form>
+    </dialog>
+
+    <!-- スキル: 対局の前に配られた 3 枚から 1 枚を選ぶ（ui/skillui.ts の SkillPick）。選ばないと始まらないので Esc では閉じない -->
+    <dialog class="modal skill-pick" id="skill-pick" aria-labelledby="skill-pick-title">
+      <div class="modal-body">
+        <h2 class="modal-title" id="skill-pick-title" tabindex="-1">スキル</h2>
+        <div id="skill-pick-body"></div>
+        <div class="modal-actions" id="skill-pick-actions"></div>
+      </div>
     </dialog>
 
     <!-- 終局 -->

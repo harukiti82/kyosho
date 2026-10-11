@@ -2,6 +2,7 @@
 
 import { SIZE } from "../../web/src/engine/board";
 import { cloneRules, PIECES, PRESETS, sameRules, type PieceKind, type RuleSet } from "../../web/src/engine/rules";
+import { SKILLS, type SkillId } from "../../web/src/engine/skills";
 import type { ClientMessage, HostSeat, WsErrorCode } from "../../web/src/net/protocol";
 import { MAX_MESSAGE_BYTES, TOKEN_PATTERN, TURN_SECONDS } from "../../web/src/net/protocol";
 import { decodeRules, encodeRules } from "../../web/src/ui/query";
@@ -75,6 +76,22 @@ export function parseClientMessage(data: string | ArrayBuffer): Parsed {
       if (x.seq !== undefined) msg.seq = x.seq as number;
       return { ok: true, msg };
     }
+    case "pick":
+      if (typeof x.card !== "string" || !Object.hasOwn(SKILLS, x.card)) return bad("card がスキルではありません");
+      return { ok: true, msg: { type: "pick", card: x.card as SkillId } };
+    case "skill": {
+      if (typeof x.id !== "string" || !Object.hasOwn(SKILLS, x.id)) return bad("id がスキルではありません");
+      if (x.kind !== undefined && (typeof x.kind !== "string" || !Object.hasOwn(PIECES, x.kind))) return bad("kind が駒の種類ではありません");
+      if (x.to !== undefined && (!Array.isArray(x.to) || x.to.length !== 2 || !isCoord(x.to[0]) || !isCoord(x.to[1]))) {
+        return bad(`to は [行, 列]（0〜${SIZE - 1} の整数）です`);
+      }
+      if (x.seq !== undefined && (!Number.isInteger(x.seq) || (x.seq as number) < 0)) return bad("seq は 0 以上の整数です");
+      const msg: ClientMessage = { type: "skill", id: x.id as SkillId };
+      if (x.kind !== undefined) msg.kind = x.kind as PieceKind;
+      if (x.to !== undefined) msg.to = [x.to[0] as number, x.to[1] as number];
+      if (x.seq !== undefined) msg.seq = x.seq as number;
+      return { ok: true, msg };
+    }
     case "rematch": {
       if (x.action !== "request" && x.action !== "cancel" && x.action !== "decline") return bad("action は request / cancel / decline です");
       if (!Number.isInteger(x.gameNo) || (x.gameNo as number) < 1) return bad("gameNo は 1 以上の整数です");
@@ -83,6 +100,6 @@ export function parseClientMessage(data: string | ArrayBuffer): Parsed {
     case "leave":
       return { ok: true, msg: { type: "leave" } };
     default:
-      return bad("type は join / move / rematch / leave です");
+      return bad("type は join / move / pick / skill / rematch / leave です");
   }
 }

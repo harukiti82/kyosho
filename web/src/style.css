@@ -1883,6 +1883,97 @@ button {
     transform: translate(var(--dx), var(--dy)) scale(0.3);
   }
 }
+/* スキルのゲージ: 溜めマスからゲージの先端へ飛ぶ光の粒・粒が出るマスの菱形の輪・浮かぶ「+N」・満タンの光（App.playGaugeFx） */
+.fx-gauge-orb {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  margin: -6px 0 0 -6px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #fff 0 35%, var(--cyan-300) 60%, rgba(47, 211, 255, 0));
+  box-shadow: 0 0 10px 3px rgba(122, 230, 255, 0.75);
+  opacity: 0;
+  animation: gauge-orb var(--orb-ms, 520ms) cubic-bezier(0.55, 0, 0.7, 0.45) both;
+}
+@keyframes gauge-orb {
+  0% {
+    opacity: 0;
+    transform: translate(0, 0) scale(0.5);
+  }
+  18% {
+    opacity: 1;
+    transform: translate(0, 0) scale(1.35);
+  }
+  100% {
+    opacity: 0.9;
+    transform: translate(var(--dx), var(--dy)) scale(0.45);
+  }
+}
+.fx-zone-ring {
+  position: absolute;
+  border: 2px solid var(--cyan-300);
+  box-shadow: 0 0 8px rgba(122, 230, 255, 0.7);
+  opacity: 0;
+  animation: zone-ring 0.55s ease-out both;
+}
+@keyframes zone-ring {
+  from {
+    opacity: 1;
+    transform: translate(-50%, -50%) rotate(45deg) scale(0.45);
+  }
+  to {
+    opacity: 0;
+    transform: translate(-50%, -50%) rotate(45deg) scale(1);
+  }
+}
+.fx-gauge-gain {
+  position: absolute;
+  font-family: var(--font-display);
+  font-size: 1rem;
+  font-weight: 900;
+  line-height: 1;
+  color: #fff;
+  white-space: nowrap;
+  text-shadow:
+    0 0 6px rgba(47, 211, 255, 0.95),
+    0 1px 2px rgba(4, 17, 46, 0.9);
+  opacity: 0;
+  animation: gauge-gain var(--gain-ms, 1100ms) ease-out both;
+}
+@keyframes gauge-gain {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -40%) scale(0.7);
+  }
+  15% {
+    opacity: 1;
+    transform: translate(-50%, -110%) scale(1.12);
+  }
+  70% {
+    opacity: 1;
+    transform: translate(-50%, -150%) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -190%) scale(1);
+  }
+}
+.fx-gauge-flare {
+  position: absolute;
+  background: radial-gradient(ellipse at 50% 50%, rgba(255, 255, 255, 0.85), rgba(122, 230, 255, 0.45) 55%, rgba(47, 211, 255, 0) 72%);
+  opacity: 0;
+  animation: gauge-flare var(--flare-ms, 900ms) ease-out both;
+}
+@keyframes gauge-flare {
+  from {
+    opacity: 1;
+    transform: scale(1, 1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1.35, 3.2);
+  }
+}
 /* 特大: 画面全体の発光 */
 .fx-flash {
   position: absolute;
@@ -4328,4 +4419,678 @@ button {
   .coach-msg {
     font-size: 0.84rem;
   }
+}
+
+/* ---- スキル（タロットカード風の 8 枚。名前と意味だけ借り、絵柄は石・駒・盤の格子） ---- */
+/* カードの面: 角を落とした紺の札に二重の細い枠、番号（明朝のローマ数字）・絵柄・名前の白い斜めの帯・タロットの名前・効果・ゲージの長さ */
+.tarot {
+  container-type: inline-size;
+  position: relative;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto auto auto auto;
+  justify-items: center;
+  align-items: center;
+  gap: 0.2rem;
+  width: 100%;
+  aspect-ratio: 5 / 8;
+  padding: 0.5rem 0.3rem 0.5rem;
+  border: 0;
+  border-radius: 0;
+  color: var(--ink);
+  text-align: center;
+  font-family: var(--font-display);
+  background:
+    linear-gradient(90deg, rgba(220, 240, 255, 0.05) 0 1px, transparent 1px) 0 0 / 25% 16%,
+    linear-gradient(180deg, rgba(220, 240, 255, 0.05) 0 1px, transparent 1px) 0 0 / 25% 16%,
+    linear-gradient(170deg, var(--navy-800), var(--navy-950) 75%);
+  box-shadow:
+    inset 0 0 0 1px var(--rim),
+    inset 0 0 0 5px var(--navy-950),
+    inset 0 0 0 6px rgba(122, 230, 255, 0.45);
+  clip-path: polygon(0.6rem 0, 100% 0, 100% calc(100% - 0.6rem), calc(100% - 0.6rem) 100%, 0 100%, 0 0.6rem);
+  transition: transform 0.18s var(--ease-snap), background-color 0.15s;
+}
+.tarot-num {
+  font-family: var(--font-piece);
+  font-size: min(0.85rem, 11cqi);
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: var(--cyan-300);
+  line-height: 1;
+}
+.tarot-art {
+  width: 74%;
+  max-height: 100%;
+}
+.tarot-art .grid {
+  fill: none;
+  stroke: rgba(122, 230, 255, 0.28);
+  stroke-width: 1;
+}
+.tarot-art .fill-w {
+  fill: var(--stone-1);
+}
+.tarot-art .fill-b {
+  fill: var(--stone-0);
+  stroke: var(--rim);
+  stroke-width: 1.2;
+}
+.tarot-art .dim {
+  opacity: 0.5;
+}
+.tarot-art .ln,
+.tarot-art .ring {
+  fill: none;
+  stroke: #fff;
+  stroke-width: 2.2;
+  stroke-linecap: square;
+}
+.tarot-art .thick {
+  stroke-width: 3.4;
+}
+.tarot-art .ln-navy {
+  stroke: var(--navy-900);
+  stroke-width: 4;
+}
+.tarot-name {
+  max-width: 100%;
+  padding: 0.12rem 0.55rem;
+  background: #fff;
+  color: var(--navy-900);
+  clip-path: var(--slant-sm);
+  font-size: min(1rem, 13cqi);
+  font-weight: 900;
+  line-height: 1.25;
+  white-space: nowrap;
+}
+.tarot-arcana {
+  font-family: var(--font-piece);
+  font-size: min(0.78rem, 11cqi);
+  color: var(--ink-muted);
+  line-height: 1.1;
+}
+.tarot-effect {
+  font-size: min(0.78rem, 11cqi);
+  font-weight: 700;
+  color: #fff;
+  line-height: 1.2;
+}
+/* ゲージの長さ（いちばん長い大回復を全幅） */
+.tarot-len {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  width: 82%;
+  font-size: min(0.68rem, 10cqi);
+  font-weight: 800;
+  color: var(--ink-dim);
+  font-variant-numeric: tabular-nums;
+}
+.tarot-len i {
+  flex: 1;
+  height: 0.3rem;
+  background: linear-gradient(90deg, var(--cyan-400) calc(var(--len) * 100%), rgba(122, 230, 255, 0.18) 0);
+  clip-path: var(--slant-sm);
+}
+/* 選ぶ画面のカード: 選んだら持ち上がり、白い縁と両端から黒と白の石で挟む */
+button.tarot {
+  cursor: pointer;
+}
+button.tarot::before,
+button.tarot::after {
+  content: "";
+  position: absolute;
+  top: 46%;
+  width: 1.3rem;
+  aspect-ratio: 1;
+  opacity: 0;
+  transition: opacity 0.15s, transform 0.18s var(--ease-snap);
+}
+button.tarot::before {
+  left: -0.65rem;
+  background: var(--pinch-black);
+  transform: translateX(-0.4rem);
+}
+button.tarot::after {
+  right: -0.65rem;
+  background: var(--pinch-white);
+  transform: translateX(0.4rem);
+}
+@media (hover: hover) {
+  button.tarot:hover {
+    background-color: var(--navy-700);
+    transform: translateY(-0.15rem);
+  }
+}
+button.tarot[aria-pressed="true"] {
+  transform: translateY(-0.35rem);
+  box-shadow:
+    inset 0 0 0 2px #fff,
+    inset 0 0 0 5px var(--navy-950),
+    inset 0 0 0 6px #fff;
+}
+button.tarot[aria-pressed="true"]::before,
+button.tarot[aria-pressed="true"]::after {
+  opacity: 1;
+  transform: none;
+}
+button.tarot:focus-visible {
+  outline: none;
+  box-shadow:
+    inset 0 0 0 3px var(--go),
+    inset 0 0 0 5px var(--navy-950),
+    inset 0 0 0 6px var(--go);
+}
+.tarot-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.6rem;
+  padding-top: 0.4rem;
+}
+.tarot-row.one {
+  grid-template-columns: minmax(0, 9rem);
+  justify-content: center;
+}
+/*
+ * 配る動き（SkillPick）: 1 枚ずつ上から飛んできて、裏（.tarot-cover）から表に返る。transform / opacity だけ。
+ * fill は backwards（終わった後は選んだカードの持ち上がり＝ aria-pressed の transform に任せる）
+ */
+.tarot-row.dealing {
+  perspective: 900px;
+}
+.tarot-row.dealing .tarot {
+  animation: tarot-deal var(--deal-ms, 520ms) cubic-bezier(0.2, 0.75, 0.3, 1) calc(var(--deal-i, 0) * var(--deal-step, 180ms)) backwards;
+}
+.tarot-cover {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  opacity: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(90deg, rgba(122, 230, 255, 0.3) 0 1px, transparent 1px) 50% 50% / 20% 12.5%,
+    linear-gradient(180deg, rgba(122, 230, 255, 0.3) 0 1px, transparent 1px) 50% 50% / 20% 12.5%,
+    linear-gradient(170deg, var(--navy-700), var(--navy-950));
+  box-shadow: inset 0 0 0 1px var(--rim), inset 0 0 0 6px var(--navy-950), inset 0 0 0 7px var(--cyan-400);
+}
+.tarot-row.dealing .tarot-cover {
+  animation: tarot-cover var(--deal-ms, 520ms) linear calc(var(--deal-i, 0) * var(--deal-step, 180ms)) backwards;
+}
+@keyframes tarot-deal {
+  0% {
+    opacity: 0;
+    transform: translateY(-2.2rem) rotateY(180deg) scale(0.86);
+  }
+  40% {
+    opacity: 1;
+    transform: translateY(0) rotateY(180deg) scale(1);
+    /* 返す間は対称の曲線にして、真横（90 度）を 70% ちょうどに（裏の絵を消す時刻と合わせる） */
+    animation-timing-function: cubic-bezier(0.45, 0, 0.55, 1);
+  }
+  100% {
+    opacity: 1;
+    transform: none;
+  }
+}
+/* 裏の絵は、カードが真横を向く（回転の半分を過ぎる）までだけ見せる */
+@keyframes tarot-cover {
+  0%,
+  69% {
+    opacity: 1;
+  }
+  71%,
+  100% {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tarot-row.dealing .tarot,
+  .tarot-row.dealing .tarot-cover {
+    animation: none;
+  }
+}
+.skill-pick {
+  width: min(calc(100vw - 32px), 30rem);
+}
+.pick-who {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: -0.3rem 0 0.4rem;
+  font-family: var(--font-display);
+  font-weight: 800;
+  color: var(--ink-muted);
+}
+.pick-detail {
+  min-height: 3.4rem;
+  margin-top: 0.75rem;
+}
+.pick-detail p {
+  margin: 0;
+}
+
+/* 名札のスキル: 番号・名前・斜めに切ったゲージ・残り（満タンは白く光る）。手番で使えるときは白い板に反転して押せる */
+.plate-skill {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+  height: 1.2rem;
+  margin: 0;
+  padding: 0 0.6rem 0 0.6rem;
+  border: 0;
+  border-radius: 0;
+  background: var(--navy-950);
+  color: var(--ink-muted);
+  font-family: var(--font-display);
+  font-size: 0.72rem;
+  font-weight: 800;
+  line-height: 1;
+  text-align: left;
+  clip-path: var(--slant-sm);
+  position: relative;
+  /* 光の筋（::after）が横にずれても、ページの横幅に数えない（clip-path は見た目だけ切る） */
+  overflow: hidden;
+}
+.ps-num {
+  font-family: var(--font-piece);
+  font-size: 0.66rem;
+  color: var(--cyan-300);
+}
+.ps-name {
+  flex: none;
+  white-space: nowrap;
+  color: #fff;
+}
+.ps-gauge {
+  position: relative;
+  flex: 1;
+  min-width: 2rem;
+  height: 0.42rem;
+  overflow: hidden;
+  background: rgba(122, 230, 255, 0.18);
+  clip-path: var(--slant-sm);
+}
+/* 溜まった量は横の拡大で描く（幅を変えない）。溜まった直後は --g0 から --g へ伸ばす（.grow、--grow-at は伸び始めまでの遅れ） */
+.ps-gauge i {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, #1e9fd0, var(--cyan-400));
+  transform: scaleX(var(--g));
+  transform-origin: 0 50%;
+}
+/* 伸びる先端の光（ゲージ全幅の板を先端の位置まで横にずらす） */
+.ps-tip {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  background: linear-gradient(90deg, transparent calc(100% - 0.9rem), rgba(255, 255, 255, 0.95) calc(100% - 0.15rem), transparent);
+  transform: translateX(calc((var(--g) - 1) * 100%));
+  pointer-events: none;
+}
+.plate-skill.grow .ps-gauge i,
+.plate-skill.ready.grow .ps-gauge i {
+  animation: gauge-grow 0.6s cubic-bezier(0.22, 0.8, 0.3, 1) var(--grow-at, 0ms) both;
+}
+.plate-skill.grow.full .ps-gauge i {
+  animation:
+    gauge-grow 0.6s cubic-bezier(0.22, 0.8, 0.3, 1) var(--grow-at, 0ms) both,
+    gauge-glow 1.2s ease-in-out calc(var(--grow-at, 0ms) + 0.6s) infinite;
+}
+.plate-skill.grow .ps-tip {
+  animation: gauge-tip 0.6s cubic-bezier(0.22, 0.8, 0.3, 1) var(--grow-at, 0ms) both;
+}
+@keyframes gauge-grow {
+  from {
+    transform: scaleX(var(--g0));
+  }
+}
+@keyframes gauge-tip {
+  from {
+    opacity: 0;
+    transform: translateX(calc((var(--g0) - 1) * 100%));
+  }
+  12%,
+  70% {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+    transform: translateX(calc((var(--g) - 1) * 100%));
+  }
+}
+/* 満タンになった瞬間: 札全体が白く光る（::before）。満タンの間は光の筋がときどき札を横切る（::after。最初の 1 本は満タンになった瞬間） */
+.plate-skill::before,
+.plate-skill::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+.plate-skill::before {
+  background: #fff;
+}
+.plate-skill::after {
+  background: linear-gradient(105deg, transparent 30%, rgba(255, 255, 255, 0.55) 50%, transparent 70%);
+  transform: translateX(-100%);
+}
+.plate-skill.just-full::before {
+  animation: gauge-full-flash 0.9s ease-out calc(var(--grow-at, 0ms) + 0.6s) both;
+}
+.plate-skill.full::after {
+  animation: gauge-shine 2.8s ease-in-out calc(var(--grow-at, 0ms) + 0.6s) infinite;
+}
+@keyframes gauge-full-flash {
+  0% {
+    opacity: 0;
+  }
+  15% {
+    opacity: 0.85;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes gauge-shine {
+  0% {
+    opacity: 1;
+    transform: translateX(-100%);
+  }
+  30%,
+  100% {
+    opacity: 1;
+    transform: translateX(100%);
+  }
+}
+.ps-state {
+  flex: none;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-dim);
+}
+.plate-skill.full .ps-gauge i {
+  background: #fff;
+  animation: gauge-glow 1.2s ease-in-out infinite;
+}
+.plate-skill.full .ps-state {
+  color: var(--cyan-300);
+}
+@keyframes gauge-glow {
+  50% {
+    opacity: 0.55;
+  }
+}
+/* 満タンでも使えない（戻せる駒がない・体力が満タン・偵察の期限前など）: 残りの欄に理由を出し、白いバーは控えめで光らない */
+.plate-skill.full.held .ps-gauge i {
+  background: rgba(255, 255, 255, 0.4);
+  animation: none;
+}
+.plate-skill.grow.full.held .ps-gauge i {
+  animation: gauge-grow 0.6s cubic-bezier(0.22, 0.8, 0.3, 1) var(--grow-at, 0ms) both;
+}
+.plate-skill.full.held::after {
+  animation: none;
+}
+.plate-skill.full.held .ps-state {
+  /* 札の地は名札の手番に関係なく紺なので、名札の文字色の変数（手番では紺になる）は使わない */
+  color: rgba(242, 250, 255, 0.72);
+}
+/* 自分のカードの鍵: 斜めに切った札（clip-path は当たり判定も切る）を包み、上下に透明な余白を足して押せる高さを広げる（負の余白でレイアウトは変えない） */
+.skill-hit {
+  /* 余白が重なる体力ゲージ（位置指定あり）より手前に出す。名札の中（isolation）だけで重なる */
+  position: relative;
+  z-index: 1;
+  display: block;
+  width: 100%;
+  min-width: 0;
+  margin: -6px 0;
+  padding: 6px 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+@media (pointer: coarse) {
+  .skill-hit {
+    margin: -12px 0;
+    padding: 12px 0;
+  }
+}
+.skill-hit:focus-visible {
+  outline: none;
+}
+.skill-hit:not(.ready):focus-visible .plate-skill {
+  background: var(--navy-700);
+}
+.plate-skill.ready {
+  background: var(--cyan-400);
+  color: var(--navy-900);
+  animation: skill-ready 1.4s ease-in-out infinite;
+}
+.plate-skill.ready .ps-num,
+.plate-skill.ready .ps-name,
+.plate-skill.ready .ps-state {
+  color: var(--navy-900);
+}
+.plate-skill.ready .ps-gauge {
+  background: rgba(4, 17, 46, 0.25);
+}
+.plate-skill.ready .ps-gauge i {
+  background: var(--navy-900);
+  animation: none;
+}
+.skill-hit.ready:hover .plate-skill,
+.skill-hit.ready:focus-visible .plate-skill,
+.plate-skill.ready.aiming {
+  background: #fff;
+  animation: none;
+}
+@keyframes skill-ready {
+  50% {
+    background: #fff;
+  }
+}
+/* 動きを減らす設定: 伸ばさず・光らせず、値と満タンの色だけ */
+@media (prefers-reduced-motion: reduce) {
+  .plate-skill .ps-gauge i,
+  .plate-skill .ps-tip,
+  .plate-skill::before,
+  .plate-skill::after,
+  .plate-skill.ready {
+    animation: none !important;
+  }
+}
+/* この手番で使ったスキル（置くまで）。手番の名札は白いのでシアンの板 */
+.plate-skill.armed {
+  background: var(--cyan-400);
+  color: var(--navy-900);
+}
+.plate-skill.armed .ps-name,
+.plate-skill.armed .ps-num,
+.plate-skill.armed .ps-state {
+  color: var(--navy-900);
+}
+/* 補充の駒選び・王の移し替えのやめる（駒台の代わりの行） */
+.skill-aim {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+.skill-aim-text {
+  font-family: var(--font-display);
+  font-weight: 800;
+  color: #fff;
+}
+/* 溜めマス: 菱形の細い枠（オセロの点線の枠・取れる印の丸とは形を変える） */
+.cell.zone::before {
+  content: "";
+  position: absolute;
+  inset: 22%;
+  border: 1.5px solid rgba(47, 211, 255, 0.55);
+  transform: rotate(45deg);
+  pointer-events: none;
+}
+.key-zone {
+  display: inline-block;
+  width: 0.7em;
+  height: 0.7em;
+  margin-inline: 0.15em;
+  border: 1.5px solid var(--cyan-400);
+  transform: rotate(45deg);
+  vertical-align: 0.05em;
+}
+/* 王の移し替え: 移せる自分の駒（白い輪が脈打つ）。ほかのマスは沈める */
+.board.aiming .cell:not(.skill-target) {
+  filter: brightness(0.6);
+}
+.cell.skill-target {
+  cursor: pointer;
+  box-shadow: inset 0 0 0 3px #fff;
+  animation: aim-ring 1s ease-in-out infinite;
+}
+@keyframes aim-ring {
+  50% {
+    box-shadow: inset 0 0 0 3px var(--cyan-400);
+  }
+}
+/* 偵察で分かった相手の王（候補の「?」と違い、金の地に紺の「王」） */
+.king-cand.scouted,
+.key-cand.scouted {
+  background: var(--gold);
+  color: var(--navy-900);
+  border: 1.5px solid #fff;
+  font-family: var(--font-piece);
+}
+.key-cand.scouted {
+  clip-path: none;
+  border-radius: 50%;
+  font-size: 0.75em;
+}
+.king-tag.scouted {
+  color: var(--gold);
+}
+.bb-skill {
+  color: var(--cyan-300);
+}
+
+/* スキルを使った演出: 使った人の側から裏向きのカードが現れ、回って表を向き、名前を見せて消える */
+.fx-skill {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 0.7rem;
+  pointer-events: none;
+  perspective: 900px;
+  --from: 32vh;
+}
+.fx-skill.from-top {
+  --from: -32vh;
+}
+.fx-skill::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 50% 48%, rgba(122, 230, 255, 0.35), rgba(2, 8, 23, 0.55) 55%);
+  animation: cast-dim var(--cast-ms) ease-out forwards;
+}
+.cast-flip {
+  position: relative;
+  width: min(40vw, 10.5rem);
+  transform-style: preserve-3d;
+  animation: cast-flip var(--cast-ms) var(--ease-out) forwards;
+}
+.cast-flip .tarot,
+.cast-back {
+  backface-visibility: hidden;
+}
+.cast-back {
+  position: absolute;
+  inset: 0;
+  transform: rotateY(180deg);
+  background:
+    linear-gradient(90deg, rgba(122, 230, 255, 0.3) 0 1px, transparent 1px) 50% 50% / 20% 12.5%,
+    linear-gradient(180deg, rgba(122, 230, 255, 0.3) 0 1px, transparent 1px) 50% 50% / 20% 12.5%,
+    linear-gradient(170deg, var(--navy-700), var(--navy-950));
+  box-shadow: inset 0 0 0 1px var(--rim), inset 0 0 0 6px var(--navy-950), inset 0 0 0 7px var(--cyan-400);
+  clip-path: polygon(0.6rem 0, 100% 0, 100% calc(100% - 0.6rem), calc(100% - 0.6rem) 100%, 0 100%, 0 0.6rem);
+}
+.cast-who {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0.2rem 1rem;
+  background: #fff;
+  color: var(--navy-900);
+  clip-path: var(--slant);
+  font-family: var(--font-display);
+  font-weight: 900;
+  animation: cast-text var(--cast-ms) ease-out forwards;
+}
+.cast-who .fin-stone {
+  width: 1rem;
+  height: 1rem;
+}
+@keyframes cast-flip {
+  0% {
+    opacity: 0;
+    transform: translateY(var(--from)) rotateY(180deg) scale(0.55);
+  }
+  18% {
+    opacity: 1;
+  }
+  45% {
+    transform: translateY(0) rotateY(0deg) scale(1);
+  }
+  82% {
+    opacity: 1;
+    transform: translateY(0) scale(1.03);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(0) scale(1.1);
+  }
+}
+@keyframes cast-text {
+  0%,
+  40% {
+    opacity: 0;
+    transform: translateY(0.4rem);
+  }
+  55%,
+  82% {
+    opacity: 1;
+    transform: none;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes cast-dim {
+  0% {
+    opacity: 0;
+  }
+  20%,
+  80% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+.fx-skill.reduce .cast-flip,
+.fx-skill.reduce .cast-who {
+  animation: cast-dim var(--cast-ms) linear forwards;
+}
+.fx-skill.reduce .cast-back {
+  display: none;
 }

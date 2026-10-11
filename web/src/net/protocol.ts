@@ -3,6 +3,7 @@
 
 import type { PlayerView } from "../engine/game";
 import type { PieceKind, Player, PresetId, RuleSet } from "../engine/rules";
+import type { SkillId } from "../engine/skills";
 
 /**
  * API と WebSocket のパスの接頭辞。画面と同じオリジンの Worker が /api の下だけを受け持ち、それ以外は静的アセット。
@@ -143,12 +144,30 @@ export interface RematchMessage {
 
 export type RematchAction = "request" | "cancel" | "decline";
 
+/** スキルのカードを選ぶ（スキルありのルールで、対局の前に 1 回。配られた 3 枚のどれか）。両者が選ぶと打てる */
+export interface PickMessage {
+  type: "pick";
+  card: SkillId;
+}
+
+/**
+ * 手番の人がスキルを使う（置く前。ゲージが満タンのとき 1 手番に 1 回）。kind は補充で戻す駒、to は王の移し替えで移す先のマス [行, 列]。
+ * サーバーは engine の useSkill で検証して適用する。seq は move と同じ（考えた局面の棋譜の長さ）
+ */
+export interface SkillMessage {
+  type: "skill";
+  id: SkillId;
+  kind?: PieceKind;
+  to?: [number, number];
+  seq?: number;
+}
+
 /** 部屋を抜ける（メニューへ戻る・新しい部屋を作る）。相手に退室を知らせ、再戦の申し込みを取り下げる。送った後に接続を閉じる */
 export interface LeaveMessage {
   type: "leave";
 }
 
-export type ClientMessage = JoinMessage | MoveMessage | RematchMessage | LeaveMessage;
+export type ClientMessage = JoinMessage | MoveMessage | PickMessage | SkillMessage | RematchMessage | LeaveMessage;
 
 // ---- WebSocket: サーバー → クライアント ----
 
@@ -229,6 +248,7 @@ export type WsErrorCode =
   | "waiting_opponent" // 相手の参加前に手を送った
   | "not_your_turn"
   | "illegal_move" // engine が拒否した手（置けない・持ち駒がない・王を指定できない など）
+  | "illegal_skill" // engine が拒否したスキルの選択・使用（配られていないカード・選び直し・満タンでない・指定が違う など）
   | "game_over" // 終局後に手を送った
   | "stale_move" // 手を考えた局面がもう進んでいる（制限時間切れの自動の手と入れ違い）
   | "stale_rematch" // 終局していない・gameNo が今の対局と違う（再戦が成立した後に届いた二重押しなど）

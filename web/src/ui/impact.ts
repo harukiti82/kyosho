@@ -26,13 +26,16 @@ export interface HitBreakdown {
   anchor: number;
   /** 隠し王の罰（体力が減る分。即負けなら 0） */
   penalty: number;
+  /** スキルで変わった分（強打で増えた分は正、相手の鉄壁で減った分は負。スキルなしは 0） */
+  skill: number;
 }
 
-/** 手のダメージの内訳。上乗せは端の駒の数字（対局中は変わらない）、返した駒の分は残り */
+/** 手のダメージの内訳。上乗せは端の駒の数字（対局中は変わらない）、返した駒の分はスキルで変わる前のダメージの残り */
 export function hitOf(rules: RuleSet, m: MoveEvent): HitBreakdown {
   const anchor = (m.anchors ?? []).reduce((n, a) => n + rules.values[a.kind], 0);
   const penalty = m.king?.penalty ?? 0;
-  return { total: m.damage + penalty, base: m.damage - anchor, anchor, penalty };
+  const plain = m.plain ?? m.damage;
+  return { total: m.damage + penalty, base: plain - anchor, anchor, penalty, skill: m.damage - plain };
 }
 
 /**

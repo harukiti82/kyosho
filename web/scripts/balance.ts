@@ -2,10 +2,13 @@
 // 端の駒の上乗せ（うち隅の駒の割合）・隅を取った側の勝率などを集計する（隠し王・方向駒・拠点プリセットのバランス確認用）。
 // 乱数は種付き（mulberry32）。局 i は種 i で、結果は毎回同じになる。
 // 第 1 引数が vs なら CPU の強さ同士を対戦させる（vs 局数 プリセット 強さA 強さB。先手・後手は 1 局ごとに入れ替える）。
+// 第 1 引数が skill なら、片側だけスキルを持つ 2 手読み同士でスキル側の勝率を測る（skill 局数 [カード...]。スキル側は 1 局ごとに入れ替える）。
 
 import { chooseLookahead, chooseMove, CPU_LEVEL_NAME, CPU_LEVELS, type CpuLevel } from "../src/engine/cpu";
 import { SIZE } from "../src/engine/board";
-import { createGame, kingInfo, playMove, viewFor, type EndReason } from "../src/engine/game";
+import { createGame, kingInfo, playMove, setSkills, useSkill, viewFor, type EndReason } from "../src/engine/game";
+import { chooseSkillUse } from "../src/engine/skillcpu";
+import { SKILL_ORDER, SKILLS, type SkillId } from "../src/engine/skills";
 import { cloneRules, kindsInRules, PIECES, presetById, type PieceKind, type Player, type PresetId } from "../src/engine/rules";
 
 function rng(seed: number) {
@@ -59,8 +62,57 @@ function versus(args: string[]) {
   console.log(`| ${res.win} | ${res.lose} | ${res.draw} | ${pct(res.win, games)} | ${avg(plies)} | ${CPU_LEVEL_NAME[a]} ${t(a)} / ${CPU_LEVEL_NAME[b]} ${t(b)} |`);
 }
 
+/** シミュレーター（kyosho-skillsim の r7.txt の solo、大回復は長さ 80 の行）のスキル側の勝率 */
+const SIM_RATE: Record<SkillId, number> = {
+  firstaid: 54.7, bigheal: 52.4, strong: 55.5, omni: 55.9, refill: 56.0, wall: 54.1, scout: 54.7, kingmove: 53.8,
+};
+
+/** 片側だけスキルを持つ 2 手読み同士（プリセット「スキルあり」）で、カードごとのスキル側の勝率・使った回数 */
+function skills(args: string[]) {
+  const games = Number(args[0] ?? 400);
+  const list = (args.length > 1 ? args.slice(1) : SKILL_ORDER) as SkillId[];
+  const rules = cloneRules(presetById("skill").rules);
+  console.log(`## スキル側の勝率: スキルあり・2 手読み同士・${games} 局（スキル側を 1 局ごとに先手・後手入れ替え）`);
+  console.log("| スキル | 長さ | 勝率（スキル側） | ±SE | シミュレーター | 使った回数/局 | 平均手数 | 先手勝率 |");
+  console.log("|---|---|---|---|---|---|---|---|");
+  for (const id of list) {
+    if (!SKILLS[id]) throw new Error(`カードは ${SKILL_ORDER.join(" / ")}`);
+    let won = 0;
+    let first = 0;
+    let uses = 0;
+    const plies: number[] = [];
+    for (let i = 0; i < games; i++) {
+      const rand = rng(i + 1);
+      const side: Player = i % 2 === 0 ? 0 : 1;
+      let s = setSkills(createGame(rules), side === 0 ? [id, null] : [null, id]);
+      while (!s.result) {
+        const p = s.turn;
+        const use = chooseSkillUse(viewFor(s, p), rand);
+        if (use) {
+          s = useSkill(s, use);
+          uses++;
+        }
+        const ch = chooseMove(viewFor(s, p), "normal", rand)!;
+        s = playMove(s, ch.r, ch.c, ch.kind, { king: ch.king });
+      }
+      const w = s.result.winner;
+      if (w === side) won++;
+      else if (w === null) won += 0.5;
+      if (w === 0) first++;
+      else if (w === null) first += 0.5;
+      plies.push(s.ply);
+    }
+    const p = won / games;
+    const se = Math.sqrt((p * (1 - p)) / games);
+    console.log(
+      `| ${SKILLS[id].name} | ${SKILLS[id].length} | ${(p * 100).toFixed(1)}% | ${(se * 100).toFixed(1)} | ${SIM_RATE[id]}% | ${(uses / games).toFixed(2)} | ${avg(plies)} | ${pct(first, games)} |`,
+    );
+  }
+}
+
 export function main(args: string[]) {
   if (args[0] === "vs") return versus(args.slice(1));
+  if (args[0] === "skill") return skills(args.slice(1));
   const games = Number(args[0] ?? 400);
   const preset = (args[1] ?? "king") as PresetId;
   const rules = cloneRules(presetById(preset).rules);

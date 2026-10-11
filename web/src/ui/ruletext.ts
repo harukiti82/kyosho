@@ -2,6 +2,7 @@
 // 各行を要点と補足に分けて返し、DOM への流し込みは呼び出し側（ui/setup.ts の fillSentences）が textContent で行う。
 
 import { kindsByValue, kindsInRules, KIND_ORDER, PIECES, REACH_MARK, type PieceKind, type RuleSet } from "../engine/rules";
+import { FLIP_POINTS, KINGMOVE_RANGE, REFILL_MAX_VALUE, SCOUT_PENALTY_RATE, SKILL_HEAL, SKILL_ORDER, SKILLS, type SkillId } from "../engine/skills";
 
 /**
  * ルールの 1 行: 要点の一言（大きく太く。1 行に 1 か所だけ）と、その下に小さく添える補足（括弧で囲まず、薄い字）。
@@ -53,6 +54,34 @@ export function kingLine(r: RuleSet): Sentence {
 /** 反対側の駒の力（攻撃に上乗せ）のルールカードの 1 行。遊び方と同じく「反対側」と言う */
 export const anchorLine = (): Sentence => ({ point: "反対側の自分の駒もダメージに足す", note: "挟んだ列の、置いた駒と反対側にある自分の駒の数字" });
 
+/** スキルのルールカードの 1 行 */
+export const skillLine = (): Sentence => ({ point: "ゲージが満タンでスキルを使う", note: "配られた3枚から1枚を選ぶ。返した枚数と受けたダメージで溜まる" });
+
+/**
+ * スキルの効果の文。short はカードの面の一言、point / note はルール詳細・選ぶ画面の要点と補足
+ */
+export function skillText(id: SkillId, r: RuleSet): { short: string; point: string; note: string } {
+  switch (id) {
+    case "firstaid":
+    case "bigheal":
+      return { short: `体力 +${SKILL_HEAL[id]}`, point: `体力を ${SKILL_HEAL[id]} 回復`, note: "始めの体力は超えない" };
+    case "strong":
+      return { short: "ダメージ ×1.5", point: "その手のダメージが 1.5 倍", note: "小数は切り捨て" };
+    case "omni":
+      return { short: "8 方向に挟む", point: "その手で置く駒が 8 方向に挟める", note: "駒の矢印に関係なく挟める" };
+    case "refill":
+      return { short: "駒を 1 つ戻す", point: "使い切った駒を 1 つ駒台に戻す", note: `数字 ${REFILL_MAX_VALUE} 以下の駒だけ` };
+    case "wall":
+      return { short: "相手の次の手を半減", point: "相手の次の手のダメージが半分", note: `駒は${verb(r).hit.replace("された", "る").replace("られた", "られる")}。小数は切り捨て` };
+    case "scout": {
+      const pen = r.king.penalty === "lose" ? "" : `。その手で王を${verb(r).past.replace("した", "す").replace("った", "る")}と罰が ${SCOUT_PENALTY_RATE} 倍の体力−${r.king.amount * SCOUT_PENALTY_RATE}`;
+      return { short: "相手の王が見える", point: "相手の王の場所が自分にだけ分かる", note: `相手が最初の${r.king.deadline}手を打ち終えてから使える${pen}` };
+    }
+    case "kingmove":
+      return { short: `王を ${KINGMOVE_RANGE} マス内へ`, point: "自分の王を近くの自分の駒へ移す", note: `今の王から ${KINGMOVE_RANGE} マス以内。どこへ移したかは相手に見えない` };
+  }
+}
+
 /** 始めの体力（例: 「先手 129・後手 130 から」「どちらも 20 から」） */
 const hpStart = (r: RuleSet) => (r.hp[0] === r.hp[1] ? `どちらも ${r.hp[0]} から` : `先手 ${r.hp[0]}・後手 ${r.hp[1]} から`);
 
@@ -70,6 +99,7 @@ export function ruleLines(r: RuleSet): Sentence[] {
   if (r.heal === "none") lines.push({ point: "回復なし" });
   else lines.push({ point: "挟むと体力を回復", note: `挟んだ両端の駒の${r.heal === "avg" ? "平均" : "低い方−1"}だけ` });
   if (r.king.on) lines.push(kingLine(r));
+  if (r.skills) lines.push(skillLine());
   const limit = r.maxPlies > 0 ? `。${r.maxPlies} 手で終われば体力の多い方が勝ち` : "";
   lines.push({ point: "体力が 0 で負け", note: `${hpStart(r)}${limit}` });
   return lines;
@@ -148,6 +178,25 @@ export function ruleDetails(r: RuleSet): Sentence[] {
           },
     );
     out.push({ point: "予測のダメージに相手の王の罰は含めない", note: "どれが王かは分からない" });
+  }
+  if (r.skills) out.push(...skillDetails(r));
+  return out;
+}
+
+/** スキルの詳細（ゲージの溜め方と 8 枚の効果） */
+export function skillDetails(r: RuleSet): Sentence[] {
+  const steps = FLIP_POINTS.slice(1).map((n, i) => `${i + 1} 枚${i === FLIP_POINTS.length - 2 ? "以上" : ""} +${n}`).join("・");
+  const out: Sentence[] = [
+    { point: "スキル: 対局の前に配られた 3 枚から 1 枚を選ぶ", note: "選んだカードは相手にも見える。相手のカードは両方が選び終えてから見える" },
+    { point: `ゲージは${verb(r).past}枚数で溜まる`, note: `1 手で ${steps}。受けたダメージ 1 点ごとに +0.15` },
+    { point: "溜めマスでは多く溜まる", note: "盤の星の 4 マス c3・f3・c6・f6。置くか、その上の相手の駒を返すと 1 回ごとにカードの溜めマス点" },
+    { point: "満タンになったら自分の手番の始めに使える", note: "使ってから駒を置く。1 手番に 1 回。使うとゲージは 0 から溜め直す" },
+  ];
+  for (const id of SKILL_ORDER) {
+    if (!r.king.on && (id === "scout" || id === "kingmove")) continue;
+    const t = skillText(id, r);
+    const s = SKILLS[id];
+    out.push({ point: `${s.name}: ${t.point}`, note: `${t.note}。タロットの${s.tarot}。ゲージ ${s.length}・溜めマス ${s.zone}` });
   }
   return out;
 }
