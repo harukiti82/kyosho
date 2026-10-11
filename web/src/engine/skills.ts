@@ -51,7 +51,7 @@ export const KINGMOVE_RANGE = 2;
 export const SCOUT_PENALTY_RATE = 2;
 /** 副将（スキルありで隠し王ありのルールだけ）を返されたときの罰（体力） */
 export const VICE_PENALTY = 15;
-/** 王を決めた後・副将を返された後、自分の手でこの手数以内に副将を決める（期限の手で置いた駒が自動で副将になる） */
+/** 王を決めた後・副将を返された後、自分の手でこの手数以内に置く駒で副将を出す（期限の手で置いた駒が自動で副将になる） */
 export const VICE_DEADLINE = 7;
 /** 対局の前に配る枚数 */
 export const OFFER_SIZE = 3;
@@ -104,7 +104,7 @@ export type SkillBlock =
   | "fullHp" // 回復: 体力が初期値
   | "noRefill" // 補充: 戻せる駒がない
   | "noTarget" // 偵察: 相手の王がまだ決まっていない（期限前）
-  | "noVice" // 偵察: 王が分かった・返した後で、相手の副将が決まっていない
+  | "noVice" // 偵察: 王が分かった・返した後で、相手が副将を出す期限の前・相手の副将が決まっていない
   | "viceSeen" // 偵察: 相手の今の副将はもう特定している
   | "noKing" // 王の移し替え: 自分の王が隠れていない
   | "noRoom" // 王の移し替え: 移せる駒がない

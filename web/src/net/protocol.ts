@@ -125,6 +125,11 @@ export interface MoveMessage {
   /** 置いた駒を自分の王にする（隠し王）。省略は false */
   king?: boolean;
   /**
+   * 置いた駒を自分の副将にする（スキルありで隠し王ありのルールの、副将を出す期間だけ。king と同時は不可）。省略は false。
+   * 副将は隠し情報なので、サーバーは相手に送る view に出さない（viewFor）
+   */
+  vice?: boolean;
+  /**
    * 手を考えた局面の棋譜の長さ（view.history.length）。サーバーの局面と違えば stale_move で拒否する
    * （制限時間切れの自動の手と入れ違いになった手を、次の局面に打たない）。省略すると調べない
    */
@@ -163,23 +168,12 @@ export interface SkillMessage {
   seq?: number;
 }
 
-/**
- * 手番の人が盤上の自分の駒（王以外）を副将に決める（スキルありで隠し王ありのルール。王を決めた後・副将を返された後の決める期間、置く前）。
- * サーバーは engine の setVice で検証して適用する。副将は隠し情報なので、決めた人にだけ state を返す（相手には送らない）。seq は move と同じ
- */
-export interface ViceMessage {
-  type: "vice";
-  /** 副将にする駒のマス [行, 列] */
-  at: [number, number];
-  seq?: number;
-}
-
 /** 部屋を抜ける（メニューへ戻る・新しい部屋を作る）。相手に退室を知らせ、再戦の申し込みを取り下げる。送った後に接続を閉じる */
 export interface LeaveMessage {
   type: "leave";
 }
 
-export type ClientMessage = JoinMessage | MoveMessage | PickMessage | SkillMessage | ViceMessage | RematchMessage | LeaveMessage;
+export type ClientMessage = JoinMessage | MoveMessage | PickMessage | SkillMessage | RematchMessage | LeaveMessage;
 
 // ---- WebSocket: サーバー → クライアント ----
 
@@ -259,9 +253,8 @@ export type WsErrorCode =
   | "invalid_token" // トークンがこの部屋の席と合わない（接続を閉じる）
   | "waiting_opponent" // 相手の参加前に手を送った
   | "not_your_turn"
-  | "illegal_move" // engine が拒否した手（置けない・持ち駒がない・王を指定できない など）
+  | "illegal_move" // engine が拒否した手（置けない・持ち駒がない・王を指定できない・副将を出せない など）
   | "illegal_skill" // engine が拒否したスキルの選択・使用（配られていないカード・選び直し・満タンでない・指定が違う など）
-  | "illegal_vice" // engine が拒否した副将の指定（決める期間でない・自分の駒でない・王の駒 など）
   | "game_over" // 終局後に手を送った
   | "stale_move" // 手を考えた局面がもう進んでいる（制限時間切れの自動の手と入れ違い）
   | "stale_rematch" // 終局していない・gameNo が今の対局と違う（再戦が成立した後に届いた二重押しなど）

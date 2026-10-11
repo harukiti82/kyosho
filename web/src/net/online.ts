@@ -3,7 +3,6 @@
 // 画面（ui/）はここが出すイベントで描き直し、手は send で送るだけ。手の正しさはサーバーが判定する。
 // 仕様は .agent/online-protocol.md
 
-import type { Cell } from "../engine/board";
 import type { PieceKind } from "../engine/rules";
 import type { SkillId, SkillUse } from "../engine/skills";
 import {
@@ -27,7 +26,6 @@ import {
   type ServerMessage,
   type SkillMessage,
   type StateMessage,
-  type ViceMessage,
   type WsErrorCode,
 } from "./protocol";
 
@@ -280,9 +278,10 @@ export class OnlineSession {
    * 手を送る。つながっていなければ false。
    * seq は手を考えた局面の棋譜の長さ（制限時間切れの自動の手と入れ違ったら、サーバーが stale_move で拒否する）
    */
-  sendMove(r: number, c: number, kind: PieceKind, king = false, seq?: number): boolean {
+  sendMove(r: number, c: number, kind: PieceKind, king = false, seq?: number, vice = false): boolean {
     if (!this.ready) return false;
     const msg: MoveMessage = king ? { type: "move", r, c, kind, king: true } : { type: "move", r, c, kind };
+    if (vice) msg.vice = true;
     if (seq !== undefined) msg.seq = seq;
     this.ws!.send(JSON.stringify(msg));
     return true;
@@ -292,15 +291,6 @@ export class OnlineSession {
   sendPick(card: SkillId): boolean {
     if (!this.ready) return false;
     this.ws!.send(JSON.stringify({ type: "pick", card } satisfies PickMessage));
-    return true;
-  }
-
-  /** 副将を決める（置く前）。seq は sendMove と同じ。つながっていなければ false */
-  sendVice(at: Cell, seq?: number): boolean {
-    if (!this.ready) return false;
-    const msg: ViceMessage = { type: "vice", at: [at[0], at[1]] };
-    if (seq !== undefined) msg.seq = seq;
-    this.ws!.send(JSON.stringify(msg));
     return true;
   }
 

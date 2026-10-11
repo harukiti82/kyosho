@@ -50,10 +50,9 @@
 | type | フィールド | いつ |
 |---|---|---|
 | `join` | `token?: string` | 接続直後に 1 回。`token` あり = その席に戻る（作成者の最初の接続もこちら）、なし = 空いている席に参加 |
-| `move` | `r`, `c`（0〜7 の整数）, `kind`（`PieceKind`）, `king?: boolean`, `seq?: number` | 自分の手番に 1 手。`king: true` で置いた駒を自分の王にする（隠し王）。`seq` は手を考えた局面の棋譜の長さ（`view.history.length`）で、サーバーの局面と違えば `stale_move`（制限時間切れの自動の手と入れ違った手を、次の局面に打たない）。省略すると調べない |
+| `move` | `r`, `c`（0〜7 の整数）, `kind`（`PieceKind`）, `king?: boolean`, `vice?: boolean`, `seq?: number` | 自分の手番に 1 手。`king: true` で置いた駒を自分の王にする（隠し王）。`vice: true` で置いた駒を自分の副将にする（スキルありで隠し王ありの部屋の、副将を出す期間。下の「スキル」）。`seq` は手を考えた局面の棋譜の長さ（`view.history.length`）で、サーバーの局面と違えば `stale_move`（制限時間切れの自動の手と入れ違った手を、次の局面に打たない）。省略すると調べない |
 | `pick` | `card`（`SkillId`） | スキルありのルールで、対局の前に 1 回。配られた 3 枚（`view.skills.sides[you].offer`）のどれか。両者が選ぶまで `move` は `illegal_move`。下の「スキル」 |
 | `skill` | `id`（`SkillId`）, `kind?`（`PieceKind`。補充で戻す駒）, `to?`（`[行, 列]`。王の移し替えの移す先）, `seq?: number` | 自分の手番の頭（置く前）に 1 回。ゲージが満タンのとき。`seq` は `move` と同じ |
-| `vice` | `at`（`[行, 列]`。副将にする自分の駒）, `seq?: number` | スキルありで隠し王ありの部屋。王を決めた後・副将を返された後の決める期間の自分の手番の頭（置く前）。決めた人にだけ `state` が届く。下の「スキル」 |
 | `rematch` | `action`（`request` / `cancel` / `decline`）, `gameNo`（終わった対局の番号 = `state.gameNo`） | 終局後だけ。`request` は申し込み（相手が申し込み済みなら受けたことになり、次の対局が始まる）、`cancel` は自分の申し込みの取り消し、`decline` は相手の申し込みを断る。下の「再戦」 |
 | `leave` | なし | 部屋を抜ける直前（メニューから別の対局を始めた・新しい部屋を作った）。相手に退室を知らせ、再戦の申し込みを取り下げる。送った後に接続を閉じる |
 | （ping） | `{"type":"ping"}` という文字列そのもの（`PING_TEXT`） | 任意。`{"type":"pong"}` が返る。部屋の寿命は延びない |
@@ -95,7 +94,6 @@
 | `not_your_turn` | 相手の手番に手を送った | 残る |
 | `illegal_move` | engine が拒否した（置けない・持ち駒にない・王を指定できない・スキルのカードを選び終えていない など。`message` は engine の例外文） | 残る |
 | `illegal_skill` | engine が拒否したカードの選択・スキルの使用（配られていないカード・選び直し・満タンでない・この手番で使った・補充できない駒・移せないマス・戻す手がない（巻き戻し）・相手の副将が未定か特定済み（偵察） など） | 残る |
-| `illegal_vice` | engine が拒否した副将の指定（決める期間でない・自分の駒でない・王の駒・決め済み など） | 残る |
 | `game_over` | 終局後に手を送った | 残る |
 | `stale_move` | 締め切りを過ぎてから手が届いた（先に自動の手を打って `state` を配った後に返す）・`seq` がサーバーの局面と違う | 残る |
 | `stale_rematch` | 終局していないのに `rematch` を送った・`gameNo` が今の対局と違う（再戦が成立した後に届いた二重押し） | 残る |
@@ -172,8 +170,8 @@ state{phase:finished, view.result} ◀──────────────
 - **運命の輪**: 引く効果はサーバーの `crypto.getRandomValues` で決める（`useSkill` の第 3 引数。画面は id だけを送り、効果を選べない）。`armed.effect` が引いた効果、`armed.fizzle` は不発。補充・王の移し替えが出たら `armed.aim: true` で、同じ人がもう一度 `skill`（`id: "wheel"` と `kind` / `to`）を送って指定する。指定するまで `move` は `illegal_move`。指定を待つ間に時間切れなら、`playTimeout` が指定も一様に選んでから打つ
 - **連続行動**: 1 手目の後に置ける手があれば手番は同じ人のまま（`view.skills.second: true`）。サーバーは手番が来たときと同じく時計を数え直す。2 手目に `skill` は `illegal_skill`
 - **巻き戻し**: engine が巻き戻しのカードを持つ人の前の手番の頭の局面を `GameState.skills.undo` に持つ（王を含むので `viewFor` が消し、`view.skills.undoable` だけを送る）。`skill` で使うと `state` の棋譜が短くなる（`armed.back` が戻した手数）。画面は `seq` に新しい棋譜の長さを使う。相手の王の指定は戻さず、戻した応手で相手が王を決めていたら、相手の `view.myKing.kept` / `forcedNow` が true（次に置く駒が王）。使った人には何も分からない
-- **偵察**: 相手の王が分からないうちは王を特定し（`armed.scout: "find"`）、罰 2 倍は `view.skills.hunt` でその王を返すまで続く。王が分かっている・返した後は相手の今の副将を特定する（`armed.scout: "vice"`。罰 2 倍はその副将を返すまで、`GameState.kings[相手].vice.seen`）。相手の副将が未定・特定済みなら `illegal_skill`（ゲージは減らない）
-- **副将**: `vice` を engine の `setVice` で検証する。副将の真の状態は `GameState.kings[p].vice`（隠し情報）で、`viewFor` が本人に `view.myVice`（`ViceInfo`: `status` off / wait / unset / set・`cell`・`left`・`forcedNow`・`kept`・`seen`）、相手に `view.oppVice`（`{ set, scouted, cell }`。`cell` は偵察で特定したときだけ）を作る。相手が王の期限の手を打ち終えるまで（王が返されていなければ）`oppVice.set` は常に `false`（王を決めた時期が分かるため）。いつ決めたかも隠すので、`vice` の返事の `state` は決めた人にだけ送り、相手には送らない（`Room.broadcast` の `only`）。期限の手までに決めなければ `move` で置いた駒が自動で副将（`myVice.auto`）。副将を返した手の棋譜は `MoveEvent.vice`（`{ r, c, kind, penalty, scouted? }`。公開）。`server/test/skill.test.ts` が、副将の駒だけ違う局面で相手への `view` が一致することを検査する
+- **偵察**: 相手の王が分からないうちは王を特定し（`armed.scout: "find"`）、罰 2 倍は `view.skills.hunt` でその王を返すまで続く。王が分かっている・返した後は相手の今の副将を特定する（`armed.scout: "vice"`。罰 2 倍はその副将を返すまで、`GameState.kings[相手].vice.seen`）。相手が副将を出す期限の前（`view.oppVice.set` が `false`）・特定済みなら `illegal_skill`（ゲージは減らない）
+- **副将**: 王と同じく `move` の `vice: true` で、置いた駒を副将にして出す（engine の `playMove(state, r, c, kind, { vice })` が検証する。出す期間でない・`king` と同時は `illegal_move`）。副将の真の状態は `GameState.kings[p].vice`（隠し情報）で、`viewFor` が本人に `view.myVice`（`ViceInfo`: `status` off / wait / unset / set・`cell`・`left`・`forcedNow`・`kept`・`seen`）、相手に `view.oppVice`（`{ set, wait, scouted, cell }`。`cell` は偵察で特定したときだけ）を作る。出した手で `set` が変わると置いた駒が副将だと分かるので、`set` はその期間の期限の手（必ず決まる手）を相手が打ち終えてから `true` になる（最初の期間は王の期限 ＋ 7 手、返された後は返された時点 ＋ 7 手。`wait` はそれまでの相手の手数）。`vice` を付けた手も付けない手も、相手に届く `state` は同じ（棋譜にも残らない）。期限の手まで出さなければ置いた駒が自動で副将（`myVice.auto`）。副将を返した手の棋譜は `MoveEvent.vice`（`{ r, c, kind, penalty, scouted? }`。公開）。`server/test/skill.test.ts` が、副将の駒だけ違う局面で相手への `view` が一致することを検査する
 - **隠し情報**: 偵察で分かった相手の王は `GameState.kings[相手].seen` に、王の移し替えで移した先は `kings[自分].cell` に持つだけで、`viewFor` が使った本人にだけ見せる（偵察した人の `view.oppKing` は `{ candidates: [王のマス], scouted: true }`）。王の移し替えの棋譜・`armed` には移す先を入れない（`cands` は使った時点の自分の駒すべて = 公開されている盤の情報）。`server/test/skill.test.ts` が、移す先だけ違う 2 部屋で相手に届くバイト列が一致することを検査する
 - **再戦**: 次の対局は配り直す（カード・ゲージは持ち越さない）
 
@@ -212,7 +210,7 @@ state{phase:finished, view.result} ◀──────────────
 - **手**: 自分の手番・対局中・つながっている・前の手の返事待ちでないときだけ盤を操作でき、打ったら `move`（`seq` 付き）を送って「送信中…」。盤は state が届いたときに変わる（画面では手を適用しない）。拒否（`error`）は内容をトースト（`stale_move` は出さない）
 - **制限時間**: 部屋を作るときに設定メニューの「1 手の時間」の「マルチ」（既定 45 秒）を `turnSeconds` で送る。招待・参加のダイアログに「1 手 N 秒」（`#room-time`）。対局中は手番の人の名札に時計（`#turn-clock`。相手の手番は相手の名札）。時間切れの手は棋譜に「（時間切れ・自動）」、トーストで「時間切れ。〜の手を（マス）に（駒）で自動で打ちました」
 - **取られる駒の警告「!」**: 表示の設定（`Saved.threat`、既定はオフ）で、各自が自分の画面だけで切り替える（引き出しの `#btn-threat`）。サーバー・通信には載らない。待ったはオンラインにはない
-- **スキル**: `view.skills.ready` が `false` の間はカードを選ぶダイアログ（`#skill-pick`。自分が選んだら「相手が選んでいます」）。選んだら `pick` を送り、両者が選んだ `state` でカードをトーストで知らせる。名札のカードを押す（`#skill-use`）と `skill` を送り、`armed` が入った `state` で（相手が使ったときも）演出する（`App.playSkillCast`）。補充は戻す駒、王の移し替えは盤で移す先を選んでから送る。偵察で分かった相手の王は盤に金の「王」の印（`.king-cand.scouted`）と名札のマス名。副将は駒台の右端の「副」の鍵（`#vice-toggle`）を押して盤の自分の駒を選び、`vice` を送る（返事の `state` は自分にだけ届き、そこで「送信中」を解く）。自分の副将は盤の銀の「副」（`.vice-mark`）と名札（`.vice-tag`）、偵察で分かった相手の副将は `.vice-cand.scouted`
+- **スキル**: `view.skills.ready` が `false` の間はカードを選ぶダイアログ（`#skill-pick`。自分が選んだら「相手が選んでいます」）。選んだら `pick` を送り、両者が選んだ `state` でカードをトーストで知らせる。名札のカードを押す（`#skill-use`）と `skill` を送り、`armed` が入った `state` で（相手が使ったときも）演出する（`App.playSkillCast`）。補充は戻す駒、王の移し替えは盤で移す先を選んでから送る。偵察で分かった相手の王は盤に金の「王」の印（`.king-cand.scouted`）と名札のマス名。副将は駒台の右端の「副」の鍵（`#vice-toggle`）を押してから置き、`move` に `vice: true` を付けて送る（王の鍵 `#king-toggle` と同じ流れ）。自分の副将は盤の銀の「副」（`.vice-mark`）と名札（`.vice-tag`）、偵察で分かった相手の副将は `.vice-cand.scouted`
 - **隠し王**: 王の情報は `kingInfo` を使わず、自分の王は `view.myKing`、相手の王は `view.oppKing`（返されたか・候補）だけ。相手の王の候補には盤で「?」の印と、相手の名札の王の欄に「候補N」（`#king-cands`、説明は title）を出す
 - **接続の表示**: 盤の枠の下の縁の左（`#net`、色の点と短い文字）に「相手: 接続中」（緑）／「相手: 切断中」（赤。手番の表示 `#status` は「相手の接続が切れています」）／「相手を待っています」／「再接続中…」。相手の参加・切断・復帰はトーストでも知らせる
 - **終わり方**: 4001 → 別のタブで開かれた、4004 → 部屋が見つからない、4010 → 期限切れ、4003 は直前の `error.code` で満員／席に戻れない（`invalid_token` は保存したトークンを消す）。どれも案内のダイアログに出し、メニューへ戻れる。終局後に部屋が片付けられた（4004 / 4010）ときは何も出さず、盤と結果をそのまま見せる
@@ -230,7 +228,7 @@ state{phase:finished, view.result} ◀──────────────
 - **保存**: 部屋の状態（ルール・`GameState`・席のトークン・作成者の席）を storage の `"room"` に 1 件で保存し、参加・手のたびに書く。オブジェクトが退避されてもコンストラクタで読み直す（`blockConcurrencyWhile`）。WebSocket は Hibernation API（`acceptWebSocket`）で受けるので、待っている間は課金されず、退避後も接続は残る。接続ごとの席は `serializeAttachment` に入れる
 - **手の直列化**: 手の処理は storage の書き込みしか待たないので、Durable Object の入力ゲートで 1 手ずつ処理される（同時に届いた手が混ざらない）
 - **後片付け**: 参加・手・復帰のたびに alarm を張り直す（待機中・対局中は 24 時間後 `ROOM_TTL_MS`、終局後は 1 時間後 `FINISHED_TTL_MS`。制限時間のある対局中は手番の締め切り。上の「1 手の制限時間」）。放置の alarm が発火した = それだけ放置されたので、接続を 4010 で閉じて storage を消す。ping では延びない
-- **不正な入力**: 本文は 8 KB、WebSocket は 1024 バイトまで。JSON・形・範囲を検証してから engine に渡す（engine の例外は `illegal_move`、カードの選択・スキルの使用は `illegal_skill`、副将の指定は `illegal_vice` に変える）。Worker の想定外の例外は 500 `internal`。join せずに待つ接続は 1 部屋 4 つまで（超えたら古いものから閉じる）
+- **不正な入力**: 本文は 8 KB、WebSocket は 1024 バイトまで。JSON・形・範囲を検証してから engine に渡す（engine の例外は `illegal_move`、カードの選択・スキルの使用は `illegal_skill`、副将を出せない手も `illegal_move`）。Worker の想定外の例外は 500 `internal`。join せずに待つ接続は 1 部屋 4 つまで（超えたら古いものから閉じる）
 - **Origin**: 画面と同じオリジンだけを受ける（CSRF・他サイトからの WebSocket 乗っ取りの対策）。CORS のヘッダーは返さない
 - **静的アセット**: `/api` の外は Workers の静的アセットが返す（無料・無制限で、Worker のリクエスト数にも数えない）。Worker の `fetch` は `/api` の外を受けたら Durable Object に触れずに 404 を返す
 

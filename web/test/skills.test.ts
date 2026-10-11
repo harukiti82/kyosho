@@ -14,17 +14,15 @@ import {
   refillKinds,
   kingMoveCells,
   setSkills,
-  setVice,
   skillBlock,
   useSkill,
-  viceCells,
   viceInfo,
   viewFor,
   type GameState,
   type MoveEvent,
 } from "../src/engine/game";
 import { chooseMove } from "../src/engine/cpu";
-import { chooseSkillUse, chooseVice } from "../src/engine/skillcpu";
+import { chooseSkillUse, viceWith } from "../src/engine/skillcpu";
 import { NO_KING, type Hand, type PieceKind, type Player } from "../src/engine/rules";
 import { BASE_SKILLS, gaugeMax, GAUGE_UNIT, SKILLS, SKILL_ORDER, type SkillId, type SkillsState } from "../src/engine/skills";
 import { at, rulesOf } from "./helpers";
@@ -274,26 +272,26 @@ describe("8 枚の効果", () => {
       let s = play(useSkill(hidden(), { id: "scout" }), "h6");
       s = full(s, 0);
       expect(viewFor(s, 0).oppKing.scouted).toBe(true);
-      expect(viewFor(s, 0).oppVice).toEqual({ set: false, scouted: false, cell: null });
+      expect(viewFor(s, 0).oppVice).toMatchObject({ set: false, scouted: false, cell: null });
       expect(skillBlock(viewFor(s, 0))).toBe("noVice");
       expect(() => useSkill(s, { id: "scout" })).toThrow();
       expect(gauge(s, 0)).toBe(SKILLS.scout.length);
-      // 後手が h7 を副将にした
-      s = { ...s, kings: [s.kings[0], { ...s.kings[1], vice: { cell: at("h7"), since: 2 } }] };
-      expect(viewFor(s, 0).oppVice).toEqual({ set: true, scouted: false, cell: null });
+      // 後手が h7 を副将にし、期限の手も過ぎた（返されて始まった期間の期限 = since + 7 手）
+      s = { ...s, kings: [s.kings[0], { ...s.kings[1], vice: { cell: at("h7"), since: -7, hit: true } }] };
+      expect(viewFor(s, 0).oppVice).toEqual({ set: true, wait: 0, scouted: false, cell: null });
       const oppGauge = s.skills!.sides[1].gauge;
       const found = useSkill(s, { id: "scout" });
       expect(found.skills!.armed).toEqual({ id: "scout", scout: "vice" });
       expect(found.skills!.sides[1].gauge).toBe(oppGauge);
-      expect(found.kings[1].vice).toEqual({ cell: at("h7"), since: 2, seen: true });
-      expect(viewFor(found, 0).oppVice).toEqual({ set: true, scouted: true, cell: at("h7") });
+      expect(found.kings[1].vice).toEqual({ cell: at("h7"), since: -7, hit: true, seen: true });
+      expect(viewFor(found, 0).oppVice).toEqual({ set: true, wait: 0, scouted: true, cell: at("h7") });
       expect(viewFor(found, 1).myVice).toMatchObject({ status: "set", seen: true });
       // 特定済みの間はもう使えない
       const again = full({ ...found, skills: { ...found.skills!, armed: null } }, 0);
       expect(skillBlock(viewFor(again, 0))).toBe("viceSeen");
       // 王を返した後も、副将を特定する
       const hit = play(hidden(), "c1");
-      const after = full({ ...hit, turn: 0, kings: [hit.kings[0], { ...hit.kings[1], vice: { cell: at("h7"), since: 2 } }] }, 0);
+      const after = full({ ...hit, turn: 0, kings: [hit.kings[0], { ...hit.kings[1], vice: { cell: at("h7"), since: -7, hit: true } }] }, 0);
       expect(skillBlock(viewFor(after, 0))).toBeNull();
       expect(useSkill(after, { id: "scout" }).skills!.armed).toEqual({ id: "scout", scout: "vice" });
     });
@@ -623,88 +621,104 @@ describe("新しいカードの CPU", () => {
 describe("副将", () => {
   // 隠し王あり（期限 7 手・罰 30）。副将の期限は VICE_DEADLINE = 7 手・罰 VICE_PENALTY = 15
   const rules = rulesOf("skill", { dirs: "all", anchor: "none", heal: "none", king: { on: true, penalty: "hp", amount: 30, deadline: 7 } });
-  /** owner の副将を決めた状態にする（seen なら相手が偵察で知っている） */
-  const withVice = (s: GameState, owner: Player, cell: string | null, extra: { since?: number; seen?: boolean } = {}): GameState => {
+  /** owner の副将の状態にする（seen なら相手が偵察で知っている。hit なら副将を返されて始まった期間） */
+  const withVice = (s: GameState, owner: Player, cell: string | null, extra: { since?: number; seen?: boolean; hit?: boolean } = {}): GameState => {
     const kings: GameState["kings"] = [s.kings[0], s.kings[1]];
-    kings[owner] = { ...kings[owner], vice: { cell: cell ? at(cell) : null, since: extra.since ?? 0, ...(extra.seen ? { seen: true as const } : {}) } };
+    kings[owner] = {
+      ...kings[owner],
+      vice: { cell: cell ? at(cell) : null, since: extra.since ?? 0, ...(extra.seen ? { seen: true as const } : {}), ...(extra.hit ? { hit: true as const } : {}) },
+    };
     return { ...s, kings };
+  };
+  /** 副将にして置く */
+  const vice = (s: GameState, name: string, kind: PieceKind = "fu") => playMove(s, ...at(name), kind, { vice: true });
+  /** owner が n 手打った棋譜にする（盤は変えない。相手に見えるかの検査用） */
+  const movesOf = (s: GameState, owner: Player, n: number): GameState => {
+    const fake = (ply: number): MoveEvent => ({ type: "move", ply, player: owner, r: 7, c: 7, kind: "fu", targets: [], damage: 0, heal: 0 });
+    return { ...s, ply: n, history: Array.from({ length: n }, (_, i) => fake(i + 1)) };
   };
   // 先手 c1 で後手の b1 を返す。後手の王は h8
   const stones = { a1: [0, "fu"], b1: [1, "fu"], a8: [0, "fu"], h8: [1, "fu"], h5: [0, "fu"], h4: [1, "fu"] } as const;
   const start = (cards: [SkillId | null, SkillId | null] = ["strong", "wall"]) => game(stones, cards, { rules, kings: ["a8", "h8"] });
 
-  it("スキルなしのルール・隠し王なしのスキルありには副将がない", () => {
-    let s = createGame(rulesOf("std"));
-    s = playMove(s, ...at("d3"), "fu", { king: true });
+  it("スキルなしのルール・隠し王なしのスキルありには副将がない（副将にして置く手は例外）", () => {
+    const std = createGame(rulesOf("std"));
+    expect(() => playMove(std, ...at("d3"), "fu", { vice: true })).toThrow();
+    const s = playMove(std, ...at("d3"), "fu", { king: true });
     expect(s.kings[0].vice).toBeUndefined();
     expect(viewFor(s, 0).myVice.status).toBe("off");
     expect(viceInfo(s, 0).status).toBe("off");
-    expect(() => setVice(s, at("d3"))).toThrow();
     const plain = play(game({ a1: [0, "fu"], b1: [1, "fu"] }, ["strong", null]), "c1");
     expect(plain.kings[0].vice).toBeUndefined();
-    expect(viewFor(plain, 1).oppVice).toEqual({ set: false, scouted: false, cell: null });
+    expect(viewFor(plain, 1).oppVice).toMatchObject({ set: false, scouted: false, cell: null });
+    expect(() => vice(game({ a1: [0, "fu"], b1: [1, "fu"] }, ["strong", null]), "c1")).toThrow();
   });
 
-  it("王を決める前は決められない。王を決めた手から、自分の手で 7 手以内に決める期間が始まる", () => {
+  it("王を決める前・王を決める手では出せない。王を決めた次の自分の手から 7 手以内に出す", () => {
     const s0 = game(stones, ["strong", "wall"], { rules });
     expect(viceInfo(s0, 0).status).toBe("wait");
-    expect(() => setVice(s0, at("a1"))).toThrow();
+    expect(() => vice(s0, "c1")).toThrow("副将はいま出せません");
+    expect(() => playMove(s0, ...at("c1"), "fu", { king: true, vice: true })).toThrow("王と副将は同じ手では出せません");
     const s1 = playMove(s0, ...at("c1"), "fu", { king: true });
     expect(s1.kings[0].vice).toEqual({ cell: null, since: 1 });
     expect(viceInfo(s1, 0)).toMatchObject({ status: "unset", left: 7, forcedNow: false });
   });
 
-  it("盤上の自分の駒（王以外）を副将にする。王の駒・相手の駒・空きマス・手番でない人は不可。相手には見えない", () => {
+  it("置く駒を副将にして出す（盤にある駒は選べない）。もう出してあれば出せない。相手には見えない", () => {
     const s = start();
     expect(viceInfo(s, 0)).toMatchObject({ status: "unset", left: 7 });
-    for (const bad of ["a8", "b1", "c3"]) expect(() => setVice(s, at(bad))).toThrow();
-    const v = setVice(s, at("a1"));
-    expect(viceInfo(v, 0)).toMatchObject({ status: "set", cell: at("a1"), auto: false });
-    expect(viewFor(v, 0).myVice.cell).toEqual(at("a1"));
-    // 相手には場所もいつ決めたかも出ない（相手が王の期限の手を打つまでは決めたかどうかも出さない）
-    expect(viewFor(v, 1).oppVice).toEqual({ set: false, scouted: false, cell: null });
-    expect(JSON.stringify(viewFor(v, 1))).not.toContain('"vice"');
-    // もう決めてあれば決め直せない
-    expect(() => setVice(v, at("h5"))).toThrow();
-    // 後手の番には先手の副将は決められない（setVice は手番の人の分）
-    const turn1 = play(s, "c1");
-    expect(() => setVice(turn1, at("a1"))).toThrow();
+    // 王と同じ手は不可（王はもう決めてある）
+    expect(() => playMove(s, ...at("c1"), "fu", { king: true, vice: true })).toThrow();
+    const v = vice(s, "c1");
+    expect(viceInfo(v, 0)).toMatchObject({ status: "set", cell: at("c1"), auto: false });
+    expect(viewFor(v, 0).myVice.cell).toEqual(at("c1"));
+    // 棋譜にも相手の view にも出ない（副将にして置いた手とふつうの手で、相手の view は同じ）
+    expect(last(v)).not.toHaveProperty("vice");
+    expect(JSON.stringify(viewFor(v, 1))).toBe(JSON.stringify(viewFor(play(s, "c1"), 1)));
+    // もう出してあれば出せない（後手の h4 から先手の h5 は返せないので、後手は h6 に置いて先手の番へ）
+    const again = play(v, "h6");
+    expect(again.turn).toBe(0);
+    expect(viceInfo(again, 0).status).toBe("set");
   });
 
-  it("相手が王の期限の手まで打った後は、副将を決めているかだけ相手に見える", () => {
-    let s = setVice(start(), at("a1"));
-    const fake = (ply: number): MoveEvent => ({ type: "move", ply, player: 0, r: 7, c: 7, kind: "fu", targets: [], damage: 0, heal: 0 });
-    s = { ...s, ply: 7, history: Array.from({ length: 7 }, (_, i) => fake(i + 1)) };
-    expect(viewFor(s, 1).oppVice).toEqual({ set: true, scouted: false, cell: null });
+  it("相手には、副将を出す期間の期限（必ず決まる手）を打ち終えるまで、出したかどうかも見せない", () => {
+    // 最初の期間: 王を決めた手は隠し情報なので、王の期限 7 手 ＋ 7 手 = 14 手まで
+    const v = vice(start(), "c1");
+    expect(viewFor(movesOf(v, 0, 13), 1).oppVice).toEqual({ set: false, wait: 1, scouted: false, cell: null });
+    expect(viewFor(movesOf(v, 0, 14), 1).oppVice).toEqual({ set: true, wait: 0, scouted: false, cell: null });
+    // 出していなくても wait は同じ（期限の手で必ず決まる）
+    expect(viewFor(movesOf(start(), 0, 13), 1).oppVice.wait).toBe(1);
+    // 副将を返された後の期間: 返された時点（公開）から 7 手
+    const hit = withVice(v, 0, "c1", { since: 10, hit: true });
+    expect(viewFor(movesOf(hit, 0, 16), 1).oppVice).toMatchObject({ set: false, wait: 1 });
+    expect(viewFor(movesOf(hit, 0, 17), 1).oppVice).toMatchObject({ set: true, wait: 0 });
   });
 
-  it("期限の手までに決めなければ、その手で置いた駒が自動で副将になる。王以外の自駒がなくても同じ", () => {
+  it("期限の手まで出さなければ、その手で置いた駒が自動で副将になる。期限の手に自分で出してもよい", () => {
     // 次の手が期限（since を 6 手前に）
-    let s = withVice(start(), 0, null, { since: -6 });
-    expect(viceInfo(s, 0)).toMatchObject({ status: "unset", left: 1, forcedNow: true });
-    s = play(s, "c1");
-    expect(viceInfo(s, 0)).toMatchObject({ status: "set", cell: at("c1"), auto: true });
+    const due = withVice(start(), 0, null, { since: -6 });
+    expect(viceInfo(due, 0)).toMatchObject({ status: "unset", left: 1, forcedNow: true });
+    expect(viceInfo(play(due, "c1"), 0)).toMatchObject({ status: "set", cell: at("c1"), auto: true });
+    expect(viceInfo(vice(due, "c1"), 0)).toMatchObject({ status: "set", cell: at("c1"), auto: false });
     // 期限の 1 手前なら、置いても決まらない
     const early = play(withVice(start(), 0, null, { since: -5 }), "c1");
-    expect(viceInfo(early, 0)).toMatchObject({ status: "unset" });
-    // 盤に王しかない: 決められないが、期限の手で置いた駒が副将になる
-    const lone = withVice(game({ a8: [0, "fu"], b8: [1, "fu"], h1: [1, "fu"], h2: [0, "kin"] }, ["strong", null], { rules, kings: ["a8", null] }), 0, null, { since: -6 });
-    const loneKing = { ...lone, kings: [{ ...lone.kings[0], cell: at("h2") }, lone.kings[1]] as GameState["kings"] };
-    expect(viceCells(viewFor(loneKing, 0))).toEqual([at("a8")]);
-    const only = { ...lone, board: lone.board.map((row) => row.map((x) => (x && x.owner === 0 && x.kind === "kin" ? null : x))) };
-    expect(viceCells(viewFor(only, 0))).toEqual([]);
-    const auto = play(only, "c8");
-    expect(viceInfo(auto, 0)).toMatchObject({ status: "set", cell: at("c8"), auto: true });
+    expect(viceInfo(early, 0)).toMatchObject({ status: "unset", left: 1, forcedNow: true });
   });
 
-  it("副将を返すと罰 15（棋譜に公開）。返された側は、また自分の手で 7 手以内に次の副将を決める", () => {
+  it("副将を返すと罰 15（棋譜に公開）。返された側は、また自分の手で 7 手以内に次の副将を出す", () => {
     const s = play(withVice(start(), 1, "b1", { since: 0 }), "c1");
     expect(last(s).vice).toEqual({ r: 0, c: 1, kind: "fu", penalty: 15 });
     expect(s.hp[1]).toBe(130 - 1 - 15);
-    expect(s.kings[1].vice).toEqual({ cell: null, since: 0 });
+    expect(s.kings[1].vice).toEqual({ cell: null, since: 0, hit: true });
     expect(viceInfo(s, 1)).toMatchObject({ status: "unset", left: 7 });
+    // 返した側には、次の期限までの手数が分かる
+    expect(viewFor(s, 0).oppVice).toEqual({ set: false, wait: 7, scouted: false, cell: null });
     // 受けたダメージに罰も入る（1 + 15 点 × 0.15）
     expect(gauge(s, 1)).toBeCloseTo(16 * 0.15);
+    // 返された側は次の手で副将を出せる
+    const next = vice(s, "h6");
+    expect(viceInfo(next, 1)).toMatchObject({ status: "set", cell: at("h6"), auto: false });
+    expect(next.kings[1].vice).toEqual({ cell: at("h6"), since: 0, hit: true });
   });
 
   it("偵察で特定した副将を返すと罰 2 倍の 30。返したら次の副将はまた分からない", () => {
@@ -723,11 +737,15 @@ describe("副将", () => {
     expect(s.hp[1]).toBe(130 - 2 - 30 - 15);
   });
 
-  it("連続行動の 2 手目で副将を返しても罰は半分にしない", () => {
-    const s0 = game({ a8: [0, "fu"], b8: [1, "fu"], a1: [0, "fu"], b1: [1, "fu"], h4: [1, "fu"], h5: [0, "fu"] }, ["fool", null], { rules, kings: [null, "h4"] });
-    const s = play(play(useSkill(full(withVice(s0, 1, "b1")), { id: "fool" }), "c8"), "c1");
+  it("連続行動: 2 手目で副将を返しても罰は半分にしない。2 手目に置く駒も副将にできる", () => {
+    const s0 = game({ a8: [0, "fu"], b8: [1, "fu"], a1: [0, "fu"], b1: [1, "fu"], h4: [1, "fu"], h5: [0, "fu"] }, ["fool", null], { rules, kings: ["h5", "h4"] });
+    const first = play(useSkill(full(withVice(s0, 1, "b1")), { id: "fool" }), "c8");
+    expect(first.turn).toBe(0);
+    const s = play(first, "c1");
     expect(last(s)).toMatchObject({ second: true, damage: 0, plain: 1, vice: { penalty: 15 } });
     expect(s.hp[1]).toBe(130 - 1 - 15);
+    const viceSecond = vice(first, "c1");
+    expect(viceInfo(viceSecond, 0)).toMatchObject({ status: "set", cell: at("c1"), auto: false });
   });
 
   it("副将の罰で体力が 0 以下になれば決着", () => {
@@ -737,7 +755,7 @@ describe("副将", () => {
 
   it("王の移し替えで副将のマスへは移せない（副将はそのまま）", () => {
     const s0 = game({ a1: [0, "fu"], b1: [1, "fu"], d4: [0, "fu"], d5: [0, "fu"], e5: [0, "fu"], h8: [1, "fu"] }, ["kingmove", null], { rules, kings: ["d4", null] });
-    const s = full(setVice(s0, at("d5")));
+    const s = full(withVice(s0, 0, "d5"));
     expect(kingMoveCells(viewFor(s, 0))).toEqual([at("e5")]);
     expect(() => useSkill(s, { id: "kingmove", to: at("d5") })).toThrow();
     const moved = useSkill(s, { id: "kingmove", to: at("e5") });
@@ -756,25 +774,33 @@ describe("副将", () => {
     const spun = useSkill(s, { id: "wheel" }, () => (scoutAt + 0.5) / 8);
     expect(spun.skills!.armed).toEqual({ id: "wheel", effect: "scout", fizzle: true });
     expect(spun.skills!.sides[1].gauge).toBe(10 * GAUGE_UNIT);
-    // 副将が決まっていれば、運命の輪の偵察で特定する
-    const ok = useSkill(withVice(s, 1, "b1"), { id: "wheel" }, () => (scoutAt + 0.5) / 8);
+    // 副将が決まっていても、期限の手の前なら不発（いつ出したかが分かってしまうので見せない）
+    const early = useSkill(withVice(s, 1, "b1"), { id: "wheel" }, () => (scoutAt + 0.5) / 8);
+    expect(early.skills!.armed).toMatchObject({ effect: "scout", fizzle: true });
+    // 期限を過ぎていれば、運命の輪の偵察で特定する
+    const ok = useSkill(withVice(s, 1, "b1", { since: -7, hit: true }), { id: "wheel" }, () => (scoutAt + 0.5) / 8);
     expect(ok.skills!.armed).toEqual({ id: "wheel", effect: "scout", scout: "vice" });
-    expect(viewFor(ok, 0).oppVice).toEqual({ set: true, scouted: true, cell: at("b1") });
+    expect(viewFor(ok, 0).oppVice).toEqual({ set: true, wait: 0, scouted: true, cell: at("b1") });
   });
 
-  describe("巻き戻しで副将の指定をまたいだとき（王と揃える）", () => {
-    // 先手 c8 → 後手（手番の頭で副将を決めてから）c1 → 先手が巻き戻す
+  describe("巻き戻しで副将を出した手をまたいだとき（王と揃える）", () => {
+    // 先手 c8 → 後手 c1（副将にして置く）→ 先手が巻き戻す
     const st = { a8: [0, "fu"], b8: [1, "fu"], a1: [1, "fu"], b1: [0, "fu"], h4: [1, "fu"], h5: [0, "fu"], g6: [1, "fu"] } as const;
     const setup = () => game(st, ["judge", "strong"], { rules, kings: [null, "h4"] });
-    it("相手が決めた副将の駒が戻した盤にもあれば、その副将のまま（相手には何も出ない）", () => {
+    it("相手が副将を出した手を戻したら、相手が次に置く駒が副将になる（相手には何も出ない）", () => {
       let s = play(setup(), "c8");
-      s = play(setVice(s, at("g6")), "c1");
-      expect(viceInfo(s, 1).cell).toEqual(at("g6"));
-      const back = useSkill(full(s, 0), { id: "judge" });
-      expect(back.kings[1].vice).toEqual({ cell: at("g6"), since: 0 });
+      s = vice(s, "c1");
+      expect(viceInfo(s, 1)).toMatchObject({ cell: at("c1"), auto: false });
+      let back = useSkill(full(s, 0), { id: "judge" });
+      expect(back.kings[1].vice).toEqual({ cell: null, since: 0, kept: true });
       expect(viewFor(back, 0).oppVice.set).toBe(false);
+      back = play(back, "c8");
+      expect(viceInfo(back, 1)).toMatchObject({ status: "unset", kept: true, forcedNow: true });
+      back = play(back, "h6");
+      expect(viceInfo(back, 1)).toMatchObject({ status: "set", cell: at("h6") });
+      expect(back.kings[1].vice!.kept).toBeUndefined();
     });
-    it("決めた駒が戻した盤にない（応手の期限の手で置いた駒が自動で副将）なら、相手が次に置く駒が副将になる", () => {
+    it("応手の期限の手で置いた駒が自動で副将になった手を戻しても、相手が次に置く駒が副将になる", () => {
       // 後手の次の手（c1）が副将の期限
       let s = play(withVice(setup(), 1, null, { since: -6 }), "c8");
       s = play(s, "c1");
@@ -786,38 +812,43 @@ describe("副将", () => {
       back = play(back, "h6");
       expect(viceInfo(back, 1)).toMatchObject({ status: "set", cell: at("h6") });
     });
-    it("自分の副将の指定は戻す（自分の手番の頭の局面に戻る）", () => {
-      let s = setup();
-      s = withVice(s, 0, null, { since: 0 });
-      s = play(setVice(s, at("b1")), "c8");
+    it("自分が副将を出した手は戻る（手番の頭の局面に戻り、また出し直す）", () => {
+      let s = withVice(setup(), 0, null, { since: 0 });
+      s = vice(s, "c8");
+      expect(viceInfo(s, 0).cell).toEqual(at("c8"));
       s = play(s, "c1");
-      // 後手の c1 で先手の b1（副将）が返された
-      expect(last(s).vice).toMatchObject({ r: 0, c: 1, penalty: 15 });
       const back = useSkill(full(s, 0), { id: "judge" });
-      // 巻き戻しの局面は先手が副将を決めた後（手番の頭の局面は置く直前）
-      expect(back.kings[0].vice).toEqual({ cell: at("b1"), since: 0 });
+      expect(back.kings[0].vice).toEqual({ cell: null, since: 0 });
+      expect(viceInfo(back, 0)).toMatchObject({ status: "unset", kept: false });
       expect(back.hp).toEqual(setup().hp);
     });
   });
 
   describe("CPU", () => {
-    it("期限の手番は必ず、返されない駒のうち盤の端・隅の駒を副将にする。期限が先なら 1 ÷ 残りの確率", () => {
-      // 先手の駒: a1（隅）・d4・h5（端）。後手は d5 の上 d6 から d4 を挟めない（全方向・後手の駒 d5 だけ）
-      const s0 = game({ a1: [0, "fu"], d4: [0, "fu"], h5: [0, "fu"], a8: [0, "fu"], h8: [1, "fu"], e5: [1, "fu"] }, ["strong", "wall"], { rules, kings: ["a8", "h8"] });
-      const due = withVice(s0, 0, null, { since: -6 });
-      expect(chooseVice(viewFor(due, 0), () => 0.99)).toEqual(at("a1"));
-      // 期限まで 7 手: 乱数が 1/7 未満のときだけ決める
-      expect(chooseVice(viewFor(s0, 0), () => 0.2)).toBeNull();
-      expect(chooseVice(viewFor(s0, 0), () => 0.1)).toEqual(at("a1"));
-      // 決めてあれば・決める期間でなければ null
-      expect(chooseVice(viewFor(setVice(s0, at("d4")), 0), () => 0)).toBeNull();
-      expect(chooseVice(viewFor(game(stones, ["strong", null], { rules }), 0), () => 0)).toBeNull();
+    const pick = (name: string): { r: number; c: number; kind: PieceKind } => ({ r: at(name)[0], c: at(name)[1], kind: "fu" });
+    it("置いた後に返されない手で出す: 盤の端・隅なら必ず、ほかは 1 ÷ 期限までの残りの確率。返されうる手・期限の手・王の手では出さない", () => {
+      // 端: 先手 c1 で b1 を返す（1 の行の端で、a1 が先手なので返されない）
+      const edge = game({ a1: [0, "fu"], b1: [1, "fu"], a8: [0, "fu"], h8: [1, "fu"] }, ["strong", "wall"], { rules, kings: ["a8", "h8"] });
+      expect(viceWith(viewFor(edge, 0), pick("c1"), () => 0.99)).toBe(true);
+      // 中: 先手 d6 で d5 を返す（後手は d6 を挟めない）
+      const mid = game({ d4: [0, "fu"], d5: [1, "fu"], a8: [0, "fu"], h8: [1, "fu"] }, ["strong", "wall"], { rules, kings: ["a8", "h8"] });
+      expect(viceWith(viewFor(mid, 0), pick("d6"), () => 0.1)).toBe(true);
+      expect(viceWith(viewFor(mid, 0), pick("d6"), () => 0.2)).toBe(false);
+      // 返されうる: 先手 g4 で g3 を返すと、後手 g1 で g2〜g4 を返せる
+      const risky = game({ g2: [0, "fu"], g3: [1, "fu"], g5: [1, "fu"], a8: [0, "fu"], h8: [1, "fu"] }, ["strong", "wall"], { rules, kings: ["a8", "h8"] });
+      expect(viceWith(viewFor(risky, 0), pick("g4"), () => 0)).toBe(false);
+      // 期限の手（エンジンが自動で決める）・王を決める手・出した後・王を決める前は false
+      expect(viceWith(viewFor(withVice(edge, 0, null, { since: -6 }), 0), pick("c1"), () => 0)).toBe(false);
+      expect(viceWith(viewFor(edge, 0), { ...pick("c1"), king: true }, () => 0)).toBe(false);
+      expect(viceWith(viewFor(withVice(edge, 0, "a1"), 0), pick("c1"), () => 0)).toBe(false);
+      const noKing = game({ a1: [0, "fu"], b1: [1, "fu"] }, ["strong", "wall"], { rules });
+      expect(viceWith(viewFor(noKing, 0), pick("c1"), () => 0)).toBe(false);
     });
-    it("CPU 同士の 11 枚混在が最後まで打てて、副将が決まり・返され、偵察が副将を特定する", () => {
+    it("CPU 同士の 11 枚混在が最後まで打てて、副将を出し・返され、偵察が副将を特定する", () => {
       const pool = SKILL_ORDER;
       let hits = 0;
       let viceScouts = 0;
-      let auto = 0;
+      let chosen = 0;
       for (let i = 0; i < 24; i++) {
         let seed = i + 1;
         const rand = () => ((seed = (seed * 16807) % 2147483647) - 1) / 2147483646;
@@ -825,15 +856,16 @@ describe("副将", () => {
         let guard = 0;
         while (!s.result && guard++ < 300) {
           const p = s.turn;
-          const v = chooseVice(viewFor(s, p), rand);
-          if (v) s = setVice(s, v);
           for (let k = 0; k < 2; k++) {
             const use = chooseSkillUse(viewFor(s, p), rand);
             if (!use) break;
             s = useSkill(s, use, rand);
           }
-          const ch = chooseMove(viewFor(s, p), "normal", rand)!;
-          s = playMove(s, ch.r, ch.c, ch.kind, { king: ch.king });
+          const view = viewFor(s, p);
+          const ch = chooseMove(view, "normal", rand)!;
+          const before = viceInfo(s, p).status;
+          s = playMove(s, ch.r, ch.c, ch.kind, { king: ch.king, vice: viceWith(view, ch, rand) });
+          if (before === "unset" && s.kings[p].vice?.cell && !s.kings[p].vice?.auto) chosen++;
         }
         expect(s.result).not.toBeNull();
         for (const e of s.history) {
@@ -841,12 +873,10 @@ describe("副将", () => {
           if (e.vice) hits++;
           if (e.skill?.scout === "vice") viceScouts++;
         }
-        for (const p of [0, 1] as const) if (s.kings[p].vice?.auto) auto++;
       }
       expect(hits).toBeGreaterThan(0);
       expect(viceScouts).toBeGreaterThan(0);
-      // CPU は期限の手番には必ず決めるので、自動で決まるのは盤に王しかないときだけ
-      expect(auto).toBe(0);
+      expect(chosen).toBeGreaterThan(0);
     }, 60_000);
   });
 });

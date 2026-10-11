@@ -156,8 +156,10 @@ export interface ViceState {
   auto?: true;
   /** 相手が偵察で今の副将を知っている（返すまで罰 2 倍）。知られていなければキー自体がない */
   seen?: true;
-  /** 副将を決めた手を相手の巻き戻しで戻され、決めた駒が盤にない。次に置く駒がそのまま副将になる。そうでなければキー自体がない */
+  /** 副将を出した手を相手の巻き戻しで戻された（指定は戻さない）。次に置く駒がそのまま副将になる。そうでなければキー自体がない */
   kept?: true;
+  /** 今の副将を決める期間が副将を返されて始まった（始まりの手数が相手にも分かる）。最初の期間ならキー自体がない */
+  hit?: true;
 }
 
 /** 打てない手番。noPieces: 持ち駒切れ / noMoves: 置けるマスがない */
@@ -501,6 +503,7 @@ export function threatenedPieces(state: GameState, victim: Player): Cell[] {
 
 /**
  * 手番のプレイヤーが (r, c) に kind を置く。opts.king なら置いた駒を自分の王にする（隠し王）。
+ * opts.vice なら置いた駒を自分の副将にする（副将を決める期間だけ。王と同じ手では出せない）。
  * opts.timeout は制限時間切れの自動の手として棋譜に印を付ける（playTimeout が使う）。不正な手は例外
  */
 export function playMove(
@@ -508,7 +511,7 @@ export function playMove(
   r: number,
   c: number,
   kind: PieceKind,
-  opts: { king?: boolean; timeout?: boolean } = {},
+  opts: { king?: boolean; vice?: boolean; timeout?: boolean } = {},
 ): GameState {
   if (state.result) throw new Error("対局は終了しています");
   if (state.skills && !state.skills.ready) throw new Error("スキルのカードを選び終えていません");
@@ -522,6 +525,8 @@ export function playMove(
   if (!lines) throw new Error(`(${r}, ${c}) に ${kind} を置いても返せる駒がありません`);
   const mine = kingInfo(state, p);
   if (opts.king && !mine.canDesignate) throw new Error("王はもう指定できません");
+  if (opts.vice && opts.king) throw new Error("王と副将は同じ手では出せません");
+  if (opts.vice && viceInfo(state, p).status !== "unset") throw new Error("副将はいま出せません");
 
   const targets: Target[] = targetsOf(lines).map(([y, x]) => ({ r: y, c: x, kind: state.board[y][x]!.kind }));
   const raw = damageOf(state.board, lines, rules);
@@ -555,15 +560,17 @@ export function playMove(
     const [y, x] = qv.cell;
     viceHit = { r: y, c: x, kind: state.board[y][x]!.kind, penalty: VICE_PENALTY * (qv.seen ? SCOUT_PENALTY_RATE : 1) };
     if (qv.seen) viceHit.scouted = true;
-    kings[q] = { ...kings[q], vice: { cell: null, since: movesBy(state, q) } };
+    kings[q] = { ...kings[q], vice: { cell: null, since: movesBy(state, q), hit: true } };
   }
-  // 自分の副将: 王を決めた手から決める期間が始まり、期限の手（巻き戻しで戻された指定なら次の手）までに決めなければ置いた駒が副将になる
+  // 自分の副将: 王を決めた手の次の手から決める期間が始まり、置く駒を副将にして出す。
+  // 期限の手（巻き戻しで戻された指定なら次の手）まで出さなければ、その手で置いた駒が自動で副将になる
   if (vicesOn(rules)) {
     const pk = kings[p];
     const n = movesBy(state, p) + 1;
     if (!pk.vice && pk.cell) kings[p] = { ...pk, vice: { cell: null, since: n } };
-    else if (pk.vice && !pk.vice.cell && (pk.vice.kept || n - pk.vice.since >= VICE_DEADLINE)) {
-      kings[p] = { ...pk, vice: { cell: [r, c], since: pk.vice.since, auto: true } };
+    else if (pk.vice && !pk.vice.cell && (opts.vice || pk.vice.kept || n - pk.vice.since >= VICE_DEADLINE)) {
+      const { kept: _kept, ...v } = pk.vice;
+      kings[p] = { ...pk, vice: { ...v, cell: [r, c], ...(opts.vice ? {} : { auto: true as const }) } };
     }
   }
 
@@ -739,7 +746,7 @@ export interface ViceInfo {
   auto: boolean;
   /** 期限まで、次の自分の手を含めてあと何手（unset のときだけ。ほかは 0） */
   left: number;
-  /** 次の自分の手が期限（決めなければ置いた駒が自動で副将になる。巻き戻しで戻された指定のときも） */
+  /** 次の自分の手が期限（出さなければ置いた駒が自動で副将になる。巻き戻しで戻された指定のときも） */
   forcedNow: boolean;
   /** 巻き戻しで戻された指定。次に置く駒がそのまま副将になる（forcedNow も true） */
   kept: boolean;
@@ -760,51 +767,27 @@ export function viceInfo(state: GameState, p: Player): ViceInfo {
 }
 
 /**
- * 相手の副将について分かること。set は相手が今の副将を決めているか（偵察を使えるかに要る）。
- * 相手が王の期限の手を打ち終えるまで（王が返されていなければ）は、王を決めた時期が分かってしまうので常に false。
- * 偵察で知っているときは scouted が true で cell がそのマス
+ * 相手の副将について分かること。set は相手に今の副将が必ずいると分かるか（偵察を使えるかに要る）。
+ * 副将は置く駒で出すので、出した時点で set を見せると置いた駒が副将だと分かってしまう。
+ * そこで、決める期間の期限（必ず決まる手）を相手が打ち終えるまでは false にする。期間の始まりは、
+ * 最初は王を決めた手（隠し情報）なので王の期限 ＋ VICE_DEADLINE 手、副将を返された後は返された時点（公開）＋ VICE_DEADLINE 手。
+ * wait は set になるまでの相手の手数（set なら 0）。偵察で知っているときは scouted が true で cell がそのマス
  */
 export interface OppVice {
   set: boolean;
+  wait: number;
   scouted: boolean;
   cell: Cell | null;
 }
 
 function oppViceOf(state: GameState, owner: Player): OppVice {
+  const none: OppVice = { set: false, wait: 0, scouted: false, cell: null };
+  if (!vicesOn(state.rules)) return none;
   const v = state.kings[owner].vice;
-  const none: OppVice = { set: false, scouted: false, cell: null };
-  if (!vicesOn(state.rules) || !v?.cell) return none;
-  const pastDeadline = movesBy(state, owner) >= state.rules.king.deadline || kingRevealed(state, owner);
-  if (!pastDeadline) return none;
-  return v.seen ? { set: true, scouted: true, cell: [v.cell[0], v.cell[1]] } : { set: true, scouted: false, cell: null };
-}
-
-/** 副将にできる駒（盤上の自分の駒のうち、隠れている自分の王を除く）。手番の人の分 */
-export function viceCells(view: Pick<PlayerView, "board" | "turn" | "myKing">): Cell[] {
-  const k = view.myKing.status === "hidden" ? view.myKing.cell : null;
-  const out: Cell[] = [];
-  for (let r = 0; r < SIZE; r++) {
-    for (let c = 0; c < SIZE; c++) {
-      if (k && r === k[0] && c === k[1]) continue;
-      if (view.board[r][c]?.owner === view.turn) out.push([r, c]);
-    }
-  }
-  return out;
-}
-
-/**
- * 手番の人が盤上の自分の駒（王以外）を副将に決める（置く前。手番の頭のどこでも）。
- * 決める期間でない・副将にできない駒・終局後・カードを選び終える前は例外
- */
-export function setVice(state: GameState, cell: Cell): GameState {
-  if (state.result) throw new Error("対局は終了しています");
-  if (state.skills && !state.skills.ready) throw new Error("スキルのカードを選び終えていません");
-  const p = state.turn;
-  if (viceInfo(state, p).status !== "unset") throw new Error("副将はいま決められません");
-  if (!viceCells(viewFor(state, p)).some(([y, x]) => y === cell[0] && x === cell[1])) throw new Error("その駒は副将にできません");
-  const kings: [KingState, KingState] = [state.kings[0], state.kings[1]];
-  kings[p] = { ...kings[p], vice: { cell: [cell[0], cell[1]], since: kings[p].vice!.since } };
-  return { ...state, kings };
+  const due = (v?.hit ? v.since : state.rules.king.deadline) + VICE_DEADLINE;
+  const wait = Math.max(0, due - movesBy(state, owner));
+  if (!v?.cell || wait > 0) return { ...none, wait };
+  return v.seen ? { set: true, wait: 0, scouted: true, cell: [v.cell[0], v.cell[1]] } : { ...none, set: true };
 }
 
 /** viewer から見える局面。相手の王・副将の真の場所は含まない（CPU はこれだけを見て打つ） */
@@ -1119,15 +1102,10 @@ function takeBack(state: GameState, p: Player): GameState {
   const kings: [KingState, KingState] = [snap.kings[0], snap.kings[1]];
   const cur = state.kings[q];
   if (!snap.kings[q].cell && cur.cell && !cur.revealed) kings[q] = { cell: null, auto: cur.auto, revealed: false, kept: true };
-  // 相手の副将の指定も戻さない（王と同じ）: 決めた駒が戻した盤にもあればそのまま、なければ相手が次に置く駒が副将になる
+  // 相手の副将の指定も戻さない（王と同じ）: 副将は置いた駒で出すので、出した手を戻したら相手が次に置く駒がそのまま副将になる
   const sv = snap.kings[q].vice;
   const cv = cur.vice;
-  if (sv && !sv.cell && cv?.cell && cv.since === sv.since) {
-    const [y, x] = cv.cell;
-    const kc = snap.kings[q].cell;
-    const stays = snap.board[y][x]?.owner === q && !(kc && !snap.kings[q].revealed && kc[0] === y && kc[1] === x);
-    kings[q] = { ...kings[q], vice: stays ? { cell: [y, x], since: sv.since, ...(cv.auto ? { auto: true as const } : {}) } : { cell: null, since: sv.since, kept: true } };
-  }
+  if (sv && !sv.cell && cv?.cell && cv.since === sv.since) kings[q] = { ...kings[q], vice: { ...sv, kept: true } };
   const undone = state.history.slice(snap.history.length).filter((e): e is MoveEvent => e.type === "move");
   const mine = undone.find((e) => e.player === p);
   const note: SkillNote = { id: "judge", back: undone.length };

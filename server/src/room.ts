@@ -12,7 +12,7 @@
 // 運命の輪の引く効果はここの crypto で決め、巻き戻しで戻す局面（skills.undo。王を含む）も viewFor が消す。
 
 import { DurableObject } from "cloudflare:workers";
-import { createGame, dealSkills, pickSkill, playMove, playTimeout, setVice, useSkill, viewFor, type GameState } from "../../web/src/engine/game";
+import { createGame, dealSkills, pickSkill, playMove, playTimeout, useSkill, viewFor, type GameState } from "../../web/src/engine/game";
 import { other, type Player, type RuleSet } from "../../web/src/engine/rules";
 import {
   CLOSE,
@@ -33,7 +33,6 @@ import {
   type RoomPhase,
   type SkillMessage,
   type StateMessage,
-  type ViceMessage,
   type TurnClockInfo,
 } from "../../web/src/net/protocol";
 import { closeQuietly, errorMsg, randomId, randomInt, rejectSocket, send } from "./util";
@@ -199,7 +198,6 @@ export class Room extends DurableObject<Env> {
     if (msg.type === "leave") return this.leave(att.player, room);
     if (msg.type === "pick") return this.pick(ws, att.player, room, msg);
     if (msg.type === "skill") return this.skill(ws, att.player, room, msg);
-    if (msg.type === "vice") return this.vice(ws, att.player, room, msg);
     return this.move(ws, att.player, room, msg);
   }
 
@@ -342,7 +340,7 @@ export class Room extends DurableObject<Env> {
     }
     let next: GameState;
     try {
-      next = playMove(room.game, msg.r, msg.c, msg.kind, { king: msg.king });
+      next = playMove(room.game, msg.r, msg.c, msg.kind, { king: msg.king, vice: msg.vice });
     } catch (e) {
       // engine が拒否した手。状態は変えない
       return send(ws, errorMsg("illegal_move", e instanceof Error ? e.message : "その手は打てません"));
@@ -394,29 +392,6 @@ export class Room extends DurableObject<Env> {
     }
     await this.save();
     this.broadcast();
-  }
-
-  /**
-   * 手番の人が副将を決める（置く前）。手番は変わらないので時計はそのまま。
-   * 副将は隠し情報で、いつ決めたかも相手に知らせない（王を決めた時期が分かるため）ので、決めた人にだけ state を返す
-   */
-  private async vice(ws: WebSocket, player: Player, room: RoomRecord, msg: ViceMessage): Promise<void> {
-    if (this.refuse(ws)) return;
-    if (room.deadline != null && Date.now() >= room.deadline) {
-      await this.timeout();
-      return send(ws, errorMsg("stale_move", "制限時間が切れたため、自動で手を打ちました"));
-    }
-    if (room.game.turn !== player) return send(ws, errorMsg("not_your_turn", "相手の手番です"));
-    if (msg.seq !== undefined && msg.seq !== room.game.history.length) {
-      return send(ws, errorMsg("stale_move", "局面が進んでいます（制限時間切れの自動の手と入れ違いになりました）"));
-    }
-    try {
-      room.game = setVice(room.game, msg.at);
-    } catch (e) {
-      return send(ws, errorMsg("illegal_vice", e instanceof Error ? e.message : "その駒は副将にできません"));
-    }
-    await this.save();
-    this.broadcast(undefined, player);
   }
 
   /**
@@ -493,10 +468,9 @@ export class Room extends DurableObject<Env> {
   }
 
   /**
-   * join 済みの全接続に、それぞれの席から見た状態を送る。gone は切れかけの接続（送らず、接続中とも数えない）。
-   * only を渡すとその席の接続にだけ送る（副将を決めたとき）
+   * join 済みの全接続に、それぞれの席から見た状態を送る。gone は切れかけの接続（送らず、接続中とも数えない）
    */
-  private broadcast(gone?: WebSocket, only?: Player): void {
+  private broadcast(gone?: WebSocket): void {
     const room = this.room;
     if (!room) return;
     const sockets = this.ctx.getWebSockets().filter((ws) => ws !== gone && ws.readyState === WebSocket.OPEN);
@@ -509,7 +483,7 @@ export class Room extends DurableObject<Env> {
     const clock = this.clockInfo();
     for (const ws of sockets) {
       const you = attachmentOf(ws).player;
-      if (you === null || (only !== undefined && you !== only)) continue;
+      if (you === null) continue;
       const opp = other(you);
       const msg: StateMessage = {
         type: "state",

@@ -541,7 +541,7 @@ test("運命の輪: 引いた効果が両者の演出に出て、棋譜に残る
   expect(spun).toBe(true);
 });
 
-test("副将: 決めた人にだけ届き、相手には場所も決めた時期も届かない（相手の王の期限の後は、決めたことだけ）", async ({ browser }, info) => {
+test("副将: 鍵を押して置いた駒が副将になり、出した人にだけ分かる。相手には場所も出した時期も届かない（期限の後は、いることだけ）", async ({ browser }, info) => {
   const pre = prefix(info);
   const host = await newPlayer(browser, info, "host");
   const guest = await newPlayer(browser, info, "guest");
@@ -556,38 +556,40 @@ test("副将: 決めた人にだけ届き、相手には場所も決めた時期
   await synced(host, guest);
   await move(guest, null, true);
   await synced(guest, host);
-  // 作成者（先手）が副将を決める。届くのは作成者にだけ
+  // 作成者（先手）が副将の鍵を押してから置く。届いた view で副将になったのは置いた駒
   await expect(host.page.locator(".board.acting")).toBeVisible();
   await expect(host.page.locator("#vice-toggle .king-cap")).toHaveText("あと7手");
-  const seen = statesOf(guest).length;
   await tap(host, "#vice-toggle");
-  const target = host.page.locator(".cell.skill-target").first();
-  const at = await target.evaluate((c) => [Number((c as HTMLElement).dataset.r), Number((c as HTMLElement).dataset.c)] as [number, number]);
-  await tap(host, ".cell.skill-target");
-  await expect.poll(() => host.last!.view.myVice.status).toBe("set");
-  expect(host.last!.view.myVice.cell).toEqual(at);
+  await expect(host.page.locator("#vice-toggle")).toHaveAttribute("aria-pressed", "true");
+  await move(host);
+  await synced(host, guest);
+  const placed = host.last!.view.history.filter((e) => e.type === "move").at(-1)!;
+  if (placed.type !== "move") throw new Error("手がない");
+  const at: [number, number] = [placed.r, placed.c];
+  expect(host.last!.view.myVice).toMatchObject({ status: "set", cell: at, auto: false });
   await expect(host.page.locator(`.cell[data-r="${at[0]}"][data-c="${at[1]}"] .vice-mark`)).toBeVisible();
   await expect(host.page.locator("#player-0 .vice-tag")).not.toHaveClass(/unset/);
+  await expect(host.page.locator("#toast")).toContainText("を副将にしました");
   await host.page.screenshot({ path: `${SHOT}/${pre}-online-skill-vice.png` });
-  await host.page.waitForTimeout(300);
-  expect(statesOf(guest).length).toBe(seen);
   await expect(guest.page.locator(".vice-mark")).toHaveCount(0);
-  // 作成者が王の期限（7 手）を打ち終えるまで打つ
-  for (let i = 0; i < 12 && movesBy(host.last!.view, 0) < 7 && !host.last!.view.result; i++) {
+  // 作成者が副将を出す期限（王の期限 7 手 ＋ 7 手）を打ち終えるまで打つ
+  for (let i = 0; i < 40 && movesBy(host.last!.view, 0) < 14 && !host.last!.view.result; i++) {
     const mover = moverOf(host, guest);
     await move(mover);
     await synced(mover, mover === host ? guest : host);
   }
-  // 参加者に届いた state には、作成者の副将の場所はない。作成者が 7 手を打つ前（王が返されていなければ）は、決めたかどうかも出ない
+  // 参加者に届いた state には、作成者の副将の場所はない。期限の手を打つ前（副将を返していなければ）は、出したかどうかも出ない
   for (const m of statesOf(guest)) {
     expect(m.view.oppVice.cell).toBeNull();
     expect(m.view.oppVice.scouted).toBe(false);
-    if (movesBy(m.view, 0) < 7 && !m.view.oppKing.revealed) expect(m.view.oppVice.set).toBe(false);
+    const hit = m.view.history.some((e) => e.type === "move" && e.player === 1 && e.vice);
+    if (movesBy(m.view, 0) < 14 && !hit) expect(m.view.oppVice.set).toBe(false);
   }
   for (const f of guest.frames) expect(f).not.toContain('"kings"');
-  // 副将を返されていなければ、7 手の後は「?」
-  if (host.last!.view.myVice.status === "set" && movesBy(host.last!.view, 0) >= 7) {
+  // 副将を返されていなければ、期限の後は「?」
+  if (host.last!.view.myVice.status === "set" && movesBy(host.last!.view, 0) >= 14) {
     await expect.poll(() => guest.last!.view.oppVice.set).toBe(true);
     await expect(guest.page.locator("#player-0 .vice-tag.unknown, #player-1 .vice-tag.unknown")).toHaveCount(1);
   }
 });
+

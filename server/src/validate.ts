@@ -71,8 +71,10 @@ export function parseClientMessage(data: string | ArrayBuffer): Parsed {
       if (!isCoord(x.r) || !isCoord(x.c)) return bad(`r・c は 0〜${SIZE - 1} の整数です`);
       if (typeof x.kind !== "string" || !Object.hasOwn(PIECES, x.kind)) return bad("kind が駒の種類ではありません");
       if (x.king !== undefined && typeof x.king !== "boolean") return bad("king は true / false です");
+      if (x.vice !== undefined && typeof x.vice !== "boolean") return bad("vice は true / false です");
       if (x.seq !== undefined && (!Number.isInteger(x.seq) || (x.seq as number) < 0)) return bad("seq は 0 以上の整数です");
       const msg: ClientMessage = { type: "move", r: x.r, c: x.c, kind: x.kind as PieceKind, king: x.king === true };
+      if (x.vice === true) msg.vice = true;
       if (x.seq !== undefined) msg.seq = x.seq as number;
       return { ok: true, msg };
     }
@@ -92,13 +94,6 @@ export function parseClientMessage(data: string | ArrayBuffer): Parsed {
       if (x.seq !== undefined) msg.seq = x.seq as number;
       return { ok: true, msg };
     }
-    case "vice": {
-      if (!Array.isArray(x.at) || x.at.length !== 2 || !isCoord(x.at[0]) || !isCoord(x.at[1])) return bad(`at は [行, 列]（0〜${SIZE - 1} の整数）です`);
-      if (x.seq !== undefined && (!Number.isInteger(x.seq) || (x.seq as number) < 0)) return bad("seq は 0 以上の整数です");
-      const msg: ClientMessage = { type: "vice", at: [x.at[0] as number, x.at[1] as number] };
-      if (x.seq !== undefined) msg.seq = x.seq as number;
-      return { ok: true, msg };
-    }
     case "rematch": {
       if (x.action !== "request" && x.action !== "cancel" && x.action !== "decline") return bad("action は request / cancel / decline です");
       if (!Number.isInteger(x.gameNo) || (x.gameNo as number) < 1) return bad("gameNo は 1 以上の整数です");
@@ -107,6 +102,6 @@ export function parseClientMessage(data: string | ArrayBuffer): Parsed {
     case "leave":
       return { ok: true, msg: { type: "leave" } };
     default:
-      return bad("type は join / move / pick / skill / vice / rematch / leave です");
+      return bad("type は join / move / pick / skill / rematch / leave です");
   }
 }

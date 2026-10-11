@@ -5161,8 +5161,9 @@ button.tarot:focus-visible {
 .vice-toggle .king-piece::before {
   background: linear-gradient(170deg, #f7fbff, var(--vice) 60%, #8ea3b9);
 }
-.vice-toggle:disabled .king-piece {
-  opacity: 0.6;
+/* 副将にして置く: 吹き出しの 1 行と、狙ったマスの石の印 */
+.bb-vice {
+  color: var(--vice);
 }
 /* 自分の副将の印（石の左上。王の印は右上） */
 .vice-mark {
@@ -5183,6 +5184,9 @@ button.tarot:focus-visible {
   line-height: 1;
   box-shadow: 0 0 0 1.5px #fff;
   pointer-events: none;
+}
+.vice-mark.ghost {
+  opacity: 0.8;
 }
 .vice-cand.scouted {
   background: var(--vice);

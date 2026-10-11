@@ -57,7 +57,7 @@ export const anchorLine = (): Sentence => ({ point: "反対側の自分の駒も
 /** 副将（スキルありで隠し王ありのルール）のルールカードの 1 行 */
 export const viceLine = (r: RuleSet): Sentence => ({
   point: `副将を${verb(r).hitIf}体力−${VICE_PENALTY}`,
-  note: `王を決めた後、${VICE_DEADLINE}手以内に自分の駒を1つ副将にする。相手に見えない`,
+  note: `王を決めた後、${VICE_DEADLINE}手以内に置く駒を1つ副将にする。相手に見えない`,
 });
 
 /** スキルのルールカードの 1 行 */
@@ -85,7 +85,7 @@ export function skillText(id: SkillId, r: RuleSet): { short: string; point: stri
       return {
         short: "相手の王・副将が見える",
         point: "相手の王の場所が自分にだけ分かる",
-        note: `相手が最初の${r.king.deadline}手を打ち終えてから使える${pen}。その後は相手の今の副将が分かり、${hit}まで罰が ${SCOUT_PENALTY_RATE} 倍`,
+        note: `相手が最初の${r.king.deadline}手を打ち終えてから使える${pen}。その後は相手が副将を出す期限の後に、今の副将が分かり、${hit}まで罰が ${SCOUT_PENALTY_RATE} 倍`,
       };
     }
     case "kingmove":
@@ -220,12 +220,12 @@ export function skillDetails(r: RuleSet): Sentence[] {
     const v = verb(r);
     out.push(
       {
-        point: `副将: 王を決めた後、自分の手で ${VICE_DEADLINE} 手以内に盤の自分の駒を 1 つ副将にする`,
-        note: `王の駒は選べない。相手には見えない。${VICE_DEADLINE} 手目までに決めなければ、その手で置いた駒が副将になる`,
+        point: `副将: 王を決めた後、自分の手で ${VICE_DEADLINE} 手以内に置く駒を 1 つ副将にする`,
+        note: `王を決めた次の手から。相手には見えない。${VICE_DEADLINE} 手目まで出さなければ、その手で置いた駒が副将になる`,
       },
       {
         point: `副将を${v.hitIf}体力 −${VICE_PENALTY}`,
-        note: `通常のダメージに加えて減る。王と同じ手なら両方。${v.hitIf}、また ${VICE_DEADLINE} 手以内に次の副将を決める`,
+        note: `通常のダメージに加えて減る。王と同じ手なら両方。${v.hitIf}、また ${VICE_DEADLINE} 手以内に次の副将を出す`,
       },
     );
   }

@@ -1,4 +1,4 @@
-// スキルを持つ CPU。使うか・どう使うか（chooseSkillUse）と、スキル込みの 2 手読み（skillLookahead）、副将の決め方（chooseVice）。
+// スキルを持つ CPU。使うか・どう使うか（chooseSkillUse）と、スキル込みの 2 手読み（skillLookahead）、副将を出す手の決め方（viceWith）。
 // リポジトリ外のシミュレーター（kyosho-skillsim の sim.ts の plan / lookahead）の規則を写したもの。
 // スキルなしの対局では使わない（cpu.ts の手は変わらない）。乱数は引数で受ける。
 
@@ -12,7 +12,6 @@ import {
   moveRules,
   refillKinds,
   skillBlock,
-  viceCells,
   type MoveEvent,
   type PlayerView,
 } from "./game";
@@ -380,21 +379,20 @@ function wheelAim(view: PlayerView, rng: () => number): SkillUse {
 }
 
 /**
- * 副将を決めるなら、そのマス（sim.ts の viceDesignate の safe 方針）。決める期間の手番の頭に呼ぶ（連続行動の 2 手目は決めない）。
- * 期限が近いほど高い確率（1 ÷ 期限までの残りの手数）で、次の相手の手で返されない駒（なければ全部）のうち盤の端・隅の駒から選ぶ
+ * 選んだ手 ch で置く駒を副将にして出すか（sim.ts の viceDesignate の safe 方針を、置く駒で出す形に写したもの）。
+ * 置いた後に相手の次の手で返されない駒だけを副将にする: 盤の端・隅なら出し、ほかは 1 ÷ 期限までの残りの手数の確率で出す。
+ * 返されうる手では出さない（期限の手は出さなくても置いた駒が自動で副将になる）。王を決める手・期限の手では false
  */
-export function chooseVice(view: PlayerView, rng: () => number): Cell | null {
+export function viceWith(view: PlayerView, ch: Choice, rng: () => number): boolean {
   const v = view.myVice;
-  if (v.status !== "unset" || view.result || view.skills?.second) return null;
-  if (rng() >= 1 / v.left) return null;
-  const pieces = viceCells(view);
-  if (pieces.length === 0) return null;
-  const q = other(view.turn);
-  const threatened = new Set(attackable(view.rules, view.board, view.hands[q], q).map(([y, x]) => key(y, x)));
-  const safe = pieces.filter(([y, x]) => !threatened.has(key(y, x)));
-  const pool = safe.length > 0 ? safe : pieces;
-  const edge = ([y, x]: Cell) => (y === 0 || y === SIZE - 1 ? 1 : 0) + (x === 0 || x === SIZE - 1 ? 1 : 0);
-  const most = Math.max(...pool.map(edge));
-  const top = pool.filter((c) => edge(c) === most);
-  return top[Math.floor(rng() * top.length)];
+  if (v.status !== "unset" || v.forcedNow || view.result || ch.king) return false;
+  const p = view.turn;
+  const q = other(p);
+  const rules = moveRules(view);
+  const lines = pieceLines(rawLines(view.board, ch.r, ch.c, p, rules.values), ch.kind, rules);
+  if (rules.action === "flip" && lines.length === 0) return false;
+  const after = applyLines(view.board, p, ch.r, ch.c, ch.kind, lines, rules);
+  if (attackable(view.rules, after, view.hands[q], q).some(([y, x]) => y === ch.r && x === ch.c)) return false;
+  const edge = (ch.r === 0 || ch.r === SIZE - 1 ? 1 : 0) + (ch.c === 0 || ch.c === SIZE - 1 ? 1 : 0);
+  return edge > 0 || rng() < 1 / v.left;
 }

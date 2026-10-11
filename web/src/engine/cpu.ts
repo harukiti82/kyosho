@@ -29,6 +29,8 @@ export interface Choice {
   kind: PieceKind;
   /** この手で置く駒を自分の王にする */
   king?: boolean;
+  /** この手で置く駒を自分の副将にする（chooseMove は付けない。skillcpu.ts の viceWith で決める） */
+  vice?: boolean;
 }
 
 /** 王を返されたときの罰を評価値にしたもの。即負けは残りの体力をすべて失うのと同じとみなす */

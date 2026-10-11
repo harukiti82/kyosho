@@ -1,5 +1,5 @@
 // e2e（skill-vice.spec.ts）の 2 人対戦で盤に再生する手順を、エンジンで先に探す（DOM なし）。
-// 先手は偵察を持つ。①後手が決めた副将を先手が次の手で返す（罰 15）②後手の次の副将を偵察で特定し、返す（罰 30）までの手順。
+// 先手は偵察を持つ。①後手が置いて出した副将を先手が次の手で返す（罰 15）②後手の次の副将を偵察で特定し、返す（罰 30）までの手順。
 // 画面は同じ手を打てば同じ局面になる（カードの配られ方はゲージにも手にも効かない）
 
 import type { Cell } from "../src/engine/board";
@@ -9,21 +9,18 @@ import {
   playableKinds,
   playMove,
   setSkills,
-  setVice,
   skillBlock,
   targetsAt,
   useSkill,
-  viceCells,
   viceInfo,
   viewFor,
   type GameState,
 } from "../src/engine/game";
-import { presetById, type PieceKind } from "../src/engine/rules";
+import { presetById, type PieceKind, type Player } from "../src/engine/rules";
 import { moverGain, type SkillId } from "../src/engine/skills";
 
 export type Step =
-  | { type: "move"; r: number; c: number; kind: PieceKind; king: boolean }
-  | { type: "vice"; at: Cell }
+  | { type: "move"; player: Player; r: number; c: number; kind: PieceKind; king: boolean; vice: boolean }
   | { type: "skill"; id: SkillId };
 
 export interface Plan {
@@ -75,31 +72,23 @@ export function findPlan(seed: number, p1card: SkillId): Plan | null {
     s = next;
     hp.push([s.hp[0], s.hp[1]]);
   };
-  const play = (m: Move, king = false) => push({ type: "move", ...m, king }, playMove(s, m.r, m.c, m.kind, { king }));
+  const play = (m: Move, king = false, vice = false) => push({ type: "move", player: s.turn, ...m, king, vice }, playMove(s, m.r, m.c, m.kind, { king, vice }));
   for (let guard = 0; guard < 120 && !s.result; guard++) {
     const p = s.turn;
     const moves = movesOf(s);
     // 両者とも最初の手で置く駒を王にする
     const king = viewFor(s, p).myKing.canDesignate;
     if (p === 1) {
-      // 後手: 副将を決める期間なら、1 本目は先手が次の手で返せる駒、2 本目は返されない駒を副将にする
+      // 後手: 副将を出す期間なら、1 本目は先手が次の手で返せるマス、2 本目は返されないマスに副将を置く
       if (viceInfo(s, 1).status === "unset") {
-        let chosen: { v: Cell; m: Move } | null = null;
-        for (const v of viceCells(viewFor(s, 1))) {
-          for (const m of moves) {
-            const after = playMove(setVice(s, v), m.r, m.c, m.kind);
-            if (after.result || after.turn !== 0) continue;
-            const reach = movesOf(after).some((x) => hits(after, x, v));
-            if (hit15 < 0 ? reach : !reach) {
-              chosen = { v, m };
-              break;
-            }
-          }
-          if (chosen) break;
-        }
+        const chosen = moves.find((m) => {
+          const after = playMove(s, m.r, m.c, m.kind, { vice: true });
+          if (after.result || after.turn !== 0) return false;
+          const reach = movesOf(after).some((x) => hits(after, x, [m.r, m.c]));
+          return hit15 < 0 ? reach : !reach;
+        });
         if (chosen) {
-          push({ type: "vice", at: chosen.v }, setVice(s, chosen.v));
-          play(chosen.m);
+          play(chosen, false, true);
           continue;
         }
       }
@@ -109,11 +98,8 @@ export function findPlan(seed: number, p1card: SkillId): Plan | null {
       play(pool[Math.floor(rand() * pool.length)], king);
       continue;
     }
-    // 先手: 副将は最初に決められる手番で決める
-    if (viceInfo(s, 0).status === "unset") {
-      const v = viceCells(viewFor(s, 0))[0];
-      if (v) push({ type: "vice", at: v }, setVice(s, v));
-    }
+    // 先手: 副将は出せる最初の手で出す
+    const myVice = viceInfo(s, 0).status === "unset";
     // 偵察が使えれば使う（王を特定・その後は副将を特定）
     if (skillBlock(viewFor(s, 0)) === null) {
       push({ type: "skill", id: "scout" }, useSkill(s, { id: "scout" }));
@@ -124,7 +110,7 @@ export function findPlan(seed: number, p1card: SkillId): Plan | null {
     // ①副将を返す（罰 15）②特定した副将を返す（罰 30）
     const want = hit15 < 0 || vice?.seen ? moves.find((m) => hits(s, m, target)) : undefined;
     if (want) {
-      play(want);
+      play(want, false, myVice);
       if (hit15 < 0) hit15 = steps.length - 1;
       else return { steps, hit15, hit30: steps.length - 1, scoutVice, hp };
       continue;
@@ -135,7 +121,7 @@ export function findPlan(seed: number, p1card: SkillId): Plan | null {
     const kc = s.kings[1].revealed ? null : s.kings[1].cell;
     const gain = (m: Move) => moverGain("scout", [m.r, m.c], targetsAt(s, m.r, m.c, m.kind).map(([r, c]) => ({ r, c })));
     const score = (m: Move) => (hits(s, m, kc) ? 1000 : 0) + gain(m) + rand();
-    play(pool.reduce((a, b) => (score(b) > score(a) ? b : a)), king);
+    play(pool.reduce((a, b) => (score(b) > score(a) ? b : a)), king, myVice);
   }
   return null;
 }

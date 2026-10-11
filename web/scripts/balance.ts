@@ -7,8 +7,8 @@
 
 import { chooseLookahead, chooseMove, CPU_LEVEL_NAME, CPU_LEVELS, type CpuLevel } from "../src/engine/cpu";
 import { SIZE } from "../src/engine/board";
-import { createGame, kingInfo, playMove, setSkills, setVice, skillPool, useSkill, viewFor, type EndReason, type GameState } from "../src/engine/game";
-import { chooseSkillUse, chooseVice } from "../src/engine/skillcpu";
+import { createGame, kingInfo, playMove, setSkills, skillPool, useSkill, viewFor, type EndReason, type GameState } from "../src/engine/game";
+import { chooseSkillUse, viceWith } from "../src/engine/skillcpu";
 import { SKILL_ORDER, SKILLS, type SkillId } from "../src/engine/skills";
 import { cloneRules, kindsInRules, PIECES, presetById, type PieceKind, type Player, type PresetId } from "../src/engine/rules";
 
@@ -76,19 +76,18 @@ const SIM_MIX: Record<SkillId, number> = {
   fool: 50.3, wheel: 51.0, judge: 46.1,
 };
 
-/** CPU（ノーマル）の 1 手: 手番の頭に副将を決めるか・スキルを使うか決め（運命の輪の指定も続けて）、打つ。使ったら used を 1 足す */
+/** CPU（ノーマル）の 1 手: 手番の頭にスキルを使うか決め（運命の輪の指定も続けて）、打つ（置く駒を副将にするかも決める）。使ったら used を 1 足す */
 function cpuStep(s: GameState, rand: () => number, used: { n: number }): GameState {
   const p = s.turn;
-  const vice = chooseVice(viewFor(s, p), rand);
-  if (vice) s = setVice(s, vice);
   for (let k = 0; k < 2 && !s.result; k++) {
     const use = chooseSkillUse(viewFor(s, p), rand);
     if (!use) break;
     if (!s.skills?.armed?.aim) used.n++;
     s = useSkill(s, use, rand);
   }
-  const ch = chooseMove(viewFor(s, p), "normal", rand)!;
-  return playMove(s, ch.r, ch.c, ch.kind, { king: ch.king });
+  const view = viewFor(s, p);
+  const ch = chooseMove(view, "normal", rand)!;
+  return playMove(s, ch.r, ch.c, ch.kind, { king: ch.king, vice: viceWith(view, ch, rand) });
 }
 
 /** 片側だけスキルを持つ 2 手読み同士（プリセット「スキルあり」）で、カードごとのスキル側の勝率・使った回数 */
