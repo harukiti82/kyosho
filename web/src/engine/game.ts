@@ -293,6 +293,20 @@ export interface Position {
   turn?: Player;
   /** 隠し王の駒のマス [先手, 後手]（隠れた状態から始める）。null・省略は未指定 */
   kings?: [Cell | null, Cell | null];
+  /** 副将の駒のマス [先手, 後手]（副将のあるルールで、王を指定した人だけ。隠れた状態から始める）。null・省略は未指定 */
+  vices?: [Cell | null, Cell | null];
+  /**
+   * スキルのルールの各自のカード [先手, 後手]。offer は配られた 3 枚（card がなければ選ぶ前）、card は選んだカード、gauge は GAUGE_UNIT 単位
+   * （満タンを超えない）。省略すると createGame と同じく配る前から始める
+   */
+  skills?: [PositionSkill, PositionSkill];
+}
+
+/** 指定した局面のスキルの 1 人分（チュートリアル） */
+export interface PositionSkill {
+  offer?: SkillId[];
+  card?: SkillId | null;
+  gauge?: number;
 }
 
 /**
@@ -317,6 +331,15 @@ export function gameFrom(rules: RuleSet, pos: Position): GameState {
     // 副将のあるルールなら、王を決めた後と同じく副将を決める期間から始める
     if (vicesOn(r)) kings[p].vice = { cell: null, since: 0 };
   }
+  for (const p of [0, 1] as const) {
+    const cell = pos.vices?.[p] ?? null;
+    if (!cell) continue;
+    if (!kings[p].vice) throw new Error("副将は、副将のあるルールで王を指定した人だけに置けます");
+    if (board[cell[0]][cell[1]]?.owner !== p) throw new Error(`副将のマス (${cell[0]}, ${cell[1]}) に持ち主の駒がありません`);
+    const k = kings[p].cell!;
+    if (k[0] === cell[0] && k[1] === cell[1]) throw new Error("王と副将は同じ駒にできません");
+    kings[p].vice = { cell: [cell[0], cell[1]], since: 0 };
+  }
   const hands = pos.hands ?? [r.hand, r.hand];
   const g: GameState = {
     rules: r,
@@ -329,8 +352,20 @@ export function gameFrom(rules: RuleSet, pos: Position): GameState {
     result: null,
     kings,
   };
-  if (r.skills) g.skills = newSkills();
+  if (r.skills) g.skills = pos.skills ? skillsFrom(pos.skills) : newSkills();
+  else if (pos.skills) throw new Error("スキルなしのルールでカードを指定しています");
   return settleTurn(g, g.turn);
+}
+
+/** 指定したカード・ゲージのスキルの状態。両者が選び終えていれば（カードを選んだか、配られていなければ）打てる */
+function skillsFrom(spec: [PositionSkill, PositionSkill]): SkillsState {
+  const sides = spec.map((s) => {
+    const card = s.card ?? null;
+    const offer = [...(s.offer ?? (card ? [card] : []))];
+    if (card && !offer.includes(card)) throw new Error(`${card} は配られていません`);
+    return { offer, card, gauge: card ? Math.max(0, Math.min(gaugeMax(card), s.gauge ?? 0)) : 0 };
+  }) as [SkillSide, SkillSide];
+  return { ...newSkills(), sides, ready: sides.every((s) => s.card !== null || s.offer.length === 0) };
 }
 
 /** 手番のプレイヤーが (r, c) に kind を置けるか */

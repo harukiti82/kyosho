@@ -137,6 +137,8 @@ export interface PickView {
   chosen: SkillId | null;
   /** 配り直しを押せる（1 局 1 回。使った後は押せない鍵を出す） */
   reroll: boolean;
+  /** 遊び方のステップ: 覚えることの要点・補足・課題を見出しの下に出し、配り直せる間は配り直しを光らせる */
+  lesson?: { point: string; note?: string; task: string };
   onPick: (id: SkillId) => void;
   onReroll: () => void;
   onMenu: () => void;
@@ -194,6 +196,7 @@ export class SkillPick {
       this.sound.select();
       v.onReroll();
     });
+    if (v.lesson && v.reroll) again.classList.add("guide");
     const head = h("div", { class: "pick-who" }, [
       v.stone !== null ? h("i", { class: `seg-stone p${v.stone}`, attrs: { "aria-hidden": "true" } }) : null,
       waiting ? "相手が選んでいます" : `${v.who}のカード`,
@@ -224,7 +227,7 @@ export class SkillPick {
     const row = h("div", { class: `tarot-row${waiting ? " one" : ""}${deal ? " dealing" : ""}` }, cards);
     row.style.setProperty("--deal-step", `${DEAL_STEP_MS}ms`);
     row.style.setProperty("--deal-ms", `${DEAL_MS}ms`);
-    this.body.replaceChildren(head, row, detail);
+    this.body.replaceChildren(...(v.lesson ? [this.lessonBox(v.lesson)] : []), head, row, detail);
     if (!waiting) {
       // 1 枚ごとに配る音（動きを減らす設定では 1 回だけ）
       if (deal) cards.forEach((_, i) => this.sound.deal((i * DEAL_STEP_MS) / 1000));
@@ -246,6 +249,27 @@ export class SkillPick {
     });
     this.actions.replaceChildren(menu, ok);
     this.showDetail(null);
+  }
+
+  /** 遊び方のステップ: 違う操作のヒント（揺らして知らせる。カードは配り直さない） */
+  hint(text: string) {
+    const m = this.body.querySelector<HTMLElement>(".pick-coach .coach-msg");
+    if (!m) return;
+    m.textContent = text;
+    m.hidden = false;
+    m.className = "coach-msg hint";
+    void m.offsetWidth;
+    m.classList.add("shake");
+  }
+
+  /** 遊び方のステップの要点・補足・課題とヒントの欄（コーチと同じ見た目。ダイアログの間はコーチが隠れるので、ここに出す） */
+  private lessonBox(l: NonNullable<PickView["lesson"]>): HTMLElement {
+    return h("div", { class: "pick-coach coach-goal" }, [
+      h("p", { class: "coach-point", text: l.point }),
+      l.note ? h("p", { class: "coach-note", text: l.note }) : null,
+      h("p", { class: "coach-task", text: l.task }),
+      h("p", { class: "coach-msg", attrs: { role: "status", "aria-live": "polite", hidden: "" } }),
+    ]);
   }
 
   private select(id: SkillId) {

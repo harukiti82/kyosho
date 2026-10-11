@@ -41,6 +41,7 @@ test("遊び方: 各ステップで要点が大きく、補足・ヒント・で
   test.setTimeout(180_000);
   await page.goto("/");
   await page.locator("#menu-learn").click();
+  await page.locator("#menu-learn-std").click();
   await expect(page.locator("#coach")).toBeVisible();
   for (const [i, l] of LESSONS.entries()) {
     await expect(page.locator("#coach-title")).toHaveText(l.title);

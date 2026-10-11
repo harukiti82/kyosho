@@ -29,7 +29,7 @@
           <button type="button" class="btn menu-btn" id="menu-resume" hidden>対局に戻る</button>
           <button type="button" class="btn primary menu-btn menu-big" id="menu-cpu">CPU対戦</button>
           <button type="button" class="btn menu-btn menu-big" id="menu-multi">マルチ</button>
-          <!-- 遊び方（盤で打ちながら覚えるチュートリアル。下に進み具合: おすすめ・つづき・クリア済み）と設定は小さな鍵を横に並べる -->
+          <!-- 遊び方（盤で打ちながら覚えるチュートリアル。押すと章を選ぶ。下に標準の章の進み具合: おすすめ・つづき・クリア済み）と設定は小さな鍵を横に並べる -->
           <div class="menu-row">
             <button type="button" class="btn menu-btn menu-small" id="menu-learn">遊び方<span class="menu-sub" id="menu-learn-state"></span></button>
             <button type="button" class="btn menu-btn menu-small" id="menu-settings">設定</button>
@@ -41,6 +41,13 @@
           <button type="button" class="btn menu-btn menu-level" data-level="easy" title="1 手先だけを見て、ときどき適当に打つ"><span class="lv-stars" aria-hidden="true"><i class="on"></i><i></i><i></i></span>イージー</button>
           <button type="button" class="btn menu-btn menu-level" data-level="normal" title="相手の次の 1 手まで読む"><span class="lv-stars" aria-hidden="true"><i class="on"></i><i class="on"></i><i></i></span>ノーマル</button>
           <button type="button" class="btn menu-btn menu-level" data-level="hard" title="さらに先まで読み、決着を狙う"><span class="lv-stars" aria-hidden="true"><i class="on"></i><i class="on"></i><i class="on"></i></span>ハード</button>
+          <button type="button" class="btn ghost menu-btn menu-back">戻る</button>
+        </div>
+        <!-- 遊び方の章: 標準ルールを大きく、スキルありを小さく（ui/menu.ts の setChapterState が進み具合を添える） -->
+        <div class="menu-panel" id="menu-learns" role="group" aria-labelledby="menu-learns-title" hidden>
+          <h2 class="menu-head" id="menu-learns-title">遊び方</h2>
+          <button type="button" class="btn menu-btn menu-chapter" data-chapter="std" id="menu-learn-std">基本のルール<span class="menu-sub"></span></button>
+          <button type="button" class="btn menu-btn menu-small menu-chapter" data-chapter="skill" id="menu-learn-skill">スキルあり<span class="menu-sub"></span></button>
           <button type="button" class="btn ghost menu-btn menu-back">戻る</button>
         </div>
         <div class="menu-panel" id="menu-modes" role="group" aria-labelledby="menu-modes-title" hidden>

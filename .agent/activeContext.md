@@ -7,7 +7,8 @@
 
 - 何を / どこを: スキルの PR B に、選ぶ前の「配り直し」（1 局 1 回。engine `rerollSkills` / `rerollBlock`・CPU `wantsReroll`（3 枚とも `WEAK_CARDS`）・画面 `SkillPick` の見出しの行の `#skill-pick-reroll`・サーバー `reroll`（送り主にだけ state））と、運命の輪の抽選対象を自分以外の 10 枚に（連続行動・巻き戻しも出る。運命の輪の持ち主も `skills.undo` を覚える）を積んだ。その前に PR B（11 枚）に「副将」ルール（スキルありで隠し王ありだけ）と副将を追う偵察、ゲージの長さの測定値（偵察 36・連続行動 42）と回復系の強化（応急手当 40・+4、大回復 180・+20・溜めマス 20、補充 66）を積んだ。副将は王と同じく置く駒で出す（ユーザーの指示）: engine `game.ts`（`playMove` の `{ vice }`・`KingState.vice`・`viceInfo`・`oppViceOf`）・CPU `skillcpu.ts`（`viceWith`）・画面 `app.ts`（`viceOn` / `viceButton` / `viceTag`）・サーバーは `move` の `vice`。依頼元セッション（master）経由
 - ステータス: ブランチ `feat/skills-b`（worktree `../kyosho-skills2`）。PR #43。CI 緑で止める。**マージはしない**（ユーザーが localhost :5181 で見てから）
-- 最終更新: 2026-10-11（配り直し・運命の輪 10 枚）
+- 最終更新: 2026-10-12（遊び方にスキルありの章）
+- 遊び方のスキルありの章（ユーザーの「チュートリアルも更新して」）: メニューの「遊び方」→ 章を選ぶ段（基本のルール / スキルあり）。スキルありはカードを選ぶ（配り直してから）・ゲージを溜める・強打を使う・副将を置く・副将を裏返す・偵察・実戦の 7 ステップ。標準の章の実戦の後は「スキルありへ」。進み具合は `kyosho:tutorial` の `skill` キー（古い保存はそのまま読める）。標準のステップは今のコードとずれなし（PR #43 は標準に触れていない）
 
 ## スキルの要点
 
@@ -31,6 +32,8 @@
 
 ## 未解決・次の一手
 
+- [ ] 遊び方のスキルありの章: ユーザーに :5181 で見てもらう。仮置き（入口は章を選ぶ段で初心者は 1 タップ増える・カードを選ぶステップは配り直しを必須に・教えるカードは強打と偵察だけ・実戦は配られた 3 枚から選ぶ）を確認
+
 - [ ] スキル PR B: CI 緑で止める → ユーザーが :5181 で副将（「副」の鍵を押して置く・名札・盤の印・罰の演出）を見て、master の指示でマージ。副将の見せ方（期限の後に「いる」だけ）と巻き戻しの仮置き・回復系の長さ（sim の 32・160・48 より長い）をユーザーに確認。巻き戻しの長さ 30 は試遊で調整
 - [ ] ユーザーの試遊で待った（イージーだけ・3 回）と「!」の既定オフの手応えを聞く。既定オフで「ルールが一目で分かる」が損なわれていないか
 - [ ] ユーザーにスマホの実機で G 案の見た目（直立の見出しの読みやすさ・挟む石・盤の格子と星）と、要点を大きくした説明文の読みやすさ（言い回し・補足の小ささ・ルールカードの長さ）を見てもらう
@@ -44,7 +47,7 @@
 
 - スキル: `RULES.md`「スキル」「副将」, `web/src/engine/skills.ts`, `web/src/engine/game.ts`（「副将」節・「スキル」節 `useSkill` / `applyEffect` / `takeBack` / `skillsAfterMove`）, `web/src/engine/skillcpu.ts`, `web/src/ui/skillui.ts`, `web/src/ui/app.ts`（「スキル」節）, `server/src/room.ts`（pick / skill）, `.agent/online-protocol.md`「スキル」, `web/test/skills.test.ts`, `server/test/skill.test.ts`, `web/e2e/skill.spec.ts`, `web/e2e/skill-vice.spec.ts`, `web/e2e/online/skill.spec.ts`
 - 通算（CPU 対戦・2 人対戦）: `web/src/ui/record.ts`, `web/src/ui/app.ts`（`countResult` / `recordOf` / `plateRecord`）, `web/src/ui/setup.ts`（`showRecord`）, `web/test/record.test.ts`, `web/e2e/record.spec.ts`
-- 遊び方: `web/src/ui/lessons.ts`, `web/src/ui/coach.ts`, `web/src/ui/app.ts`（「遊び方（チュートリアル）」節 `openLesson` / `inStep`、`onCellClick`・`renderBoard` の誘導）, `web/test/lesson.test.ts`, `web/e2e/tutorial.spec.ts`
+- 遊び方: `web/src/ui/lessons.ts`（`LESSONS` / `SKILL_LESSONS` / `CHAPTERS`）, `web/src/ui/coach.ts`, `web/src/ui/menu.ts`（章を選ぶ段）, `web/src/ui/app.ts`（「遊び方（チュートリアル）」節 `openLesson` / `inStep`、`onCellClick`・`renderBoard` の誘導）, `web/test/lesson.test.ts`, `web/e2e/tutorial.spec.ts`
 - 待った・「!」・制限時間: `web/src/ui/undo.ts`, `web/src/ui/app.ts`（`takeBack` / `initThreat` / `setThreat` / `syncClock` / `checkTimeout`）, `web/src/ui/setup.ts`（`Saved.threat`）, `web/src/ui/clock.ts`, `web/src/engine/game.ts`（`playTimeout`）, `server/src/room.ts`
 - メニュー・設定メニュー・CPU の強さ: `web/src/ui/menu.ts`, `web/src/ui/setup.ts`, `web/src/ui/app.ts`（`showMenu` / `resume` / `leaveToMenu`）, `web/src/engine/cpu.ts`（`chooseMove`）
 - 画面の見た目を直す: AGENTS.md の「デザイン規約」→ `web/src/style.css`（`:root` のトークン）, `web/index.html`, `web/src/ui/app.ts`（`placeSeats` / `renderPlayers` / `kingTag` / `bubble` / `setTab` / `renderScore`）, `web/src/ui/setup.ts`, `web/src/ui/menu.ts`

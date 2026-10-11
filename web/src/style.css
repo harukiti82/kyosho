@@ -623,7 +623,8 @@ button {
 /* 上から順に少しずつ遅らせて出す */
 #menu-multi,
 .menu-level:nth-of-type(2),
-#menu-online {
+#menu-online,
+#menu-learn-skill {
   animation-delay: 0.08s;
 }
 #menu-learn,
@@ -4415,6 +4416,36 @@ button {
 }
 .king-toggle .guide-arrow {
   bottom: 104%;
+}
+/* 名札のスキルの鍵（使ってから置くステップ）: 札を囲む四角の輪と、上で弾む矢印 */
+.skill-hit.guide {
+  position: relative;
+}
+.skill-hit .guide-ring {
+  inset: 0;
+  border-radius: 0;
+}
+.skill-hit .guide-arrow {
+  bottom: 100%;
+}
+/* カードを選ぶ画面の遊び方: 要点・課題とヒントを見出しの下に、配り直しは白く脈打たせる */
+.pick-coach {
+  margin: -0.2rem 0 0.8rem;
+}
+.btn.pick-reroll.guide {
+  background: #fff;
+  color: var(--navy-900);
+  animation: pick-guide 0.9s ease-in-out infinite alternate;
+}
+@keyframes pick-guide {
+  to {
+    opacity: 0.65;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .btn.pick-reroll.guide {
+    animation: none;
+  }
 }
 /* 見えないはずの駒の印（王を返すステップの相手の王の「?」） */
 .lesson-mark {

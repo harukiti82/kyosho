@@ -156,6 +156,7 @@ test.describe("PC 幅", () => {
     );
     await page.goto("/");
     await page.locator("#menu-learn").click();
+    await page.locator("#menu-learn-std").click();
     await expect(page.locator("#coach-title")).toHaveText("予測を読む");
     // 光る 2 マスのうち d6 は、置いた歩が次に返される（予測で「!」が出る）
     const d6 = cellAt(page, 5, 3);
@@ -180,6 +181,7 @@ async function openTutorialMatch(page: Page, threat: boolean | null) {
   );
   await page.goto("/");
   await page.locator("#menu-learn").click();
+  await page.locator("#menu-learn-std").click();
   await expect(page.locator("#coach-title")).toHaveText("実戦");
 }
 

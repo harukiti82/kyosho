@@ -86,6 +86,11 @@ export class Coach {
     this.message("hint", text);
   }
 
+  /** 出ているヒントを消す（ヒントに従って操作したとき。できたの文は残す） */
+  clearHint() {
+    if (this.el.msg.classList.contains("hint")) this.clearMessage();
+  }
+
   /** できた: 何が起きたかの 1 文と「次へ」（next が null なら最後。「もう一度」も出さない） */
   success(text: string, next: string | null) {
     this.message("ok", text);

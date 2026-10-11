@@ -136,6 +136,7 @@ test.describe("PC 幅", () => {
     await expect(undoBtn(page)).toHaveCount(0);
     await page.locator("#btn-menu").click();
     await page.locator("#menu-learn").click();
+    await page.locator("#menu-learn-std").click();
     await expect(page.locator("#coach")).toBeVisible();
     await expect(undoBtn(page)).toHaveCount(0);
   });
