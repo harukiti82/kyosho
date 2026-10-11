@@ -5,16 +5,17 @@
 
 ## 現在の対象
 
-- 何を / どこを: スキルの PR B（新しい 3 枚 = 連続行動・運命の輪・巻き戻し、補充と偵察の作り直しで 11 枚）。engine `skills.ts` / `game.ts` の「スキル」節・CPU `skillcpu.ts`・画面 `app.ts`（`aimOf` / `castResult` / `playSkillCast`）・`fx.ts` の `skillCast` の結果の一言・サーバー `room.ts`（運命の輪の乱数）。依頼元セッション（master）経由
-- ステータス: ブランチ `feat/skills-b`（worktree `../kyosho-skills2`）。PR #43。試遊の後の修正（巻き戻しへ改名・補充の数字の制限なし・連続行動 36）を積んで CI 緑で止める。**マージはしない**（ユーザーが localhost :5181 で見てから）。次に偵察まわりの「副将」ルール（スキルありだけ）が別に来る
+- 何を / どこを: スキルの PR B（11 枚）に「副将」ルール（スキルありで隠し王ありだけ）と副将を追う偵察、ゲージの長さの測定値（偵察 36・連続行動 42・補充 48）を積んだ。engine `game.ts`（`KingState.vice` / `viceInfo` / `setVice` / `viceCells`）・CPU `skillcpu.ts`（`chooseVice`）・画面 `app.ts`（`viceButton` / `designateVice` / `viceTag`）・サーバー `room.ts`（`vice`）。依頼元セッション（master）経由
+- ステータス: ブランチ `feat/skills-b`（worktree `../kyosho-skills2`）。PR #43。CI 緑で止める。**マージはしない**（ユーザーが localhost :5181 で見てから）
 - 最終更新: 2026-10-11
 
 ## スキルの要点
 
 - 状態は `GameState.skills`（スキルなしのルールではキーなし）。隠し情報は `kings` の中（偵察 = `kings[相手].seen`、移し替えの先 = `kings[自分].cell`、巻き戻しで戻された王の指定 = `kings[相手].kept`）と `skills.undo`（巻き戻しで戻す局面。`viewFor` が消して `undoable` だけ見せる）
-- 決定値（ユーザー）: 補充 56（仮。減った駒なら金・飛も）・偵察 30（1 回目は特定して罰 2 倍を王を返すまで `hunt`、2 回目以降は相手のゲージ半分）・連続行動 36（仮。2 手目のダメージ半分）・運命の輪 36（基本の 8 枚から等確率、使えなければ不発）・巻き戻し 30（タロットは審判。CPU は 15 以上減ったとき）。溜めマスはどれも 4。仮の 2 つはシミュレーターの値に差し替える（`skills.ts` の `SKILLS` の 1 か所）
-- 仮置き（ユーザーに確認）: 待ったで戻した応手で相手が王を決めていたら、指定は残して「相手が次に置く駒が王」（sim.ts は戻せない扱いだったが、使えるかで隠し情報が漏れるため）。運命の輪は隠し王なしのルールでは 6 枚から引く。偵察の 2 回目は相手のゲージが空なら使えない
-- バランス（`npm run balance -- skill 2000`）: 補充（制限なし）55.2%・連続行動 36 で 54.8%（26 のとき 54.3%。使う回数が 1.24 → 0.79 回/局に減るだけ）・ほかは sim.ts の値と標準誤差の範囲（偵察だけ相手がスキルなしで 56.0%）。`skillmix 2000` は改名前の値で先手勝率 48.3%、カードごと 42〜55%。表は RULES.md「スキル」
+- 値（sim.ts の final14b.json）: 補充 48・偵察 36・連続行動 42（2 手目半分）・運命の輪 36・巻き戻し 30・副将の罰 15（特定済み 30）・期限 7 手。大回復の溜めマス点は Web 12 / final14b 4 で違う（変えていない。ユーザー判断）
+- 副将の仮置き（ユーザーに確認）: 指定は手番の頭の別操作（駒台の「副」の鍵 → 盤の駒）。相手には「決めたか」だけ見せ、相手の王の期限前は隠す（オンラインは決めた人にだけ state）。巻き戻しは相手の副将の指定を戻さない（駒がなければ次に置く駒）。手数の上限の手でも副将の罰を引く（sim.ts は決着した手では引かない）。ルールカードは 9 行に
+- 仮置き（前から）: 巻き戻しで戻した応手で相手が王を決めていたら「相手が次に置く駒が王」。運命の輪は隠し王なしのルールでは 6 枚から引く
+- バランス（副将あり）: `skill 2000` は 11 枚とも sim r24 と ±1.1 の差、`skillmix 2000` は先手 47.9%・カード 46〜56%（補充 47.4% だけ sim 53.1% と 2 SE）。副将を返す 0.43 回/局。表は RULES.md「スキル」
 
 ## 直近の観点・指摘
 
@@ -28,7 +29,7 @@
 
 ## 未解決・次の一手
 
-- [ ] スキル PR B: CI 緑で止める → 補充 56・連続行動 36 をシミュレーターの値に差し替え、偵察の「副将」ルール（master から別に来る）。巻き戻しで戻す王の指定の扱い（仮置き）をユーザーに確認。master の指示でマージ。巻き戻しの長さ 30 は試遊で調整
+- [ ] スキル PR B: CI 緑で止める → ユーザーが :5181 で副将（指定の鍵・名札・盤の印・罰の演出）を見て、master の指示でマージ。副将と巻き戻しの仮置き・大回復の溜めマス点をユーザーに確認。巻き戻しの長さ 30 は試遊で調整
 - [ ] ユーザーの試遊で待った（イージーだけ・3 回）と「!」の既定オフの手応えを聞く。既定オフで「ルールが一目で分かる」が損なわれていないか
 - [ ] ユーザーにスマホの実機で G 案の見た目（直立の見出しの読みやすさ・挟む石・盤の格子と星）と、要点を大きくした説明文の読みやすさ（言い回し・補足の小ささ・ルールカードの長さ）を見てもらう
 - [ ] ユーザーの試遊で「自動で王に」のステップ（手数 12 の局面から始まる・「数えるのは自分の手だけ」）と「反対側」の表記（吹き出しが 2 行になる場面）の手応えと、遊び方の分かりやすさ（ステップの順・目標の文・光と矢印の誘導・最後の実戦）の感想を聞く。初回にメニューで勧める強さ（今は「遊び方」の横のシアンの「おすすめ」だけ）もユーザー判断
@@ -39,7 +40,7 @@
 
 ## 現フェーズで Read すべき設計書
 
-- スキル: `RULES.md`「スキル」, `web/src/engine/skills.ts`, `web/src/engine/game.ts`（「スキル」節 `useSkill` / `applyEffect` / `takeBack` / `skillsAfterMove`）, `web/src/engine/skillcpu.ts`, `web/src/ui/skillui.ts`, `web/src/ui/app.ts`（「スキル」節）, `server/src/room.ts`（pick / skill）, `.agent/online-protocol.md`「スキル」, `web/test/skills.test.ts`, `server/test/skill.test.ts`, `web/e2e/skill.spec.ts`, `web/e2e/online/skill.spec.ts`
+- スキル: `RULES.md`「スキル」「副将」, `web/src/engine/skills.ts`, `web/src/engine/game.ts`（「副将」節・「スキル」節 `useSkill` / `applyEffect` / `takeBack` / `skillsAfterMove`）, `web/src/engine/skillcpu.ts`, `web/src/ui/skillui.ts`, `web/src/ui/app.ts`（「スキル」節）, `server/src/room.ts`（pick / skill）, `.agent/online-protocol.md`「スキル」, `web/test/skills.test.ts`, `server/test/skill.test.ts`, `web/e2e/skill.spec.ts`, `web/e2e/skill-vice.spec.ts`, `web/e2e/online/skill.spec.ts`
 - 通算（CPU 対戦・2 人対戦）: `web/src/ui/record.ts`, `web/src/ui/app.ts`（`countResult` / `recordOf` / `plateRecord`）, `web/src/ui/setup.ts`（`showRecord`）, `web/test/record.test.ts`, `web/e2e/record.spec.ts`
 - 遊び方: `web/src/ui/lessons.ts`, `web/src/ui/coach.ts`, `web/src/ui/app.ts`（「遊び方（チュートリアル）」節 `openLesson` / `inStep`、`onCellClick`・`renderBoard` の誘導）, `web/test/lesson.test.ts`, `web/e2e/tutorial.spec.ts`
 - 待った・「!」・制限時間: `web/src/ui/undo.ts`, `web/src/ui/app.ts`（`takeBack` / `initThreat` / `setThreat` / `syncClock` / `checkTimeout`）, `web/src/ui/setup.ts`（`Saved.threat`）, `web/src/ui/clock.ts`, `web/src/engine/game.ts`（`playTimeout`）, `server/src/room.ts`
