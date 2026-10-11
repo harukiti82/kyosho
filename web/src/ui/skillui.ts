@@ -71,6 +71,19 @@ export function tarotArt(id: SkillId): SVGSVGElement {
       case "kingmove":
         // 元の駒（線だけ）から新しい駒へ
         return [piece(16, 48, 16, "ring"), piece(44, 30, 16, "fill-w"), svg("path", { class: "ln", d: "M20 26 Q28 12 36 18" })];
+      case "fool":
+        // 続けて置いた 2 つの石と、2 つの山形
+        return [stone(20, 40, 8, "fill-b"), stone(40, 40, 8, "fill-b dim"), svg("path", { class: "ln thick", d: "M14 14 L22 21 L14 28 M28 14 L36 21 L28 28" })];
+      case "wheel":
+        // 輪と 8 本の輻、縁に黒と白の石
+        return [
+          stone(30, 30, 20, "ring"),
+          ...rays(30, 30, 5, 20),
+          ...[0, 1, 2, 3].map((i) => stone(30 + Math.cos((Math.PI * i) / 2) * 20, 30 + Math.sin((Math.PI * i) / 2) * 20, 5, i % 2 ? "fill-w" : "fill-b")),
+        ];
+      case "judge":
+        // 盤に戻る石と、左へ巻き戻す矢印
+        return [stone(22, 42, 8, "fill-w"), stone(40, 42, 8, "fill-b dim"), svg("path", { class: "ln thick", d: "M46 22 Q30 6 14 20 M14 20 L15 11 M14 20 L23 22" })];
     }
   })();
   root.append(...art);

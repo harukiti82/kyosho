@@ -2,7 +2,7 @@
 // 各行を要点と補足に分けて返し、DOM への流し込みは呼び出し側（ui/setup.ts の fillSentences）が textContent で行う。
 
 import { kindsByValue, kindsInRules, KIND_ORDER, PIECES, REACH_MARK, type PieceKind, type RuleSet } from "../engine/rules";
-import { FLIP_POINTS, KINGMOVE_RANGE, REFILL_MAX_VALUE, SCOUT_PENALTY_RATE, SKILL_HEAL, SKILL_ORDER, SKILLS, type SkillId } from "../engine/skills";
+import { BASE_SKILLS, FLIP_POINTS, KINGMOVE_RANGE, REFILL_MAX_VALUE, SCOUT_PENALTY_RATE, SKILL_HEAL, SKILL_ORDER, SKILLS, type SkillId } from "../engine/skills";
 
 /**
  * ルールの 1 行: 要点の一言（大きく太く。1 行に 1 か所だけ）と、その下に小さく添える補足（括弧で囲まず、薄い字）。
@@ -70,15 +70,31 @@ export function skillText(id: SkillId, r: RuleSet): { short: string; point: stri
     case "omni":
       return { short: "8 方向に挟む", point: "その手で置く駒が 8 方向に挟める", note: "駒の矢印に関係なく挟める" };
     case "refill":
-      return { short: "駒を 1 つ戻す", point: "使い切った駒を 1 つ駒台に戻す", note: `数字 ${REFILL_MAX_VALUE} 以下の駒だけ` };
+      return { short: "駒を 1 つ戻す", point: "減った駒を 1 つ駒台に戻す", note: `始めの数より減った、数字 ${REFILL_MAX_VALUE} 以下の駒だけ` };
     case "wall":
       return { short: "相手の次の手を半減", point: "相手の次の手のダメージが半分", note: `駒は${verb(r).hit.replace("された", "る").replace("られた", "られる")}。小数は切り捨て` };
     case "scout": {
-      const pen = r.king.penalty === "lose" ? "" : `。その手で王を${verb(r).past.replace("した", "す").replace("った", "る")}と罰が ${SCOUT_PENALTY_RATE} 倍の体力−${r.king.amount * SCOUT_PENALTY_RATE}`;
-      return { short: "相手の王が見える", point: "相手の王の場所が自分にだけ分かる", note: `相手が最初の${r.king.deadline}手を打ち終えてから使える${pen}` };
+      const pen = r.king.penalty === "lose" ? "" : `。その王を${verb(r).past.replace("した", "す").replace("った", "る")}まで罰が ${SCOUT_PENALTY_RATE} 倍の体力−${r.king.amount * SCOUT_PENALTY_RATE}`;
+      return {
+        short: "相手の王が見える",
+        point: "相手の王の場所が自分にだけ分かる",
+        note: `相手が最初の${r.king.deadline}手を打ち終えてから使える${pen}。王が分かった後は相手のゲージを半分にする`,
+      };
     }
     case "kingmove":
       return { short: `王を ${KINGMOVE_RANGE} マス内へ`, point: "自分の王を近くの自分の駒へ移す", note: `今の王から ${KINGMOVE_RANGE} マス以内。どこへ移したかは相手に見えない` };
+    case "fool":
+      return { short: "2 手続けて打つ", point: "この手番に 2 手続けて打てる", note: "2 手目のダメージは半分。小数は切り捨て" };
+    case "wheel": {
+      const pool = BASE_SKILLS.filter((id) => r.king.on || (id !== "scout" && id !== "kingmove"));
+      return {
+        short: `${pool.length} 枚から 1 つ`,
+        point: `${pool.length} 枚のどれかの効果が出る`,
+        note: `${pool.map((id) => SKILLS[id].name).join("・")}から同じ確率。その場で使えない効果は不発`,
+      };
+    }
+    case "judge":
+      return { short: "2 手戻す", point: "自分の直前の手と相手の応手を戻す", note: "戻した局面から打ち直す。相手の王の指定は残る" };
   }
 }
 
@@ -183,7 +199,7 @@ export function ruleDetails(r: RuleSet): Sentence[] {
   return out;
 }
 
-/** スキルの詳細（ゲージの溜め方と 8 枚の効果） */
+/** スキルの詳細（ゲージの溜め方と 11 枚の効果） */
 export function skillDetails(r: RuleSet): Sentence[] {
   const steps = FLIP_POINTS.slice(1).map((n, i) => `${i + 1} 枚${i === FLIP_POINTS.length - 2 ? "以上" : ""} +${n}`).join("・");
   const out: Sentence[] = [

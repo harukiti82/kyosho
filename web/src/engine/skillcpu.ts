@@ -3,13 +3,27 @@
 // スキルなしの対局では使わない（cpu.ts の手は変わらない）。乱数は引数で受ける。
 
 import { applyLines, damageOf, emptyCells, healOf, pieceLines, rawLines, SIZE, targetsOf, type Cell } from "./board";
-import { attackable, availableKinds, bestReply, kingMoveCells, moveRules, refillKinds, skillBlock, type PlayerView } from "./game";
+import {
+  armedEffect,
+  attackable,
+  availableKinds,
+  bestReply,
+  kingMoveCells,
+  moveRules,
+  refillKinds,
+  scoutMode,
+  skillBlock,
+  type MoveEvent,
+  type PlayerView,
+} from "./game";
 import { other, type PieceKind, type Player } from "./rules";
 import {
   FLIP_POINTS,
   gaugeMax,
   GAUGE_UNIT,
   isZone,
+  drainGauge,
+  secondDamage,
   shieldDamage,
   SKILL_HEAL,
   SKILLS,
@@ -20,9 +34,25 @@ import {
 import type { Choice } from "./cpu";
 
 /** ゲージ 1 点の価値の元（点。回復は効果の量 ÷ 長さ） */
-const GAUGE_VALUE: Record<SkillId, number> = { firstaid: 10, bigheal: 30, strong: 6, omni: 6, refill: 6, wall: 8, scout: 5, kingmove: 6 };
+const GAUGE_VALUE: Record<SkillId, number> = {
+  firstaid: 10,
+  bigheal: 30,
+  strong: 6,
+  omni: 6,
+  refill: 6,
+  wall: 8,
+  scout: 5,
+  kingmove: 6,
+  fool: 8,
+  wheel: 8,
+  judge: 8,
+};
 /** 使う条件（使ったときの読みの得点が、使わないときよりこれ以上よい） */
-const THRESHOLD = { omni: 2, strong: 6, wall: 6, kingmove: 1 } as const;
+const THRESHOLD = { omni: 2, strong: 6, wall: 6, kingmove: 1, fool: 6 } as const;
+/** 待ったは、自分の前の手の後に相手の応手で受けた体力の減りがこれ以上のときに使う（sim.ts の JTH） */
+export const JUDGE_TAKEN = 15;
+/** 偵察の 2 回目以降（相手のゲージを半分）は、減らせる量が相手のゲージの長さのこの割合以上のときに使う（sim.ts の SC2TH） */
+const DRAIN_NEED = 0.3;
 /** 回復は、足りない体力が効果の量のこの割合以上のときに使う */
 const HEAL_NEED = 0.6;
 /** 補充は、戻す駒の数字のこの倍を得点に足して比べる */
@@ -47,6 +77,12 @@ interface Opt {
   handPlus?: PieceKind;
   /** 王を返す罰の倍率（偵察） */
   penMul?: number;
+  /** 自分の手のダメージが半分（連続行動の 2 手目） */
+  secondHalf?: boolean;
+  /** 自分の手の後に続けてもう 1 手（連続行動。2 手目はダメージ半分で貪欲に選んだものとして読む） */
+  extra?: boolean;
+  /** この手は選ばない（待ったで戻した手。ほかに手がなければ選ぶ） */
+  exclude?: { r: number; c: number; kind: PieceKind } | null;
   /** ゲージ 1 点の価値と、満タンまでの残り（点） */
   gaugeW?: number;
   room?: number;
@@ -79,20 +115,48 @@ function lookahead(view: PlayerView, o: Opt = {}): { best: number; cands: Choice
     const raw = rawLines(board, r, c, p, rules.values);
     const myKing: Cell | null = o.designate ? [r, c] : o.kingCell !== undefined ? o.kingCell : view.myKing.cell;
     for (const kind of myKinds) {
+      if (o.exclude && o.exclude.r === r && o.exclude.c === c && o.exclude.kind === kind) continue;
       const lines = pieceLines(raw, kind, o.dirsAll ? allRules : rules);
       if (rules.action === "flip" && lines.length === 0) continue;
       let d = damageOf(board, lines, rules);
       if (o.strong) d = strongDamage(d);
       if (o.ownHalf) d = shieldDamage(d);
+      if (o.secondHalf) d = secondDamage(d);
       let own = d + healOf(lines, rules.values[kind], rules);
-      if (oppPenalty > 0) own += oppPenalty * (o.penMul ?? 1) * lines.reduce((n, l) => n + l.cells.filter(([y, x]) => oc.has(key(y, x))).length, 0);
+      const hits = (ls: typeof lines) => ls.reduce((n, l) => n + l.cells.filter(([y, x]) => oc.has(key(y, x))).length, 0);
+      if (oppPenalty > 0) own += oppPenalty * (o.penMul ?? 1) * hits(lines);
       if (card && o.gaugeW && o.room && o.room > 0) {
         const ts = targetsOf(lines);
         const zoneHits = (isZone(r, c) ? 1 : 0) + ts.filter(([y, x]) => isZone(y, x)).length;
         const g = FLIP_POINTS[Math.min(ts.length, FLIP_POINTS.length - 1)] + SKILLS[card].zone * zoneHits;
         own += o.gaugeW * Math.min(o.room, g);
       }
-      const next = applyLines(board, p, r, c, kind, lines, rules);
+      let next = applyLines(board, p, r, c, kind, lines, rules);
+      if (o.extra) {
+        // 連続行動: 2 手目を貪欲に（ダメージ半分＋回復＋王の罰の見込み）選んだ盤から相手の応手を読む
+        const h2 = { ...hand };
+        h2[kind]--;
+        if (rules.action === "capture") for (const [y, x] of targetsOf(lines)) h2[board[y][x]!.kind]++;
+        let b2 = -Infinity;
+        let after = next;
+        for (const [r2, c2] of emptyCells(next)) {
+          const raw2 = rawLines(next, r2, c2, p, rules.values);
+          if (raw2.length === 0) continue;
+          for (const k2 of availableKinds(h2)) {
+            const l2 = pieceLines(raw2, k2, rules);
+            if (l2.length === 0) continue;
+            const s2 = secondDamage(damageOf(next, l2, rules)) + healOf(l2, rules.values[k2], rules) + (oppPenalty > 0 ? oppPenalty * hits(l2) : 0);
+            if (s2 > b2) {
+              b2 = s2;
+              after = applyLines(next, p, r2, c2, k2, l2, rules);
+            }
+          }
+        }
+        if (b2 > -Infinity) {
+          own += b2;
+          next = after;
+        }
+      }
       const br = bestReply(rules, next, oppHand, q, myKing ? { cell: myKing, penalty: myPenalty } : undefined);
       const reply = o.shield ? br.score - (br.damage - shieldDamage(br.damage)) : br.score;
       const s = own - reply;
@@ -114,7 +178,10 @@ function currentOpt(view: PlayerView): Opt {
   const card = sk.sides[p].card!;
   const o: Opt = { gaugeW: gaugeWeight(card), room: (gaugeMax(card) - sk.sides[p].gauge) / GAUGE_UNIT };
   if (sk.shielded[p]) o.ownHalf = true;
-  switch (sk.armed?.id) {
+  if (sk.second) o.secondHalf = true;
+  // 偵察で特定してから王を返すまでは罰 2 倍
+  if (sk.hunt?.[p]) o.penMul = 2;
+  switch (armedEffect(sk)) {
     case "strong":
       o.strong = true;
       break;
@@ -124,8 +191,12 @@ function currentOpt(view: PlayerView): Opt {
     case "wall":
       o.shield = true;
       break;
-    case "scout":
-      o.penMul = 2;
+    case "fool":
+      o.extra = true;
+      break;
+    case "judge":
+      // 戻した手をそのまま打ち直さない
+      o.exclude = sk.armed?.redo ?? null;
       break;
   }
   return o;
@@ -138,7 +209,11 @@ export function chooseSkillLookahead(view: PlayerView, rng: () => number): Choic
   if (view.result) return null;
   const o = currentOpt(view);
   const pick = (cs: Choice[]) => cs[Math.floor(rng() * cs.length)];
-  const normal = lookahead(view, o);
+  let normal = lookahead(view, o);
+  if (normal.cands.length === 0 && o.exclude) {
+    o.exclude = null;
+    normal = lookahead(view, o);
+  }
   if (normal.cands.length === 0) return null;
   const mk = view.myKing;
   if (mk.canDesignate) {
@@ -154,21 +229,63 @@ export function chooseSkillLookahead(view: PlayerView, rng: () => number): Choic
 /** 使ったスキルの後の view を、カードを読まない CPU（イージー・ハード）に渡す形にする（全方向なら 8 方向のルール） */
 export const plainView = (view: PlayerView): PlayerView => ({ ...view, rules: moveRules(view) });
 
+/** 補充で戻す駒: 戻せる駒のうち、2 手読みの得点 ＋ 数字 × REFILL_BONUS が最もよいもの（同点なら数字の大きい駒） */
+function bestRefill(view: PlayerView, withRoom: (o: Opt) => Opt): { kind: PieceKind; gain: number } | null {
+  let best: { kind: PieceKind; gain: number } | null = null;
+  for (const kind of refillKinds(view)) {
+    const v = view.rules.values[kind];
+    const gain = lookahead(view, withRoom({ handPlus: kind })).best + REFILL_BONUS * v;
+    if (!best || gain > best.gain || (gain === best.gain && v > view.rules.values[best.kind])) best = { kind, gain };
+  }
+  return best;
+}
+
+/** 王の移し替えの先: 次の手で返されない駒（盤の端・隅を優先）。どれも返されうるなら移せる駒のどれか。移せなければ null */
+function kingMoveTarget(view: PlayerView, rng: () => number): { to: Cell; threatened: boolean; safe: boolean } | null {
+  const q = other(view.turn);
+  const kc = view.myKing.cell;
+  const cells = kingMoveCells(view);
+  if (!kc || cells.length === 0) return null;
+  const threatened = new Set(attackable(view.rules, view.board, view.hands[q], q).map(([y, x]) => key(y, x)));
+  const safe = cells.filter(([y, x]) => !threatened.has(key(y, x)));
+  const pool = safe.length > 0 ? safe : cells;
+  const edge = ([y, x]: Cell) => (y === 0 || y === SIZE - 1 ? 1 : 0) + (x === 0 || x === SIZE - 1 ? 1 : 0);
+  const most = Math.max(...pool.map(edge));
+  const top = pool.filter((c) => edge(c) === most);
+  return { to: top[Math.floor(rng() * top.length)], threatened: threatened.has(key(kc[0], kc[1])), safe: safe.length > 0 };
+}
+
+/** 自分の前の手より後に、相手の手で減った自分の体力（ダメージと王の罰の合計） */
+function takenSinceMyMove(view: PlayerView): number {
+  const p = view.turn;
+  let taken = 0;
+  for (let i = view.history.length - 1; i >= 0; i--) {
+    const e = view.history[i];
+    if (e.type !== "move") continue;
+    if (e.player === p) break;
+    taken += (e as MoveEvent).damage + (e.king?.penalty ?? 0);
+  }
+  return taken;
+}
+
 /**
  * 手番の CPU がこの手番の頭でスキルを使うなら、その指定。使わない・使えないなら null。
- * 回復は足りない体力が効果の 6 割以上、偵察は使えればいつも、ほかは使ったときの読みの得点が使わないときより閾値以上よいとき
+ * 回復は足りない体力が効果の 6 割以上、偵察は特定できればいつも（2 回目以降は相手のゲージを十分減らせるとき）、
+ * 運命の輪は満タンならいつも、待ったは相手の応手で JUDGE_TAKEN 以上減ったとき、ほかは使ったときの読みの得点が使わないときより閾値以上よいとき。
+ * 運命の輪で補充・王の移し替えが出て指定を待っているなら、その指定を返す
  */
 export function chooseSkillUse(view: PlayerView, rng: () => number): SkillUse | null {
+  const sk = view.skills;
+  if (sk?.armed?.aim) return wheelAim(view, rng);
   if (skillBlock(view)) return null;
-  const sk = view.skills!;
   const p = view.turn;
   const q = other(p);
-  const id = sk.sides[p].card!;
+  const id = sk!.sides[p].card!;
   const gw = gaugeWeight(id);
   const normal = lookahead(view, { gaugeW: gw, room: 0 });
   if (normal.cands.length === 0) return null;
   const room = SKILLS[id].length;
-  const wo: Opt = sk.shielded[p] ? { ownHalf: true } : {};
+  const wo: Opt = sk!.shielded[p] ? { ownHalf: true } : {};
   const withRoom = (o: Opt): Opt => ({ ...wo, ...o, gaugeW: gw, room });
   const better = (o: Opt, th: number) => lookahead(view, withRoom(o)).best - normal.best >= th;
   switch (id) {
@@ -176,10 +293,8 @@ export function chooseSkillUse(view: PlayerView, rng: () => number): SkillUse | 
     case "bigheal":
       return view.rules.hp[p] - view.hp[p] < SKILL_HEAL[id] * HEAL_NEED ? null : { id };
     case "refill": {
-      const kinds = refillKinds(view);
-      const kind = kinds[kinds.length - 1];
-      const gain = lookahead(view, withRoom({ handPlus: kind })).best + REFILL_BONUS * view.rules.values[kind];
-      return gain > normal.best ? { id, kind } : null;
+      const best = bestRefill(view, withRoom);
+      return best && best.gain > normal.best ? { id, kind: best.kind } : null;
     }
     case "omni":
       return better({ dirsAll: true }, THRESHOLD.omni) ? { id } : null;
@@ -187,21 +302,34 @@ export function chooseSkillUse(view: PlayerView, rng: () => number): SkillUse | 
       return better({ strong: true }, THRESHOLD.strong) ? { id } : null;
     case "wall":
       return better({ shield: true }, THRESHOLD.wall) ? { id } : null;
-    case "scout":
-      // 候補が 1 つなら場所は分かっている
-      return view.oppKing.candidates.length >= 2 ? { id } : null;
+    case "scout": {
+      if (scoutMode(view) === "find") return { id };
+      const side = sk!.sides[q];
+      const cut = side.gauge - drainGauge(side.gauge);
+      return side.card && cut >= DRAIN_NEED * gaugeMax(side.card) ? { id } : null;
+    }
     case "kingmove": {
       // 今の王が次の手で返されうるときだけ、返されない駒へ（盤の端・隅を優先）
-      const kc = view.myKing.cell!;
-      const threatened = new Set(attackable(view.rules, view.board, view.hands[q], q).map(([y, x]) => key(y, x)));
-      if (!threatened.has(key(kc[0], kc[1]))) return null;
-      const safe = kingMoveCells(view).filter(([y, x]) => !threatened.has(key(y, x)));
-      if (safe.length === 0) return null;
-      const edge = ([y, x]: Cell) => (y === 0 || y === SIZE - 1 ? 1 : 0) + (x === 0 || x === SIZE - 1 ? 1 : 0);
-      const most = Math.max(...safe.map(edge));
-      const top = safe.filter((c) => edge(c) === most);
-      const to = top[Math.floor(rng() * top.length)];
-      return better({ kingCell: to }, THRESHOLD.kingmove) ? { id, to } : null;
+      const t = kingMoveTarget(view, rng);
+      if (!t || !t.threatened || !t.safe) return null;
+      return better({ kingCell: t.to }, THRESHOLD.kingmove) ? { id, to: t.to } : null;
     }
+    case "fool":
+      return better({ extra: true }, THRESHOLD.fool) ? { id } : null;
+    case "wheel":
+      return { id };
+    case "judge":
+      return takenSinceMyMove(view) >= JUDGE_TAKEN ? { id } : null;
   }
+}
+
+/** 運命の輪で出た補充・王の移し替えの指定（補充は読みで最もよい駒、王の移し替えは返されない駒を優先） */
+function wheelAim(view: PlayerView, rng: () => number): SkillUse {
+  const card = view.skills!.sides[view.turn].card!;
+  if (view.skills!.armed!.effect === "refill") {
+    const gw = gaugeWeight(card);
+    const best = bestRefill(view, (o) => ({ ...o, gaugeW: gw, room: SKILLS[card].length }));
+    return { id: "wheel", kind: best!.kind };
+  }
+  return { id: "wheel", to: kingMoveTarget(view, rng)!.to };
 }
