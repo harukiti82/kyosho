@@ -183,10 +183,12 @@ describe("スキルの使用", () => {
       const room = await startedRoom({ ...SKILL, king: { ...SKILL.king, deadline: 1 } });
       const start = await pickFirst(room);
       const [h] = await playPlies(room, start, 6);
-      // 配られたカード（部屋ごとにランダム）をそろえる: 先手は王の移し替えが満タン、後手は鉄壁 0
+      // 配られたカード（部屋ごとにランダム）をそろえる: 先手は王の移し替えが満タン、後手は鉄壁 0。
+      // 配られたのが巻き戻しなら打つ間に戻す局面（undo）を覚えているので、それも消して 2 部屋をそろえる
       await patch(room.roomId, (g) => {
         const c = charge(0, "kingmove")(g);
-        return { ...c, skills: { ...c.skills!, sides: [c.skills!.sides[0], { offer: ["wall"], card: "wall", gauge: 0 }] } };
+        const { undo: _undo, ...sk } = c.skills!;
+        return { ...c, skills: { ...sk, sides: [sk.sides[0], { offer: ["wall"], card: "wall", gauge: 0 }] } };
       });
       const from = room.guest.raw.length;
       const g = (await stored(room.roomId)).game;
