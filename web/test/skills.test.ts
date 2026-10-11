@@ -27,12 +27,14 @@ import {
 } from "../src/engine/game";
 import { chooseMove } from "../src/engine/cpu";
 import { chooseSkillPick, chooseSkillUse, viceWith, wantsReroll, WEAK_CARDS } from "../src/engine/skillcpu";
-import { NO_KING, type Hand, type PieceKind, type Player } from "../src/engine/rules";
+import { NO_KING, type Hand, type PieceKind, type Player, type RuleSet } from "../src/engine/rules";
 import { gaugeMax, GAUGE_UNIT, SKILLS, SKILL_ORDER, type SkillId, type SkillsState, type WheelEffect } from "../src/engine/skills";
 import { at, rulesOf } from "./helpers";
 
 /** 全方向・上乗せなし・回復なし・隠し王なしのスキルあり（ダメージ = 返した駒の数字の合計） */
-const PLAIN = rulesOf("skill", { dirs: "all", anchor: "none", heal: "none", king: { ...NO_KING } });
+/** スキルありのルール（体力は 129・130 に固定。プリセットの体力を変えても、ここの数字の検査は変えない） */
+const skillRules = (o: Partial<RuleSet> = {}) => rulesOf("skill", { hp: [129, 130], ...o });
+const PLAIN = skillRules({ dirs: "all", anchor: "none", heal: "none", king: { ...NO_KING } });
 const EMPTY: Hand = { fu: 0, yoko: 0, gin: 0, kaku: 0, kin: 0, hi: 0 };
 
 /** stones: { "a1": [持ち主, 駒種] } の局面から、カードを決めて始める */
@@ -90,7 +92,7 @@ describe("カード", () => {
     expect(skillBlock(viewFor(s, 0))).toBe("off");
   });
   it("3 枚ずつ配り、1 枚を選ぶ。両者が選ぶまで打てず、相手の候補と選んだカードは見せない", () => {
-    let s = createGame(rulesOf("skill"));
+    let s = createGame(skillRules());
     let n = 0;
     s = dealSkills(s, () => ((n = (n * 7 + 3) % 10), n / 10));
     for (const side of s.skills!.sides) {
@@ -122,7 +124,7 @@ describe("カード", () => {
 });
 
 describe("配り直し", () => {
-  const dealt = (rules = rulesOf("skill"), seed = 1) => {
+  const dealt = (rules = skillRules(), seed = 1) => {
     let n = seed;
     return dealSkills(createGame(rules), () => ((n = (n * 7 + 3) % 10), n / 10));
   };
@@ -174,7 +176,7 @@ describe("配り直し", () => {
     expect(() => rerollSkills(done, 0, Math.random)).toThrow();
     // スキルなしのルール・配る前
     expect(rerollBlock(createGame(rulesOf("std")).skills, 0)).toBe("off");
-    expect(rerollBlock(createGame(rulesOf("skill")).skills, 0)).toBe("off");
+    expect(rerollBlock(createGame(skillRules()).skills, 0)).toBe("off");
   });
   it("配り直したか・新しい 3 枚は相手の view に出ない", () => {
     const s = dealt();
@@ -220,7 +222,7 @@ describe("ゲージ", () => {
     expect(gauge(play(game({ a3: [0, "fu"], b3: [1, "fu"] }, ["bigheal", null]), "c3"), 0)).toBe(21);
   });
   it("受けたダメージには王の罰も入る。カードのない人のゲージは増えない", () => {
-    const rules = rulesOf("skill", { dirs: "all", anchor: "none", heal: "none", king: { on: true, penalty: "hp", amount: 30, deadline: 1 } });
+    const rules = skillRules({ dirs: "all", anchor: "none", heal: "none", king: { on: true, penalty: "hp", amount: 30, deadline: 1 } });
     let s = game({ a1: [0, "fu"], b1: [1, "fu"], h8: [1, "fu"], g8: [0, "fu"] }, [null, "wall"], { rules, kings: [null, "b1"] });
     s = play(s, "c1");
     expect(last(s).king?.penalty).toBe(30);
@@ -272,7 +274,7 @@ describe("8 枚の効果", () => {
     expect(last(s).plain).toBeUndefined();
   });
   it("全方向: その手で置く駒だけが 8 方向に挟める", () => {
-    const rules = rulesOf("skill", { anchor: "none", heal: "none", king: { ...NO_KING } });
+    const rules = skillRules({ anchor: "none", heal: "none", king: { ...NO_KING } });
     // 歩は縦だけ。横に挟む c1 は普段は置けない
     const stones = { a1: [0, "fu"], b1: [1, "fu"], b3: [1, "fu"], b4: [0, "fu"], a6: [1, "fu"], b6: [0, "fu"] } as const;
     let s = full(game(stones, ["omni", null], { rules }));
@@ -320,7 +322,7 @@ describe("8 枚の効果", () => {
     expect(s.skills!.shielded).toEqual([false, false]);
   });
   describe("偵察", () => {
-    const rules = rulesOf("skill", { dirs: "all", anchor: "none", heal: "none", king: { on: true, penalty: "hp", amount: 30, deadline: 2 } });
+    const rules = skillRules({ dirs: "all", anchor: "none", heal: "none", king: { on: true, penalty: "hp", amount: 30, deadline: 2 } });
     /** 後手が b1・h7 に置いて b1 を王にした（期限 2 手）局面。先手の手番。相手から見た王の候補は b1・h7 */
     function hidden(): GameState {
       let s = game({ a1: [0, "fu"], b1: [1, "fu"], h8: [0, "fu"], h7: [1, "fu"] }, ["scout", "wall"], { rules, kings: [null, "b1"] });
@@ -384,7 +386,7 @@ describe("8 枚の効果", () => {
     });
   });
   describe("王の移し替え", () => {
-    const rules = rulesOf("skill", { dirs: "all", anchor: "none", heal: "none", king: { on: true, penalty: "hp", amount: 30, deadline: 7 } });
+    const rules = skillRules({ dirs: "all", anchor: "none", heal: "none", king: { on: true, penalty: "hp", amount: 30, deadline: 7 } });
     const stones = { a1: [0, "fu"], b1: [1, "fu"], d4: [0, "fu"], d6: [0, "fu"], d7: [0, "fu"], f6: [0, "fu"], h8: [1, "fu"] } as const;
     const start = () => full(game(stones, ["kingmove", "scout"], { rules, kings: ["d4", null] }));
     it("今の王から 2 マス以内の自分の駒へ移す（3 マス以上・今の王・空きマス・相手の駒は不可）", () => {
@@ -448,7 +450,7 @@ describe("CPU のスキル", () => {
     (id, level) => {
       let seed = 7;
       const rng = () => ((seed = (seed * 16807) % 2147483647) - 1) / 2147483646;
-      let s = setSkills(createGame(rulesOf("skill")), [id, SKILL_ORDER[(SKILL_ORDER.indexOf(id) + 3) % SKILL_ORDER.length]]);
+      let s = setSkills(createGame(skillRules()), [id, SKILL_ORDER[(SKILL_ORDER.indexOf(id) + 3) % SKILL_ORDER.length]]);
       let uses = 0;
       const notes = (g: GameState) => g.history.filter((e) => e.type === "move" && e.skill).length;
       while (!s.result) {
@@ -482,7 +484,7 @@ describe("補充（作り直し）", () => {
     let fullTurns = 0;
     let blocked = 0;
     for (let i = 0; i < 12; i++) {
-      let s = setSkills(createGame(rulesOf("skill")), i % 2 ? ["refill", "strong"] : ["strong", "refill"]);
+      let s = setSkills(createGame(skillRules()), i % 2 ? ["refill", "strong"] : ["strong", "refill"]);
       while (!s.result) {
         const p = s.turn;
         const side = s.skills!.sides[p];
@@ -537,7 +539,7 @@ describe("連続行動", () => {
     expect(s.skills!.second).toBeUndefined();
   });
   it("2 手目で王を返した罰は半分にしない", () => {
-    const rules = rulesOf("skill", { dirs: "all", anchor: "none", heal: "none", king: { on: true, penalty: "hp", amount: 30, deadline: 7 } });
+    const rules = skillRules({ dirs: "all", anchor: "none", heal: "none", king: { on: true, penalty: "hp", amount: 30, deadline: 7 } });
     let s = full(game({ a8: [0, "fu"], b8: [1, "fu"], a1: [0, "fu"], b1: [1, "fu"], h4: [1, "fu"], h5: [0, "fu"] }, ["fool", null], { rules, kings: [null, "b1"] }));
     s = play(play(useSkill(s, { id: "fool" }), "c8"), "c1");
     expect(last(s)).toMatchObject({ second: true, damage: 0, plain: 1, king: { penalty: 30 } });
@@ -547,7 +549,7 @@ describe("連続行動", () => {
 
 describe("運命の輪", () => {
   const base = { a1: [0, "fu"], b1: [1, "fu"], a8: [0, "fu"], b8: [1, "fu"], c8: [1, "fu"], d8: [1, "fu"] } as const;
-  const kingRules = rulesOf("skill", { dirs: "all", anchor: "none", heal: "none", king: { on: true, penalty: "hp", amount: 30, deadline: 7 } });
+  const kingRules = skillRules({ dirs: "all", anchor: "none", heal: "none", king: { on: true, penalty: "hp", amount: 30, deadline: 7 } });
   const spin = (s: GameState, effect: WheelEffect) => useSkill(s, { id: "wheel" }, drawOf(s, effect));
   /** 運命の輪を n 回引いた効果ごとの回数（乱数は種付き） */
   const tally = (s: GameState, n: number, seed = 1) => {
@@ -728,7 +730,7 @@ describe("巻き戻し", () => {
     }
   });
   it("相手の王の指定は戻さない: 応手で指定した王は、相手が次に置く駒がそのまま王になる", () => {
-    const rules = rulesOf("skill", { dirs: "all", anchor: "none", heal: "none", king: { on: true, penalty: "hp", amount: 30, deadline: 7 } });
+    const rules = skillRules({ dirs: "all", anchor: "none", heal: "none", king: { on: true, penalty: "hp", amount: 30, deadline: 7 } });
     const { s } = twoMoves({ rules }, true);
     expect(kingInfo(s, 1).cell).toEqual(at("c1"));
     let back = useSkill(full(s, 0), { id: "judge" });
@@ -783,7 +785,7 @@ describe("新しいカードの CPU", () => {
 
 describe("副将", () => {
   // 隠し王あり（期限 7 手・罰 30）。副将は VICE_DEADLINE = 7 手ごとに置き直す・罰 VICE_PENALTY = 15
-  const rules = rulesOf("skill", { dirs: "all", anchor: "none", heal: "none", king: { on: true, penalty: "hp", amount: 30, deadline: 7 } });
+  const rules = skillRules({ dirs: "all", anchor: "none", heal: "none", king: { on: true, penalty: "hp", amount: 30, deadline: 7 } });
   type ViceSpec = { cell: string; due?: number; seen?: boolean; hit?: boolean; auto?: boolean };
   /** owner の副将の状態にする（since は周期の起点、base は相手に見せる時期の起点。list は窓ごとに置いた副将で、最後が今の副将） */
   const withVices = (s: GameState, owner: Player, list: ViceSpec[], o: { since?: number; base?: number } = {}): GameState => {
@@ -1092,7 +1094,7 @@ describe("副将", () => {
       for (let i = 0; i < 24; i++) {
         let seed = i + 1;
         const rand = () => ((seed = (seed * 16807) % 2147483647) - 1) / 2147483646;
-        let s = setSkills(createGame(rulesOf("skill")), [pool[i % pool.length], pool[(i * 5 + 3) % pool.length]]);
+        let s = setSkills(createGame(skillRules()), [pool[i % pool.length], pool[(i * 5 + 3) % pool.length]]);
         let guard = 0;
         while (!s.result && guard++ < 300) {
           const p = s.turn;

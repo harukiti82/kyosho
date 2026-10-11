@@ -224,10 +224,12 @@ export const PRESETS: readonly Preset[] = [
     id: "skill",
     name: "スキルあり",
     note: "標準＋スキル（配られた3枚から1枚を選び、ゲージが満タンになるたびに使う）",
-    // 標準と同じ値にスキルだけを足す（各スキルの値はスキルなし相手の勝率 52〜56%。kyosho-skillsim の 2 手読み同士・各 2000 局）
+    // 標準にスキルを足す（各スキルの値はスキルなし相手の勝率 52〜56%。kyosho-skillsim の 2 手読み同士・各 2000 局）。
+    // 体力はスキルで決着が早まる分を戻した（11 枚混在の 2 手読み同士 2000 局で平均手数 37.6・先手勝率 50.6%。
+    // 129・130 は 36.1 手・47.4%。RULES.md「スキルありの体力」）
     rules: {
       action: "flip", gate: false, dirs: "piece", damage: "sum", anchor: "attack", heal: "lowMinus1",
-      hp: [129, 130],
+      hp: [136, 134],
       hand: { fu: 10, yoko: 10, gin: 0, kaku: 4, kin: 2, hi: 3 },
       values: { ...DEFAULT_VALUES, hi: 3, kin: 5 },
       maxPlies: 0,

@@ -55,8 +55,8 @@ describe("プリセットと初期状態", () => {
       hp: [70, 60], hand: { fu: 14, yoko: 0, gin: 10, kaku: 0, kin: 6, hi: 2 }, values: DEFAULT_VALUES, maxPlies: 0,
       king: { on: true, penalty: "hp", amount: 20, deadline: 5 }, skills: false,
     });
-    // スキルありは標準にスキルだけを足したもの
-    expect(byId.skill).toEqual({ ...byId.std, skills: true });
+    // スキルありは標準にスキルを足し、体力を 136・134 にしたもの（スキルで早まる決着の分）
+    expect(byId.skill).toEqual({ ...byId.std, hp: [136, 134], skills: true });
     expect(NO_KING).toEqual({ on: false, penalty: "hp", amount: 20, deadline: 5 });
   });
   it("初期配置は中央 4 駒がすべて歩で、オセロと同じ並び。体力と持ち駒は設定どおり", () => {

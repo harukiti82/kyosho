@@ -180,7 +180,7 @@ describe("ルールカードの文言", () => {
       ...card("std").slice(0, 6),
       "ゲージが満タンでスキルを使う 配られた3枚から1枚を選ぶ。返した枚数と受けたダメージで溜まる",
       "副将を返されたら体力−15 王を決めた後、7手ごとに置く駒を1つ副将にする。前の副将はふつうの駒に戻る。相手に見えない",
-      card("std")[6],
+      "体力が 0 で負け 先手 136・後手 134 から",
     ]);
     const details = ruleDetails(rulesOf("skill")).map(sentenceText).join("\n");
     expect(details).toContain("1 手で 1 枚 +1・2 枚 +2・3 枚 +4・4 枚以上 +7。受けたダメージ 1 点ごとに +0.15");
@@ -345,6 +345,17 @@ describe("設定メニューの保存（localStorage）", () => {
     const saved = loadSaved(memory({ [SETTINGS_KEY]: JSON.stringify({ rules: old, side: "0", host: "random" }) }));
     expect([saved.rules.heal, saved.rules.hp, saved.rules.king.deadline]).toEqual(["avg", [110, 130], 5]);
     expect(matchPreset(saved.rules)).toBeNull();
+  });
+  it("スキルありの体力を変える前に保存した・共有した設定（体力 129・130）は、その値のまま読む", () => {
+    const before = encodeRules({ ...presetById("skill").rules, hp: [129, 130] });
+    expect(before).toContain("hp1=129&hp2=130");
+    expect(before).toContain("skill=1");
+    const saved = loadSaved(memory({ [SETTINGS_KEY]: JSON.stringify({ rules: before, side: "0", host: "random" }) }));
+    expect(saved.rules).toEqual({ ...presetById("skill").rules, hp: [129, 130] });
+    expect(matchPreset(saved.rules)).toBeNull();
+    expect(decodeRules(`?${before}`).rules.hp).toEqual([129, 130]);
+    // 今のスキルありは 136・134
+    expect(matchPreset(decodeRules(`?${encodeRules(presetById("skill").rules)}`).rules)?.id).toBe("skill");
   });
   it("ストレージが例外を投げても標準（safeStore 越し）", async () => {
     const { safeStore } = await import("../src/net/online");
