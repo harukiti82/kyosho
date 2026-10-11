@@ -521,6 +521,8 @@ test("運命の輪: 引いた効果が両者の演出に出て、棋譜に残る
     if (mover === wheel && (await mover.page.locator("#skill-use").count()) > 0) {
       await cast(wheel, "wheel");
       const armed = wheel.last!.view.skills!.armed!;
+      // 引く効果はサーバーの乱数。どれを引いたかを結果に残す（補充・王の移し替えなら指定の流れも通る）
+      info.annotations.push({ type: "運命の輪", description: `${armed.effect}${armed.fizzle ? "（不発）" : armed.aim ? "（指定）" : ""}` });
       const text = armed.fizzle ? `${SKILLS[armed.effect!].name}は不発` : SKILLS[armed.effect!].name;
       await Promise.all([seeCast(wheel, "wheel", undefined, text), seeCast(rival, "wheel", `${SHOT}/${pre}-online-skill-wheel-other.png`, text)]);
       expect(rival.last!.view.skills!.armed!.effect).toBe(armed.effect);

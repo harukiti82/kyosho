@@ -1491,6 +1491,8 @@ export class App {
       }
       // 待ったで棋譜が短くなった（戻した手は演出しない）
       this.seenEvents = Math.min(this.seenEvents, m.view.history.length);
+      // 運命の輪の指定（補充の駒・王の移し替えの先）が通った。演出はないので、ここで次の操作を受ける
+      if (before?.armed?.aim && !after?.armed?.aim) this.sending = false;
       if (after?.armed && !before?.armed && !m.view.result) {
         // スキルを使った（自分の送った分の返事か、相手）。演出の後に打てる
         this.sending = false;
