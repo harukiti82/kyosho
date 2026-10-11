@@ -1,8 +1,8 @@
-// スキル: カードの配布と選択・時計・使用の検証・隠し情報（偵察で分かった王・王の移し替えの先）・再戦での配り直し・再接続
+// スキル: カードの配布と選択・時計・使用の検証・隠し情報（偵察で分かった王・王の移し替えの先・副将）・再戦での配り直し・再接続
 
 import { runInDurableObject } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
-import { kingCandidates, kingMoveCells, refillKinds, viewFor, type GameState, type PlayerView } from "../../web/src/engine/game";
+import { kingCandidates, kingMoveCells, refillKinds, viceCells, viewFor, type GameState, type PlayerView } from "../../web/src/engine/game";
 import { presetById, type Player, type RuleSet } from "../../web/src/engine/rules";
 import { gaugeMax, type SkillId, type SkillSide } from "../../web/src/engine/skills";
 import type { StateMessage } from "../../web/src/net/protocol";
@@ -162,19 +162,66 @@ describe("スキルの使用", () => {
     expect(g1.view.oppKing.scouted).toBe(false);
     for (const c of [room.host, room.guest]) for (const t of c.raw) expect(t).not.toContain('"kings"');
 
-    // 2 回目（王が分かっている）は相手のゲージを半分にする
+    // 2 回目（王が分かっている）は相手の今の副将を特定する。副将が未定なら使えない
     room.host.send({ type: "move", ...firstLegal(h1.view) });
     const [, g2] = await Promise.all([room.host.expect("state"), room.guest.expect("state")]);
+    expect(g2.view.myVice).toMatchObject({ status: "unset" });
     room.guest.send({ type: "move", ...firstLegal(g2.view) });
-    await Promise.all([room.host.expect("state"), room.guest.expect("state")]);
+    const [h3] = await Promise.all([room.host.expect("state"), room.guest.expect("state")]);
+    expect(h3.view.oppVice).toEqual({ set: false, scouted: false, cell: null });
+    await patch(room.roomId, charge(0, "scout"));
+    room.host.send({ type: "skill", id: "scout" });
+    await room.host.expectError("illegal_skill");
+    // 後手が副将を決める（後手にだけ state が届き、先手には何も届かない）
+    room.host.send({ type: "move", ...firstLegal(h3.view) });
+    const [, g4] = await Promise.all([room.host.expect("state"), room.guest.expect("state")]);
+    // 王の駒（隠れていれば）と相手の駒は副将にできない
+    const viceAt = viceCells(g4.view)[0];
+    const bad = g4.view.myKing.cell ?? (() => {
+      for (let r = 0; r < 8; r++) for (let c = 0; c < 8; c++) if (g4.view.board[r][c]?.owner === 0) return [r, c] as [number, number];
+      throw new Error("先手の駒がない");
+    })();
+    room.guest.send({ type: "vice", at: [bad[0], bad[1]] });
+    await room.guest.expectError("illegal_vice");
+    room.guest.send({ type: "vice", at: [9, 0] });
+    await room.guest.expectError("bad_message");
+    room.host.send({ type: "vice", at: viceAt });
+    await room.host.expectError("not_your_turn");
+    room.guest.send({ type: "vice", at: viceAt });
+    const g5 = await room.guest.expect("state");
+    expect(g5.view.myVice).toMatchObject({ status: "set", cell: viceAt });
+    expect(await room.host.quiet()).toBe(true);
+    room.guest.send({ type: "move", ...firstLegal(g5.view) });
+    const [h6] = await Promise.all([room.host.expect("state"), room.guest.expect("state")]);
+    // 後手は王の期限を過ぎているので、決めたことだけが先手に見える（場所は見えない）
+    expect(h6.view.oppVice).toEqual({ set: true, scouted: false, cell: null });
     await patch(room.roomId, (g) => {
       const c = charge(0, "scout")(g);
       return { ...c, skills: { ...c.skills!, sides: [c.skills!.sides[0], { ...c.skills!.sides[1], gauge: 101 }] } };
     });
     room.host.send({ type: "skill", id: "scout" });
-    const [h3, g3] = await Promise.all([room.host.expect("state"), room.guest.expect("state")]);
-    expect(h3.view.skills!.armed).toEqual({ id: "scout", scout: "drain", drained: 51 });
-    expect(g3.view.skills!.sides[1].gauge).toBe(50);
+    const [h7, g7] = await Promise.all([room.host.expect("state"), room.guest.expect("state")]);
+    expect(h7.view.skills!.armed).toEqual({ id: "scout", scout: "vice" });
+    expect(h7.view.oppVice).toEqual({ set: true, scouted: true, cell: viceAt });
+    // ゲージ半減の効果はない
+    expect(g7.view.skills!.sides[1].gauge).toBe(101);
+    expect(g7.view.myVice.seen).toBe(true);
+    expect(g7.view.oppVice.cell).toBeNull();
+    for (const c of [room.host, room.guest]) for (const t of c.raw) expect(t).not.toContain('"kings"');
+  });
+
+  it("副将: 相手の副将の場所は特定されるまで先手の view に出ない（決めた駒が違っても同じ）", async () => {
+    // サーバーが送る view は viewFor そのもの。後手の副将をどの駒にしても、先手への view は 1 バイトも変わらない
+    const room = await startedRoom({ ...SKILL, king: { ...SKILL.king, deadline: 1 } });
+    const start = await pickFirst(room);
+    const [, g] = await playPlies(room, start, 7);
+    expect(g.view.turn).toBe(1);
+    const base = (await stored(room.roomId)).game;
+    const mine: [number, number][] = [];
+    for (let r = 0; r < 8; r++) for (let c = 0; c < 8; c++) if (base.board[r][c]?.owner === 1 && !(base.kings[1].cell![0] === r && base.kings[1].cell![1] === c)) mine.push([r, c]);
+    expect(mine.length).toBeGreaterThanOrEqual(2);
+    const seen = new Set(mine.map((cell) => JSON.stringify(viewFor({ ...base, kings: [base.kings[0], { ...base.kings[1], vice: { cell, since: 1 } }] }, 0))));
+    expect(seen.size).toBe(1);
   });
 
   it("王の移し替え: 移した先が違っても、相手に届くメッセージは 1 バイトも変わらない", async () => {
