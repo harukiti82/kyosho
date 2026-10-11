@@ -1044,7 +1044,7 @@ export class App {
     if (this.undo && this.settings) this.undo.record(g, this.settings.human);
     // 運命の輪の引く効果は crypto（Math.random は CPU の乱数と共有）
     this.game = useSkill(g, use, cryptoRandom);
-    // スキルの待ったで棋譜が短くなった（戻した手は演出しない）
+    // スキルの巻き戻しで棋譜が短くなった（戻した手は演出しない）
     this.seenEvents = Math.min(this.seenEvents, this.game.history.length);
     this.focus = null;
     this.pinned = false;
@@ -1086,7 +1086,7 @@ export class App {
   }
 
   /**
-   * スキルを使った演出（カードを表に返して名前を見せる）。運命の輪は引いた効果（不発）、待ったは戻した手数、
+   * スキルを使った演出（カードを表に返して名前を見せる）。運命の輪は引いた効果（不発）、巻き戻しは戻した手数、
    * 偵察の 2 回目は相手のゲージを半分にしたことを、名前の下に添える。終わるまで入力・CPU・時計を待たせる
    */
   private playSkillCast(p: Player, note: SkillNote) {
@@ -1105,9 +1105,9 @@ export class App {
     this.fxTimer = window.setTimeout(() => {
       this.fxLock = false;
       if (this.game !== g) return;
-      // 相手の待ったで、王を決めた手を戻された（指定は残る）
+      // 相手の巻き戻しで、王を決めた手を戻された（指定は残る）
       const me = this.me();
-      if (note.id === "judge" && me !== null && me !== p && this.kingOf(g, me).kept) this.showToast("待ったの前に王を決めたので、次に置く駒が王になります");
+      if (note.id === "judge" && me !== null && me !== p && this.kingOf(g, me).kept) this.showToast("巻き戻された手で王を決めたので、次に置く駒が王になります");
       this.render();
       const q = this.queued;
       this.queued = null;
@@ -1489,7 +1489,7 @@ export class App {
         if (before.sides[m.you].card) this.sound.opponentReady();
         this.announceCards(this.game);
       }
-      // 待ったで棋譜が短くなった（戻した手は演出しない）
+      // 巻き戻しで棋譜が短くなった（戻した手は演出しない）
       this.seenEvents = Math.min(this.seenEvents, m.view.history.length);
       // 運命の輪の指定（補充の駒・王の移し替えの先）が通った。演出はないので、ここで次の操作を受ける
       if (before?.armed?.aim && !after?.armed?.aim) this.sending = false;
@@ -2559,7 +2559,7 @@ export class App {
       const on = forced || this.kingOn;
       const left = deadline - ki.nextMove + 1;
       const note = ki.kept
-        ? `待ったの前に王を決めたので、この手で置く駒が王になります。王を${v.hitIf}${pen}`
+        ? `巻き戻された手で王を決めたので、この手で置く駒が王になります。王を${v.hitIf}${pen}`
         : forced
           ? `期限の ${deadline} 手目です。この手で置く駒が自動で王になります。王を${v.hitIf}${pen}`
         : `王を決めてから置く（あと ${left} 手のうち 1 手。${deadline} 手目に置いた駒は自動で王）。王を${v.hitIf}${pen}`;

@@ -49,7 +49,7 @@ const GAUGE_VALUE: Record<SkillId, number> = {
 };
 /** 使う条件（使ったときの読みの得点が、使わないときよりこれ以上よい） */
 const THRESHOLD = { omni: 2, strong: 6, wall: 6, kingmove: 1, fool: 6 } as const;
-/** 待ったは、自分の前の手の後に相手の応手で受けた体力の減りがこれ以上のときに使う（sim.ts の JTH） */
+/** 巻き戻しは、自分の前の手の後に相手の応手で受けた体力の減りがこれ以上のときに使う（sim.ts の JTH） */
 export const JUDGE_TAKEN = 15;
 /** 偵察の 2 回目以降（相手のゲージを半分）は、減らせる量が相手のゲージの長さのこの割合以上のときに使う（sim.ts の SC2TH） */
 const DRAIN_NEED = 0.3;
@@ -81,7 +81,7 @@ interface Opt {
   secondHalf?: boolean;
   /** 自分の手の後に続けてもう 1 手（連続行動。2 手目はダメージ半分で貪欲に選んだものとして読む） */
   extra?: boolean;
-  /** この手は選ばない（待ったで戻した手。ほかに手がなければ選ぶ） */
+  /** この手は選ばない（巻き戻しで戻した手。ほかに手がなければ選ぶ） */
   exclude?: { r: number; c: number; kind: PieceKind } | null;
   /** ゲージ 1 点の価値と、満タンまでの残り（点） */
   gaugeW?: number;
@@ -271,7 +271,7 @@ function takenSinceMyMove(view: PlayerView): number {
 /**
  * 手番の CPU がこの手番の頭でスキルを使うなら、その指定。使わない・使えないなら null。
  * 回復は足りない体力が効果の 6 割以上、偵察は特定できればいつも（2 回目以降は相手のゲージを十分減らせるとき）、
- * 運命の輪は満タンならいつも、待ったは相手の応手で JUDGE_TAKEN 以上減ったとき、ほかは使ったときの読みの得点が使わないときより閾値以上よいとき。
+ * 運命の輪は満タンならいつも、巻き戻しは相手の応手で JUDGE_TAKEN 以上減ったとき、ほかは使ったときの読みの得点が使わないときより閾値以上よいとき。
  * 運命の輪で補充・王の移し替えが出て指定を待っているなら、その指定を返す
  */
 export function chooseSkillUse(view: PlayerView, rng: () => number): SkillUse | null {

@@ -2,7 +2,7 @@
 // 各行を要点と補足に分けて返し、DOM への流し込みは呼び出し側（ui/setup.ts の fillSentences）が textContent で行う。
 
 import { kindsByValue, kindsInRules, KIND_ORDER, PIECES, REACH_MARK, type PieceKind, type RuleSet } from "../engine/rules";
-import { BASE_SKILLS, FLIP_POINTS, KINGMOVE_RANGE, REFILL_MAX_VALUE, SCOUT_PENALTY_RATE, SKILL_HEAL, SKILL_ORDER, SKILLS, type SkillId } from "../engine/skills";
+import { BASE_SKILLS, FLIP_POINTS, KINGMOVE_RANGE, SCOUT_PENALTY_RATE, SKILL_HEAL, SKILL_ORDER, SKILLS, type SkillId } from "../engine/skills";
 
 /**
  * ルールの 1 行: 要点の一言（大きく太く。1 行に 1 か所だけ）と、その下に小さく添える補足（括弧で囲まず、薄い字）。
@@ -70,7 +70,7 @@ export function skillText(id: SkillId, r: RuleSet): { short: string; point: stri
     case "omni":
       return { short: "8 方向に挟む", point: "その手で置く駒が 8 方向に挟める", note: "駒の矢印に関係なく挟める" };
     case "refill":
-      return { short: "駒を 1 つ戻す", point: "減った駒を 1 つ駒台に戻す", note: `始めの数より減った、数字 ${REFILL_MAX_VALUE} 以下の駒だけ` };
+      return { short: "駒を 1 つ戻す", point: "減った駒を 1 つ駒台に戻す", note: "始めの数より減った駒ならどれでも" };
     case "wall":
       return { short: "相手の次の手を半減", point: "相手の次の手のダメージが半分", note: `駒は${verb(r).hit.replace("された", "る").replace("られた", "られる")}。小数は切り捨て` };
     case "scout": {

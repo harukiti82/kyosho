@@ -228,10 +228,10 @@ describe("新しいカード", () => {
   const aimOf = (v: PlayerView) =>
     v.skills!.armed!.effect === "refill" ? { kind: refillKinds(v)[0] } : { to: kingMoveCells(v)[0] };
 
-  it("待った: 2 手戻した局面が両者に届く。戻す局面（王を含む）はどのメッセージにも出ず、相手の王の指定は残る", async () => {
+  it("巻き戻し: 2 手戻した局面が両者に届く。戻す局面（王を含む）はどのメッセージにも出ず、相手の王の指定は残る", async () => {
     const room = await startedRoom(SKILL);
     const start = await pickFirst(room);
-    // 先手は待った（ゲージ 0）。後手は最初の手で王を決める
+    // 先手は巻き戻し（ゲージ 0）。後手は最初の手で王を決める
     await patch(room.roomId, (g) => ({ ...g, skills: { ...g.skills!, sides: [{ offer: ["judge"], card: "judge", gauge: 0 }, { offer: ["wall"], card: "wall", gauge: 0 }] } }));
     const [h] = await playPlies(room, start, 2);
     const kept = (await stored(room.roomId)).game;
@@ -266,7 +266,7 @@ describe("新しいカード", () => {
     expect(g3.view.myKing).toMatchObject({ status: "hidden", cell: [mv.r, mv.c] });
   });
 
-  it("待った: 戻す手がなければ拒否する", async () => {
+  it("巻き戻し: 戻す手がなければ拒否する", async () => {
     const room = await startedRoom(SKILL);
     await pickFirst(room);
     await patch(room.roomId, charge(0, "judge"));

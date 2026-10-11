@@ -38,7 +38,6 @@ import {
   KINGMOVE_RANGE,
   moverGain,
   OFFER_SIZE,
-  REFILL_MAX_VALUE,
   SCOUT_PENALTY_RATE,
   secondDamage,
   shieldDamage,
@@ -125,7 +124,7 @@ export interface KingState {
   /** 相手が偵察で場所を知っている（王の移し替えで移すまで）。知られていなければキー自体がない */
   seen?: true;
   /**
-   * 王を指定した手を相手の待ったで戻された（指定は戻さない）。次に置く駒がそのまま王になる。
+   * 王を指定した手を相手の巻き戻しで戻された（指定は戻さない）。次に置く駒がそのまま王になる。
    * cell は null。そうでなければキー自体がない
    */
   kept?: true;
@@ -593,7 +592,7 @@ export function movesBy(state: Pick<GameState, "history">, p: Player): number {
 export interface KingInfo {
   /** off: 隠し王なし / unset: まだ決めていない / hidden: 隠れている / revealed: 返されて公開済み */
   status: "off" | "unset" | "hidden" | "revealed";
-  /** 王を指定した手を相手の待ったで戻された。次に置く駒がそのまま王になる（forcedNow も true） */
+  /** 王を指定した手を相手の巻き戻しで戻された。次に置く駒がそのまま王になる（forcedNow も true） */
   kept: boolean;
   /** 王の駒のマス（hidden のときだけ） */
   cell: Cell | null;
@@ -708,7 +707,7 @@ const newSkills = (): SkillsState => ({ sides: [emptySide(), emptySide()], ready
 
 /**
  * viewer に見せるスキルの状態。相手の配られたカードは見せず、相手の選んだカードは両者が選び終えるまで見せない。
- * 待ったで戻す局面（undo。王を含む）は消し、戻せるか（undoable）だけを見せる
+ * 巻き戻しで戻す局面（undo。王を含む）は消し、戻せるか（undoable）だけを見せる
  */
 function skillsFor(sk: SkillsState, viewer: Player): SkillsState {
   const { undo, ...rest } = sk;
@@ -762,10 +761,10 @@ export function setSkills(state: GameState, cards: [SkillId | null, SkillId | nu
   return { ...state, skills: { ...state.skills, sides, ready: true } };
 }
 
-/** 補充で戻せる駒（初期の数より減っている駒のうち数字が REFILL_MAX_VALUE 以下。表示の順） */
+/** 補充で戻せる駒（初期の数より減っている駒。数字は問わない。表示の順） */
 export function refillKinds(view: Pick<GameState, "rules" | "hands" | "turn">): PieceKind[] {
   const hand = view.hands[view.turn];
-  return kindsInRules(view.rules).filter((k) => hand[k] < view.rules.hand[k] && view.rules.values[k] <= REFILL_MAX_VALUE);
+  return kindsInRules(view.rules).filter((k) => hand[k] < view.rules.hand[k]);
 }
 
 /** 王の移し替えで移せるマス（今の王から KINGMOVE_RANGE マス以内の自分の駒。今の王のマスは除く） */
@@ -855,7 +854,7 @@ export function gaugeFull(sk: SkillsState, p: Player): boolean {
 
 /**
  * 手番の人がスキルを使う（置く前）。ゲージは 0 に戻る。使えない・指定が違うなら例外。
- * 効果のうち回復・補充・鉄壁・偵察・王の移し替え・待ったはすぐ、強打・全方向・連続行動はこの手番の手で効く。
+ * 効果のうち回復・補充・鉄壁・偵察・王の移し替え・巻き戻しはすぐ、強打・全方向・連続行動はこの手番の手で効く。
  * 運命の輪は rng で基本の 8 枚から 1 つを引き（乱数は引数。画面は crypto、サーバーは crypto）、その場で使えなければ不発。
  * 補充・王の移し替えが出たら armed.aim になり、続けて同じ id で戻す駒・移す先を指定する（この 2 回目は rng を使わない）
  */
@@ -963,7 +962,7 @@ function applyEffect(state: GameState, effect: BaseSkillId, use: Pick<SkillUse, 
 }
 
 /**
- * 待った: 手番の人 p の前の手番の頭の局面に戻す（自分の直前の手と、それに続く相手の応手をまとめて戻す）。
+ * 巻き戻し: 手番の人 p の前の手番の頭の局面に戻す（自分の直前の手と、それに続く相手の応手をまとめて戻す）。
  * 相手の王の指定は戻さない: 戻した応手で相手が王を指定していたら、相手が次に置く駒がそのまま王になる（kept）。
  * 戻した後のゲージは戻した局面のもの（p は 0）
  */
@@ -981,7 +980,7 @@ function takeBack(state: GameState, p: Player): GameState {
   if (mine) note.redo = { r: mine.r, c: mine.c, kind: mine.kind };
   const sides: [SkillSide, SkillSide] = [snap.skills.sides[0], snap.skills.sides[1]];
   sides[p] = { ...sides[p], gauge: 0 };
-  // 戻した局面からは、どちらも次に自分が打つまで待ったできない（局面を重ねて持たない）
+  // 戻した局面からは、どちらも次に自分が打つまで巻き戻しできない（局面を重ねて持たない）
   const { undo: _undo, ...base } = snap.skills;
   return { ...snap, kings, skills: { ...base, sides, armed: note, undo: [null, null] } };
 }
@@ -996,7 +995,7 @@ function randomAim(state: GameState, rng: () => number): SkillUse {
 
 /**
  * 打った手の後のスキルの状態（ゲージを足し、この手番で使ったスキル・この手に掛かった鉄壁・連続行動の 2 手目を消す）。
- * 相手の王を返したら偵察の罰 2 倍を終える。待ったのカードを持つ人が打ったら、打つ前の局面（手番の頭）を覚える
+ * 相手の王を返したら偵察の罰 2 倍を終える。巻き戻しのカードを持つ人が打ったら、打つ前の局面（手番の頭）を覚える
  */
 function skillsAfterMove(before: GameState, move: MoveEvent, lost: number): SkillsState {
   const sk = before.skills!;
@@ -1022,7 +1021,7 @@ function skillsAfterMove(before: GameState, move: MoveEvent, lost: number): Skil
   }
   if (undo || card === "judge") {
     const u: [GameState | null, GameState | null] = undo ? [undo[0], undo[1]] : [null, null];
-    // 連続行動の 2 手目は手番の頭ではない（待ったのカードとは同時に持たないので来ない）
+    // 連続行動の 2 手目は手番の頭ではない（巻き戻しのカードとは同時に持たないので来ない）
     if (card === "judge" && !sk.second) {
       const { undo: _u, undoable: _ua, ...plain } = sk;
       u[p] = { ...before, skills: { ...plain, armed: null } };

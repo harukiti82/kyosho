@@ -65,7 +65,8 @@ function versus(args: string[]) {
 
 /**
  * シミュレーター（kyosho-skillsim）のスキル側の勝率。r7.txt の solo（大回復は長さ 80 の行）、
- * 補充 56・偵察 30（ほかの 7 枚相手）・連続行動 26・運命の輪 36・待った 30 はユーザーの採用値の行
+ * 補充 56・偵察 30（ほかの 7 枚相手）・連続行動 26・運命の輪 36・巻き戻し 30 はユーザーの採用値の行。
+ * 補充（数字の制限なし）と連続行動 36 は仮の値でシミュレーターの行がまだないので、前の値の行のまま
  */
 const SIM_RATE: Record<SkillId, number> = {
   firstaid: 54.7, bigheal: 52.4, strong: 55.5, omni: 55.9, refill: 54.6, wall: 54.1, scout: 53.0, kingmove: 53.8,
@@ -173,7 +174,7 @@ function skillMix(args: string[]) {
   }
   console.log(
     `運命の輪 ${x.wheel} 回（不発 ${pct(x.fizzle, x.wheel)}）・連続行動 ${x.fool} 回（2 手目 ${x.foolSecond}、2 手目で決着 ${x.foolEnd2}）・` +
-      `待った ${x.judge} 回（戻した手 平均 ${x.judge ? (x.judgeBack / x.judge).toFixed(1) : "—"}）・偵察 特定 ${x.scoutFind} 回 / ゲージ半分 ${x.scoutDrain} 回`,
+      `巻き戻し ${x.judge} 回（戻した手 平均 ${x.judge ? (x.judgeBack / x.judge).toFixed(1) : "—"}）・偵察 特定 ${x.scoutFind} 回 / ゲージ半分 ${x.scoutDrain} 回`,
   );
 }
 

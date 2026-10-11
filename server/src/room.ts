@@ -9,7 +9,7 @@
 // 部屋での通算の戦績は、席でなく人（作成者・参加者）ごとに数える。席は再戦で入れ替わるが、作成者の席 host も一緒に入れ替える。
 // スキルありのルールでは、対局を作るたびに両者へカードを 3 枚ずつ配り（dealSkills）、両者が選ぶ（pick）まで手を受けず時計も止める。
 // スキルの使用（skill）も engine の useSkill で検証する。偵察で分かった王・王の移し替えの先は kings の中だけにあり、viewFor が相手に出さない。
-// 運命の輪の引く効果はここの crypto で決め、待ったで戻す局面（skills.undo。王を含む）も viewFor が消す。
+// 運命の輪の引く効果はここの crypto で決め、巻き戻しで戻す局面（skills.undo。王を含む）も viewFor が消す。
 
 import { DurableObject } from "cloudflare:workers";
 import { createGame, dealSkills, pickSkill, playMove, playTimeout, useSkill, viewFor, type GameState } from "../../web/src/engine/game";

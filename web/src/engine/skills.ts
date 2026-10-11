@@ -1,5 +1,5 @@
 // スキル（タロットカード風の 11 枚）の定義と、ゲージ・ダメージの計算。UI に依存しない。
-// 値はリポジトリ外のシミュレーター（kyosho-skillsim の sim.ts。大回復・補充・偵察・連続行動・運命の輪・待ったはユーザーの採用値）に合わせる。
+// 値はリポジトリ外のシミュレーター（kyosho-skillsim の sim.ts。大回復・補充・偵察・連続行動・運命の輪・巻き戻しはユーザーの採用値）に合わせる。
 // 状態の変化（配る・選ぶ・使う・打った手のゲージ）は game.ts の「スキル」節。
 
 import { SIZE, type Cell } from "./board";
@@ -38,15 +38,13 @@ export const SKILLS: Record<SkillId, SkillSpec> = {
   wall: { id: "wall", name: "鉄壁", tarot: "皇帝", numeral: "IV", length: 20, zone: 4 },
   scout: { id: "scout", name: "偵察", tarot: "隠者", numeral: "IX", length: 30, zone: 4 },
   kingmove: { id: "kingmove", name: "王の移し替え", tarot: "魔術師", numeral: "I", length: 26, zone: 4 },
-  fool: { id: "fool", name: "連続行動", tarot: "愚者", numeral: "0", length: 26, zone: 4 },
+  fool: { id: "fool", name: "連続行動", tarot: "愚者", numeral: "0", length: 36, zone: 4 },
   wheel: { id: "wheel", name: "運命の輪", tarot: "運命の輪", numeral: "X", length: 36, zone: 4 },
-  judge: { id: "judge", name: "待った", tarot: "審判", numeral: "XX", length: 30, zone: 4 },
+  judge: { id: "judge", name: "巻き戻し", tarot: "審判", numeral: "XX", length: 30, zone: 4 },
 };
 
 /** 回復の量（初期体力を超えない） */
 export const SKILL_HEAL: Readonly<Record<"firstaid" | "bigheal", number>> = { firstaid: 2, bigheal: 10 };
-/** 補充で戻せる駒の数字の上限（初期の数より減っている駒のうち） */
-export const REFILL_MAX_VALUE = 3;
 /** 王の移し替えで移せる距離（縦・横・斜めに何マスまで） */
 export const KINGMOVE_RANGE = 2;
 /** 偵察で相手の王を特定してから、その王を返すまでの罰の倍率 */
@@ -107,7 +105,7 @@ export type SkillBlock =
   | "noGauge" // 偵察の 2 回目以降: 相手のゲージが空
   | "noKing" // 王の移し替え: 自分の王が隠れていない
   | "noRoom" // 王の移し替え: 移せる駒がない
-  | "noUndo"; // 待った: 戻す手がない（まだ打っていない・この手番の前に戻せない）
+  | "noUndo"; // 巻き戻し: 戻す手がない（まだ打っていない・この手番の前に戻せない）
 
 /** 運命の輪の効果ごとの、使えない理由（使えるかの判定は game.ts の skillBlock と同じ） */
 export type EffectBlock = Exclude<SkillBlock, "off" | "picking" | "over" | "used" | "charging" | "noUndo">;
@@ -146,9 +144,9 @@ export interface SkillNote {
   scout?: "find" | "drain";
   /** 偵察の 2 回目以降: 減らした相手のゲージ（GAUGE_UNIT 単位） */
   drained?: number;
-  /** 待った: 戻した手数（自分の手と相手の応手） */
+  /** 巻き戻し: 戻した手数（自分の手と相手の応手） */
   back?: number;
-  /** 待った: 戻した自分の手（公開されていた手。CPU が同じ手を打ち直さないため） */
+  /** 巻き戻し: 戻した自分の手（公開されていた手。CPU が同じ手を打ち直さないため） */
   redo?: { r: number; c: number; kind: PieceKind };
 }
 
@@ -173,11 +171,11 @@ export interface SkillsState {
   second?: boolean;
   /** 偵察で相手の王を特定してから、その王を返すまで罰が 2 倍。キーがなければ両者 false */
   hunt?: [boolean, boolean];
-  /** 待ったで戻せる（前の自分の手番の頭の局面がある）。公開情報。キーがなければ両者 false */
+  /** 巻き戻しで戻せる（前の自分の手番の頭の局面がある）。公開情報。キーがなければ両者 false */
   undoable?: [boolean, boolean];
   /**
-   * 待ったで戻す局面（各自の前の手番の頭。王を含む隠し情報なので viewFor が消す）。
-   * 待ったのカードを持つ人の分だけ。中の局面の skills には undo を持たない
+   * 巻き戻しで戻す局面（各自の前の手番の頭。王を含む隠し情報なので viewFor が消す）。
+   * 巻き戻しのカードを持つ人の分だけ。中の局面の skills には undo を持たない
    */
   undo?: [GameState | null, GameState | null];
 }

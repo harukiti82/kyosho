@@ -217,15 +217,18 @@ test.describe("スキル", () => {
     },
     {
       id: "refill",
-      // 飛・角を使って減らす（減った数字 3 以下の駒が戻せる。使い切らなくてよい）。ゲージが長いので溜めマスを狙う
+      // 飛・角を使って減らす（減った駒が戻せる。使い切らなくてよい）。ゲージが長いので溜めマスを狙う
       prefer: ["hi", "kaku"],
       zone: true,
       use: async (page) => {
         const count = async (k: PieceKind) => Number((await page.locator(`#hand-buttons .piece-btn[data-kind=${k}] .piece-count`).textContent()) ?? 0);
+        // 金の残り（選ぶ間は駒台が隠れるので、使う前に数える）
+        const kin = page.locator("#hand-buttons .piece-btn[data-kind=kin] .piece-count");
+        const kinLeft = (await kin.count()) ? Number(await kin.textContent()) : 0;
         await tapOrClick(page, "#skill-use");
         await expect(page.locator("#status")).toHaveText("戻す駒を選ぶ");
-        // 減った駒だけが選べる（金は出ない）
-        await expect(page.locator(".skill-aim [data-refill=kin]")).toHaveCount(0);
+        // 減った駒だけが選べる（金も減っていれば選べる）
+        await expect(page.locator(".skill-aim [data-refill=kin]")).toHaveCount(kinLeft < 2 ? 1 : 0);
         expect(await page.locator(".skill-aim [data-refill]").count()).toBeGreaterThanOrEqual(2);
         if (isTouch(page)) await noHorizontalScroll(page, 375);
         await page.screenshot({ path: `${SHOT}/${pre(page)}-skill-refill-pick.png` });
@@ -353,7 +356,7 @@ test.describe("スキル", () => {
         expect(await plies()).toBe(before - 2);
         await expect(page.locator(".board.acting")).toBeVisible();
         await humanMove(page);
-        await expect(lastLog(page)).toContainText("待った・");
+        await expect(lastLog(page)).toContainText("巻き戻し・");
         expect(await plies()).toBe(before - 1);
       },
     },

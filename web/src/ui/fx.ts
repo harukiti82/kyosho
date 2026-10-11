@@ -93,7 +93,7 @@ export interface TossOptions {
 /** スキルを使った演出の長さ（カードが表を向いて名前を見せ、消える）。この間は入力・CPU を待たせる */
 export const SKILL_CAST_MS = 1100;
 export const SKILL_CAST_REDUCED_MS = 700;
-/** 結果の一言（運命の輪の引いた効果・待ったの戻した手数など）を添えるときに延ばす長さ */
+/** 結果の一言（運命の輪の引いた効果・巻き戻しの戻した手数など）を添えるときに延ばす長さ */
 export const SKILL_CAST_RESULT_MS = 600;
 export const skillCastMs = (reduce: boolean, result = false) => (reduce ? SKILL_CAST_REDUCED_MS : SKILL_CAST_MS) + (result ? SKILL_CAST_RESULT_MS : 0);
 

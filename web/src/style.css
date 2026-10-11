@@ -5040,7 +5040,7 @@ button.tarot:focus-visible {
   width: 1rem;
   height: 1rem;
 }
-/* 結果の一言（運命の輪の引いた効果・待ったの戻した手数）。名前より遅れてシアンの帯で出す。不発は紺の帯に薄い字 */
+/* 結果の一言（運命の輪の引いた効果・巻き戻しの戻した手数）。名前より遅れてシアンの帯で出す。不発は紺の帯に薄い字 */
 .cast-result {
   position: relative;
   margin: 0;

@@ -66,9 +66,9 @@ describe("カード", () => {
       ["鉄壁", "皇帝", 20, 4],
       ["偵察", "隠者", 30, 4],
       ["王の移し替え", "魔術師", 26, 4],
-      ["連続行動", "愚者", 26, 4],
+      ["連続行動", "愚者", 36, 4],
       ["運命の輪", "運命の輪", 36, 4],
-      ["待った", "審判", 30, 4],
+      ["巻き戻し", "審判", 30, 4],
     ]);
   });
   it("スキルなしのルールには状態を持たない（既存の対局は変わらない）", () => {
@@ -197,20 +197,23 @@ describe("8 枚の効果", () => {
     expect(isLegal(s, ...at("c6"), "fu")).toBe(false);
     expect(isLegal(s, ...at("c6"), "yoko")).toBe(true);
   });
-  it("補充: 始めの数より減った数字 3 以下の駒を 1 つ戻す。金（5）は戻せず、減った駒がなければ使えない", () => {
+  it("補充: 始めの数より減った駒を 1 つ戻す。数字は問わず金・飛も戻せ、減った駒がなければ使えない", () => {
     // 始めの持ち駒は 歩 10・横 10・角 4・金 2・飛 3
     const s = full(game(base, ["refill", null], { hands: [{ fu: 9, yoko: 10, kaku: 3, kin: 0, hi: 3 }, {}] }));
-    expect(refillKinds(s)).toEqual(["fu", "kaku"]);
-    expect(() => useSkill(s, { id: "refill", kind: "kin" })).toThrow();
+    expect(refillKinds(s)).toEqual(["fu", "kaku", "kin"]);
     expect(() => useSkill(s, { id: "refill", kind: "yoko" })).toThrow();
+    expect(() => useSkill(s, { id: "refill", kind: "hi" })).toThrow();
     const after = useSkill(s, { id: "refill", kind: "kaku" });
     expect(after.hands[0].kaku).toBe(4);
     expect(last(playMove(after, ...at("c1"), "fu")).skill).toEqual({ id: "refill", kind: "kaku" });
+    // 金（5）も戻せる。戻すのは 1 つだけ
+    const kin = useSkill(s, { id: "refill", kind: "kin" });
+    expect(kin.hands[0].kin).toBe(1);
     // 使い切っていなくても、1 つでも減っていれば戻せる
     const one = full(game(base, ["refill", null], { hands: [{ fu: 10, yoko: 10, kaku: 4, kin: 2, hi: 2 }, {}] }));
     expect(refillKinds(one)).toEqual(["hi"]);
-    // 減ったのが金だけ・どれも減っていなければ戻せる駒がない
-    const none = full(game(base, ["refill", null], { hands: [{ fu: 10, yoko: 10, kaku: 4, hi: 3, kin: 0 }, {}] }));
+    // どれも減っていなければ戻せる駒がない
+    const none = full(game(base, ["refill", null], { hands: [{ fu: 10, yoko: 10, kaku: 4, hi: 3, kin: 2 }, {}] }));
     expect(refillKinds(none)).toEqual([]);
     expect(skillBlock(viewFor(none, 0))).toBe("noRefill");
   });
@@ -336,14 +339,17 @@ describe("CPU のスキル", () => {
     expect(chooseSkillUse(viewFor(full(game(base, ["bigheal", null], { hp: [124, 130] })), 0), () => 0.5)).toBeNull();
     expect(chooseSkillUse(viewFor(full(game(base, ["bigheal", null], { hp: [123, 130] })), 0), () => 0.5)).toEqual({ id: "bigheal" });
   });
-  it("補充は戻せる駒のうち読みが最もよくなる駒を戻す（金は戻さない）", () => {
+  it("補充は戻せる駒のうち読みが最もよくなる駒を戻す", () => {
     const s = full(game({ a1: [0, "fu"], b1: [1, "fu"] }, ["refill", null], { hands: [{ fu: 3, yoko: 0, kaku: 0, kin: 0, hi: 0 }, {}] }));
     const use = chooseSkillUse(viewFor(s, 0), () => 0.5);
     expect(use?.id).toBe("refill");
     expect(refillKinds(s)).toContain(use!.kind);
     // 戻せる駒が 1 つなら、その駒
-    const one = full(game({ a1: [0, "fu"], b1: [1, "fu"] }, ["refill", null], { hands: [{ fu: 10, yoko: 10, kaku: 4, kin: 0, hi: 2 }, {}] }));
+    const one = full(game({ a1: [0, "fu"], b1: [1, "fu"] }, ["refill", null], { hands: [{ fu: 10, yoko: 10, kaku: 4, kin: 2, hi: 2 }, {}] }));
     expect(chooseSkillUse(viewFor(one, 0), () => 0.5)).toEqual({ id: "refill", kind: "hi" });
+    // 金も戻せる駒に入る
+    const kin = full(game({ a1: [0, "fu"], b1: [1, "fu"] }, ["refill", null], { hands: [{ fu: 10, yoko: 10, kaku: 4, kin: 1, hi: 3 }, {}] }));
+    expect(chooseSkillUse(viewFor(kin, 0), () => 0.5)).toEqual({ id: "refill", kind: "kin" });
   });
   it.each(SKILL_ORDER.flatMap((id) => (["easy", "normal", "hard"] as const).map((lv) => [id, lv] as const)))(
     "%s・%s: スキルを使いながら合法手だけで終局まで進む（ゲージは満タンを超えない）",
@@ -360,7 +366,7 @@ describe("CPU のスキル", () => {
           const use = chooseSkillUse(viewFor(s, p), rng);
           if (!use) break;
           if (!s.skills!.armed?.aim) uses++;
-          // 待ったで戻した手に付いていたスキルは棋譜から消える
+          // 巻き戻しで戻した手に付いていたスキルは棋譜から消える
           const before = notes(s);
           s = useSkill(s, use, rng);
           uses -= before - notes(s);
@@ -504,7 +510,7 @@ describe("運命の輪", () => {
   });
 });
 
-describe("待った", () => {
+describe("巻き戻し", () => {
   // 先手 c8（1 枚）→ 後手 c1（b1 を返す）→ 先手の手番
   const stones = { a8: [0, "fu"], b8: [1, "fu"], a1: [1, "fu"], b1: [0, "fu"], h4: [1, "fu"], h5: [0, "fu"] } as const;
   const twoMoves = (opts: Parameters<typeof game>[2] = {}, king = false) => {
@@ -523,7 +529,7 @@ describe("待った", () => {
     expect(back.turn).toBe(0);
     expect(back.skills!.sides.map((x) => x.gauge)).toEqual([0, 0]);
     expect(back.skills!.armed).toEqual({ id: "judge", back: 2, redo: { r: 7, c: 2, kind: "fu" } });
-    // 戻した局面から打ち直す。棋譜の手に待ったの印
+    // 戻した局面から打ち直す。棋譜の手に巻き戻しの印
     const again = play(back, "c8");
     expect(last(again).skill).toEqual({ id: "judge", back: 2, redo: { r: 7, c: 2, kind: "fu" } });
   });

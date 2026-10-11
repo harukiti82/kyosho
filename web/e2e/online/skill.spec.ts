@@ -2,7 +2,7 @@
 // 両者がカードを選ぶ（先に選んだ側は「相手が選んでいます」・選ぶ途中の再読み込み）→ 名札のゲージ → 使う → 相手の画面にも演出 →
 // ゲージ満タンのまま終局 → 再戦で配り直し、と、偵察・王の移し替えの隠し情報が相手に届かないこと。
 // 配るカードはサーバーの crypto で決まるので、1 本目は配られた中から溜まりやすいカードを選び、
-// 2 本目以降は API と WebSocket で部屋を作り直して目当てのカード（偵察と王の移し替え・待ったと連続行動・運命の輪）が配られた部屋を探し、
+// 2 本目以降は API と WebSocket で部屋を作り直して目当てのカード（偵察と王の移し替え・巻き戻しと連続行動・運命の輪）が配られた部屋を探し、
 // そのトークンでブラウザを席に入れる
 
 import { expect, test, type APIRequestContext, type Browser, type TestInfo } from "@playwright/test";
@@ -102,7 +102,7 @@ async function aimWheel(p: Player) {
   await expect.poll(() => p.last!.view.skills!.armed?.aim).toBeUndefined();
 }
 
-/** 使った演出（.fx-skill）が出て、消えるのを待つ。result なら名前の下の結果の一言（運命の輪の引いた効果・待ったの戻した手数）も確かめる */
+/** 使った演出（.fx-skill）が出て、消えるのを待つ。result なら名前の下の結果の一言（運命の輪の引いた効果・巻き戻しの戻した手数）も確かめる */
 async function seeCast(p: Player, id: SkillId, shot?: string, result?: string) {
   const fx = p.page.locator(".fx-skill");
   await expect(fx).toBeVisible();
@@ -426,7 +426,7 @@ async function findRoom(request: APIRequestContext, baseURL: string, want: Skill
   throw new Error(`${want} と ${other} が配られた部屋が見つからない`);
 }
 
-test("待ったと連続行動: 2 手目は同じ人の番（相手の画面にも）、待ったは 2 手以上戻した局面が両者に届き、戻す局面は送らない", async ({ browser, request, baseURL }, info) => {
+test("巻き戻しと連続行動: 2 手目は同じ人の番（相手の画面にも）、巻き戻しは 2 手以上戻した局面が両者に届き、戻す局面は送らない", async ({ browser, request, baseURL }, info) => {
   const pre = prefix(info);
   const { room, seat } = await findRoom(request, baseURL!, "judge", "fool");
   const host = await enter(browser, info, "host", room.roomId, room.tokens[0]);
@@ -475,7 +475,7 @@ test("待ったと連続行動: 2 手目は同じ人の番（相手の画面に�
         await Promise.all([seeCast(judge, "judge", undefined, `${back}手戻す`), seeCast(fool, "judge", `${SHOT}/${pre}-online-skill-judge-other.png`, `${back}手戻す`)]);
         await synced(judge, fool);
         expect(judge.last!.view.history.length).toBeLessThan(before);
-        // 戻した後も待ったの人の番で、打ち直せる
+        // 戻した後も巻き戻しの人の番で、打ち直せる
         await expect(judge.page.locator(".board.acting")).toBeVisible();
         await move(judge);
         await synced(judge, fool);
@@ -508,7 +508,7 @@ test("運命の輪: 引いた効果が両者の演出に出て、棋譜に残る
   const rival = seat === 0 ? guest : host;
   await expect(wheel.page.locator("#skill-pick")).toBeVisible();
   await pickCard(wheel, "wheel");
-  // 相手は運命の輪・待った以外（届いた 3 枚から）
+  // 相手は運命の輪・巻き戻し以外（届いた 3 枚から）
   await pickCard(rival, PREFER.find((id) => id !== "wheel" && id !== "judge" && offerOf(rival).includes(id))!);
   for (const p of [host, guest]) await expect(p.page.locator("#skill-pick")).toBeHidden();
 
