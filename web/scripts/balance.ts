@@ -3,6 +3,7 @@
 // 乱数は種付き（mulberry32）。局 i は種 i で、結果は毎回同じになる。
 // 第 1 引数が vs なら CPU の強さ同士を対戦させる（vs 局数 プリセット 強さA 強さB。先手・後手は 1 局ごとに入れ替える）。
 // 第 1 引数が skill なら、片側だけスキルを持つ 2 手読み同士でスキル側の勝率を測る（skill 局数 [カード...]。スキル側は 1 局ごとに入れ替える）。
+// カードを「wheel:40」と書くと、そのカードのゲージの長さを 40 にして測る（同じカードの長さを並べて比べる）。
 // 第 1 引数が skillmix なら、両者に 11 枚から 1 枚ずつ引かせた 2 手読み同士で、先手勝率・カードごとの勝率・運命の輪の不発などを測る（skillmix 局数）。
 
 import { chooseLookahead, chooseMove, CPU_LEVEL_NAME, CPU_LEVELS, type CpuLevel } from "../src/engine/cpu";
@@ -93,13 +94,16 @@ function cpuStep(s: GameState, rand: () => number, used: { n: number }): GameSta
 /** 片側だけスキルを持つ 2 手読み同士（プリセット「スキルあり」）で、カードごとのスキル側の勝率・使った回数 */
 function skills(args: string[]) {
   const games = Number(args[0] ?? 400);
-  const list = (args.length > 1 ? args.slice(1) : SKILL_ORDER) as SkillId[];
+  const list = args.length > 1 ? args.slice(1) : [...SKILL_ORDER];
   const rules = cloneRules(presetById("skill").rules);
   console.log(`## スキル側の勝率: スキルあり・2 手読み同士・${games} 局（スキル側を 1 局ごとに先手・後手入れ替え）`);
   console.log("| スキル | 長さ | 勝率（スキル側） | ±SE | シミュレーター | 使った回数/局 | 平均手数 | 先手勝率 |");
   console.log("|---|---|---|---|---|---|---|---|");
-  for (const id of list) {
-    if (!SKILLS[id]) throw new Error(`カードは ${SKILL_ORDER.join(" / ")}`);
+  const lengths = Object.fromEntries(SKILL_ORDER.map((id) => [id, SKILLS[id].length]));
+  for (const arg of list) {
+    const [id, len] = arg.split(":") as [SkillId, string | undefined];
+    if (!SKILLS[id]) throw new Error(`カードは ${SKILL_ORDER.join(" / ")}（長さを変えるなら wheel:40）`);
+    SKILLS[id].length = len ? Number(len) : lengths[id];
     let won = 0;
     let first = 0;
     const uses = { n: 0 };
@@ -132,6 +136,7 @@ function skillMix(args: string[]) {
   const card: Record<string, { n: number; won: number }> = {};
   let first = 0;
   const plies: number[] = [];
+  const drawn: Record<string, { n: number; fizzle: number }> = {};
   const x = { wheel: 0, fizzle: 0, fool: 0, foolSecond: 0, foolEnd2: 0, judge: 0, judgeBack: 0, scoutFind: 0, scoutVice: 0, viceHit: 0, viceScouted: 0, viceAuto: 0 };
   for (let i = 0; i < games; i++) {
     const rand = rng(i + 1);
@@ -149,9 +154,14 @@ function skillMix(args: string[]) {
       if (n.id === "wheel") {
         x.wheel++;
         if (n.fizzle) x.fizzle++;
+        const d = (drawn[n.effect!] ??= { n: 0, fizzle: 0 });
+        d.n++;
+        if (n.fizzle) d.fizzle++;
       }
-      if (n.id === "fool") x.fool++;
-      if (n.id === "judge") {
+      // 運命の輪で出た連続行動・巻き戻しも数える
+      const eff = n.effect ?? n.id;
+      if (eff === "fool" && !n.fizzle) x.fool++;
+      if (eff === "judge" && !n.fizzle) {
         x.judge++;
         x.judgeBack += n.back ?? 0;
       }
@@ -185,6 +195,12 @@ function skillMix(args: string[]) {
   console.log(
     `運命の輪 ${x.wheel} 回（不発 ${pct(x.fizzle, x.wheel)}）・連続行動 ${x.fool} 回（2 手目 ${x.foolSecond}、2 手目で決着 ${x.foolEnd2}）・` +
       `巻き戻し ${x.judge} 回（戻した手 平均 ${x.judge ? (x.judgeBack / x.judge).toFixed(1) : "—"}）・偵察 王 ${x.scoutFind} 回 / 副将 ${x.scoutVice} 回`,
+  );
+  console.log(
+    `運命の輪で出た効果（不発）: ${Object.entries(drawn)
+      .sort((a, b) => b[1].n - a[1].n)
+      .map(([id, d]) => `${SKILLS[id as SkillId].name} ${d.n}（${d.fizzle}）`)
+      .join("・")}`,
   );
   console.log(
     `副将を返した ${(x.viceHit / games).toFixed(2)} 回/局（うち特定済み ${(x.viceScouted / games).toFixed(2)}）・終局時に期限の自動で決まっていた副将 ${x.viceAuto}`,

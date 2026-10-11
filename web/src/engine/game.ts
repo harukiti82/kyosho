@@ -32,7 +32,6 @@ import {
   type RuleSet,
 } from "./rules";
 import {
-  BASE_SKILLS,
   gaugeMax,
   KINGMOVE_RANGE,
   moverGain,
@@ -45,7 +44,6 @@ import {
   VICE_DEADLINE,
   VICE_PENALTY,
   victimGain,
-  type BaseSkillId,
   type EffectBlock,
   type SkillBlock,
   type SkillId,
@@ -53,6 +51,7 @@ import {
   type SkillSide,
   type SkillsState,
   type SkillUse,
+  type WheelEffect,
 } from "./skills";
 
 /** ko: 体力 0 以下 / limit: 手数上限に到達 / stalled: 両者とも打てない（持ち駒切れ・置ける所なし） / king: 王を返された（罰が即負け） */
@@ -842,8 +841,8 @@ function skillsFor(sk: SkillsState, viewer: Player): SkillsState {
 export const skillPool = (rules: RuleSet): SkillId[] =>
   SKILL_ORDER.filter((id) => rules.king.on || (id !== "scout" && id !== "kingmove"));
 
-/** 運命の輪が引く効果（基本の 8 枚。隠し王なしのルールでは偵察・王の移し替えを除く） */
-export const wheelPool = (rules: RuleSet): BaseSkillId[] => BASE_SKILLS.filter((id) => rules.king.on || (id !== "scout" && id !== "kingmove"));
+/** 運命の輪が引く効果（運命の輪を除く 10 枚。隠し王なしのルールでは偵察・王の移し替えも除く） */
+export const wheelPool = (rules: RuleSet): WheelEffect[] => skillPool(rules).filter((id): id is WheelEffect => id !== "wheel");
 
 /** 両者に OFFER_SIZE 枚ずつ配る（各自のカードは重ならない。両者の間では重なってよい）。スキルなし・配り済みなら例外 */
 export function dealSkills(state: GameState, rng: () => number): GameState {
@@ -925,8 +924,8 @@ function scoutBlock(view: PlayerView): EffectBlock | null {
   return view.oppVice.set ? null : "noVice";
 }
 
-/** 基本の 8 枚の効果を、手番の人がいま使えない理由（使えるなら null）。カードの使う判定と運命の輪の不発の判定で同じ */
-export function effectBlock(view: PlayerView, effect: BaseSkillId): EffectBlock | null {
+/** 運命の輪以外の 10 枚の効果を、手番の人がいま使えない理由（使えるなら null）。カードの使う判定と運命の輪の不発の判定で同じ */
+export function effectBlock(view: PlayerView, effect: WheelEffect): EffectBlock | null {
   const p = view.turn;
   switch (effect) {
     case "firstaid":
@@ -939,6 +938,8 @@ export function effectBlock(view: PlayerView, effect: BaseSkillId): EffectBlock 
     case "kingmove":
       if (view.myKing.status !== "hidden") return "noKing";
       return kingMoveCells(view).length === 0 ? "noRoom" : null;
+    case "judge":
+      return view.skills?.undoable?.[p] ? null : "noUndo";
     default:
       return null;
   }
@@ -955,16 +956,8 @@ export function skillBlock(view: PlayerView): SkillBlock | null {
   if (view.result) return "over";
   if (sk.armed || sk.second) return "used";
   if (sk.sides[p].gauge < gaugeMax(card)) return "charging";
-  switch (card) {
-    case "fool":
-    case "wheel":
-      // 運命の輪は引いた効果が使えなければ不発（使うことはできる）
-      return null;
-    case "judge":
-      return sk.undoable?.[p] ? null : "noUndo";
-    default:
-      return effectBlock(view, card);
-  }
+  // 運命の輪は引いた効果が使えなければ不発（使うことはできる）
+  return card === "wheel" ? null : effectBlock(view, card);
 }
 
 /** 手番の人のゲージが満タンか（使えるかは skillBlock） */
@@ -976,7 +969,8 @@ export function gaugeFull(sk: SkillsState, p: Player): boolean {
 /**
  * 手番の人がスキルを使う（置く前）。ゲージは 0 に戻る。使えない・指定が違うなら例外。
  * 効果のうち回復・補充・鉄壁・偵察・王の移し替え・巻き戻しはすぐ、強打・全方向・連続行動はこの手番の手で効く。
- * 運命の輪は rng で基本の 8 枚から 1 つを引き（乱数は引数。画面は crypto、サーバーは crypto）、その場で使えなければ不発。
+ * 運命の輪は rng で運命の輪以外の 10 枚から 1 つを引き（乱数は引数。画面は crypto、サーバーは crypto）、その場で使えなければ不発。
+ * 連続行動・巻き戻しが出たらカードと同じに効く（巻き戻しはすぐ戻す）。
  * 補充・王の移し替えが出たら armed.aim になり、続けて同じ id で戻す駒・移す先を指定する（この 2 回目は rng を使わない）
  */
 export function useSkill(state: GameState, use: SkillUse, rng?: () => number): GameState {
@@ -986,7 +980,7 @@ export function useSkill(state: GameState, use: SkillUse, rng?: () => number): G
   if (sk && armed?.aim) {
     if (use.id !== armed.id) throw new Error("運命の輪の指定を待っています");
     const { aim: _aim, ...note } = armed;
-    return applyEffect({ ...state, skills: { ...sk, armed: null } }, armed.effect!, use, note);
+    return applyEffect({ ...state, skills: { ...sk, armed: null } }, armed.effect as "refill" | "kingmove", use, note);
   }
   const view = viewFor(state, p);
   const block = skillBlock(view);
@@ -1008,6 +1002,7 @@ export function useSkill(state: GameState, use: SkillUse, rng?: () => number): G
       const note: SkillNote = { id: card, effect };
       if (effectBlock(viewFor(spent, p), effect)) note.fizzle = true;
       else if (effect === "refill" || effect === "kingmove") note.aim = true;
+      else if (effect === "judge") return takeBack(spent, p, note);
       else return applyEffect(spent, effect, {}, note);
       return { ...spent, skills: { ...spent.skills!, armed: note } };
     }
@@ -1016,8 +1011,8 @@ export function useSkill(state: GameState, use: SkillUse, rng?: () => number): G
   }
 }
 
-/** 基本の 8 枚の効果を手番の人に掛け、note を armed にする（ゲージは減らしてある前提） */
-function applyEffect(state: GameState, effect: BaseSkillId, use: Pick<SkillUse, "kind" | "to">, note: SkillNote): GameState {
+/** 巻き戻し以外の効果を手番の人に掛け、note を armed にする（ゲージは減らしてある前提） */
+function applyEffect(state: GameState, effect: Exclude<WheelEffect, "judge">, use: Pick<SkillUse, "kind" | "to">, note: SkillNote): GameState {
   const p = state.turn;
   const q = other(p);
   const sk = state.skills!;
@@ -1075,7 +1070,7 @@ function applyEffect(state: GameState, effect: BaseSkillId, use: Pick<SkillUse, 
       break;
     }
     default:
-      // 強打・全方向は置く手で効く
+      // 強打・全方向・連続行動は置く手で効く
       break;
   }
   const skills: SkillsState = { ...sk, sides, armed: note, shielded };
@@ -1085,9 +1080,9 @@ function applyEffect(state: GameState, effect: BaseSkillId, use: Pick<SkillUse, 
 /**
  * 巻き戻し: 手番の人 p の前の手番の頭の局面に戻す（自分の直前の手と、それに続く相手の応手をまとめて戻す）。
  * 相手の王の指定は戻さない: 戻した応手で相手が王を指定していたら、相手が次に置く駒がそのまま王になる（kept）。
- * 戻した後のゲージは戻した局面のもの（p は 0）
+ * 戻した後のゲージは戻した局面のもの（p は 0）。note は使ったスキル（運命の輪で出たときは id が wheel）
  */
-function takeBack(state: GameState, p: Player): GameState {
+function takeBack(state: GameState, p: Player, note: SkillNote = { id: "judge" }): GameState {
   const q = other(p);
   const sk = state.skills!;
   const snap = sk.undo?.[p];
@@ -1101,7 +1096,7 @@ function takeBack(state: GameState, p: Player): GameState {
   if (sv && !sv.cell && cv?.cell && cv.since === sv.since) kings[q] = { ...kings[q], vice: { ...sv, kept: true } };
   const undone = state.history.slice(snap.history.length).filter((e): e is MoveEvent => e.type === "move");
   const mine = undone.find((e) => e.player === p);
-  const note: SkillNote = { id: "judge", back: undone.length };
+  note.back = undone.length;
   if (mine) note.redo = { r: mine.r, c: mine.c, kind: mine.kind };
   const sides: [SkillSide, SkillSide] = [snap.skills.sides[0], snap.skills.sides[1]];
   sides[p] = { ...sides[p], gauge: 0 };
@@ -1118,9 +1113,12 @@ function randomAim(state: GameState, rng: () => number): SkillUse {
   return { id: "wheel", to: pick(kingMoveCells(viewFor(state, state.turn))) };
 }
 
+/** 巻き戻しで戻す局面を覚えるカード（巻き戻しと、巻き戻しが出うる運命の輪） */
+const keepsUndo = (card: SkillId | null) => card === "judge" || card === "wheel";
+
 /**
  * 打った手の後のスキルの状態（ゲージを足し、この手番で使ったスキル・この手に掛かった鉄壁・連続行動の 2 手目を消す）。
- * 巻き戻しのカードを持つ人が打ったら、打つ前の局面（手番の頭）を覚える
+ * 巻き戻し・運命の輪のカードを持つ人が打ったら、打つ前の局面（手番の頭）を覚える
  */
 function skillsAfterMove(before: GameState, move: MoveEvent, lost: number): SkillsState {
   const sk = before.skills!;
@@ -1139,10 +1137,10 @@ function skillsAfterMove(before: GameState, move: MoveEvent, lost: number): Skil
   shielded[p] = false;
   const { second: _second, undo, ...rest } = sk;
   const out: SkillsState = { ...rest, sides, armed: null, shielded };
-  if (undo || card === "judge") {
+  if (undo || keepsUndo(card)) {
     const u: [GameState | null, GameState | null] = undo ? [undo[0], undo[1]] : [null, null];
-    // 連続行動の 2 手目は手番の頭ではない（巻き戻しのカードとは同時に持たないので来ない）
-    if (card === "judge" && !sk.second) {
+    // 連続行動の 2 手目は手番の頭ではない（運命の輪で連続行動が出た 2 手目は 1 手目の前の局面のまま）
+    if (keepsUndo(card) && !sk.second) {
       const { undo: _u, undoable: _ua, ...plain } = sk;
       u[p] = { ...before, skills: { ...plain, armed: null } };
     }

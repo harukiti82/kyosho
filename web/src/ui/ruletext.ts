@@ -2,7 +2,8 @@
 // 各行を要点と補足に分けて返し、DOM への流し込みは呼び出し側（ui/setup.ts の fillSentences）が textContent で行う。
 
 import { kindsByValue, kindsInRules, KIND_ORDER, PIECES, REACH_MARK, type PieceKind, type RuleSet } from "../engine/rules";
-import { BASE_SKILLS, FLIP_POINTS, KINGMOVE_RANGE, SKILL_HEAL, SKILL_ORDER, SKILLS, VICE_DEADLINE, VICE_PENALTY, type SkillId } from "../engine/skills";
+import { wheelPool } from "../engine/game";
+import { FLIP_POINTS, KINGMOVE_RANGE, SKILL_HEAL, SKILL_ORDER, SKILLS, VICE_DEADLINE, VICE_PENALTY, type SkillId } from "../engine/skills";
 
 /**
  * ルールの 1 行: 要点の一言（大きく太く。1 行に 1 か所だけ）と、その下に小さく添える補足（括弧で囲まず、薄い字）。
@@ -90,11 +91,11 @@ export function skillText(id: SkillId, r: RuleSet): { short: string; point: stri
     case "fool":
       return { short: "2 手続けて打つ", point: "この手番に 2 手続けて打てる", note: "2 手目のダメージは半分。小数は切り捨て" };
     case "wheel": {
-      const pool = BASE_SKILLS.filter((id) => r.king.on || (id !== "scout" && id !== "kingmove"));
+      const n = wheelPool(r).length;
       return {
-        short: `${pool.length} 枚から 1 つ`,
-        point: `${pool.length} 枚のどれかの効果が出る`,
-        note: `${pool.map((id) => SKILLS[id].name).join("・")}から同じ確率。その場で使えない効果は不発`,
+        short: `${n} 枚から 1 つ`,
+        point: `ほかの ${n} 枚のどれかの効果が出る`,
+        note: `運命の輪以外の${n}枚から同じ確率。その場で使えない効果は不発`,
       };
     }
     case "judge":

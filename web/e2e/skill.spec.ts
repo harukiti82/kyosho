@@ -3,7 +3,8 @@
 
 import { expect, test, type Page } from "@playwright/test";
 import { presetById, type PieceKind } from "../src/engine/rules";
-import { BASE_SKILLS, SKILL_HEAL, SKILL_ORDER, SKILLS, type BaseSkillId, type SkillId } from "../src/engine/skills";
+import { wheelPool } from "../src/engine/game";
+import { SKILL_HEAL, SKILL_ORDER, SKILLS, type SkillId, type WheelEffect } from "../src/engine/skills";
 import { encodeRules } from "../src/ui/query";
 import { noHorizontalScroll, seedPage, startGame, stubDraws } from "./helpers";
 
@@ -12,8 +13,11 @@ const RULES = presetById("skill").rules;
 
 /** 先手（人間）に配る 3 枚の先頭を id にする crypto の値（配る順は 先手 3 回・後手 3 回・CPU が選ぶ 1 回） */
 const dealFirst = (id: SkillId) => [(SKILL_ORDER.indexOf(id) + 0.5) / SKILL_ORDER.length, 0, 0, 0, 0, 0, 0];
-/** 運命の輪で effect を引く crypto の値（配る分の後に引く） */
-const wheelDraw = (effect: BaseSkillId) => (BASE_SKILLS.indexOf(effect) + 0.5) / BASE_SKILLS.length;
+/** 運命の輪で effect を引く crypto の値（配る分の後に引く。運命の輪以外の 10 枚から） */
+const wheelDraw = (effect: WheelEffect) => {
+  const pool = wheelPool(RULES);
+  return (pool.indexOf(effect) + 0.5) / pool.length;
+};
 
 const isTouch = (page: Page) => page.viewportSize()!.width < 500;
 const pre = (page: Page) => (isTouch(page) ? "sp" : "pc");
@@ -347,6 +351,40 @@ test.describe("スキル", () => {
         await expect(page.locator(".skill-aim")).toHaveCount(0);
         await humanMove(page);
         await expect(lastLog(page)).toContainText("運命の輪 補充 ");
+      },
+    },
+    {
+      id: "wheel",
+      name: "wheel-fool",
+      draws: [wheelDraw("fool")],
+      use: async (page) => {
+        await tapOrClick(page, "#skill-use");
+        await shootCast(page, "wheel", "連続行動", "wheel-fool");
+        // カードの連続行動と同じ: 1 手目の後も自分の番
+        await humanMove(page);
+        await expect(page.locator("#status")).toHaveText("もう 1 手");
+        await expect(page.locator("#player-0 .plate-skill .ps-state")).toHaveText("2手目");
+        await expect(page.locator("#skill-use")).toHaveCount(0);
+        await expect(page.locator("#log .log-item.move.p0").first()).toContainText("運命の輪 連続行動・");
+        await humanMove(page);
+        await expect(page.locator("#log .log-item.move.p0").first()).toContainText("2手目で半分");
+      },
+    },
+    {
+      id: "wheel",
+      name: "wheel-judge",
+      draws: [wheelDraw("judge")],
+      use: async (page) => {
+        const plies = async () => Number((await page.locator("#ply").textContent())!.match(/\d+/)![0]);
+        const before = await plies();
+        await tapOrClick(page, "#skill-use");
+        await shootCast(page, "wheel", "巻き戻しで2手戻す", "wheel-judge");
+        // カードの巻き戻しと同じ: 自分の直前の手と CPU の応手が戻り、自分の番のまま打ち直す
+        expect(await plies()).toBe(before - 2);
+        await expect(page.locator(".board.acting")).toBeVisible();
+        await humanMove(page);
+        await expect(lastLog(page)).toContainText("運命の輪 巻き戻し・");
+        expect(await plies()).toBe(before - 1);
       },
     },
     {

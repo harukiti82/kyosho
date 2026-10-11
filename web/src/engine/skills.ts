@@ -6,9 +6,11 @@ import { SIZE, type Cell } from "./board";
 import type { GameState } from "./game";
 import type { PieceKind } from "./rules";
 
-/** 基本の 8 枚（運命の輪が引く効果） */
+/** 基本の 8 枚 */
 export type BaseSkillId = "firstaid" | "bigheal" | "strong" | "omni" | "refill" | "wall" | "scout" | "kingmove";
 export type SkillId = BaseSkillId | "fool" | "wheel" | "judge";
+/** 運命の輪が引く効果（運命の輪を除く 10 枚） */
+export type WheelEffect = Exclude<SkillId, "wheel">;
 
 export interface SkillSpec {
   id: SkillId;
@@ -24,7 +26,7 @@ export interface SkillSpec {
   zone: number;
 }
 
-/** 運命の輪が等確率で引く効果（基本の 8 枚） */
+/** 基本の 8 枚 */
 export const BASE_SKILLS: readonly BaseSkillId[] = ["firstaid", "bigheal", "strong", "omni", "refill", "wall", "scout", "kingmove"];
 /** 表示・配る順 */
 export const SKILL_ORDER: readonly SkillId[] = [...BASE_SKILLS, "fool", "wheel", "judge"];
@@ -109,7 +111,7 @@ export type SkillBlock =
   | "noUndo"; // 巻き戻し: 戻す手がない（まだ打っていない・この手番の前に戻せない）
 
 /** 運命の輪の効果ごとの、使えない理由（使えるかの判定は game.ts の skillBlock と同じ） */
-export type EffectBlock = Exclude<SkillBlock, "off" | "picking" | "over" | "used" | "charging" | "noUndo">;
+export type EffectBlock = Exclude<SkillBlock, "off" | "picking" | "over" | "used" | "charging">;
 
 /**
  * スキルを使うときの指定。
@@ -136,16 +138,16 @@ export interface SkillNote {
   /** 王の移し替え: 使った時点の自分の駒（相手から見た王の候補。公開されている盤の情報） */
   cands?: Cell[];
   /** 運命の輪: 引いた効果 */
-  effect?: BaseSkillId;
+  effect?: WheelEffect;
   /** 運命の輪: 引いた効果がその場で使えず不発 */
   fizzle?: true;
   /** 運命の輪: 補充・王の移し替えが出て、戻す駒・移す先の指定を待っている（置く前に指定する） */
   aim?: true;
   /** 偵察: find = 相手の王の場所が分かった / vice = 相手の今の副将の場所が分かった（どちらも見えるだけで、罰は変わらない） */
   scout?: "find" | "vice";
-  /** 巻き戻し: 戻した手数（自分の手と相手の応手） */
+  /** 巻き戻し（運命の輪で出たときも）: 戻した手数（自分の手と相手の応手） */
   back?: number;
-  /** 巻き戻し: 戻した自分の手（公開されていた手。CPU が同じ手を打ち直さないため） */
+  /** 巻き戻し（運命の輪で出たときも）: 戻した自分の手（公開されていた手。CPU が同じ手を打ち直さないため） */
   redo?: { r: number; c: number; kind: PieceKind };
 }
 
@@ -172,7 +174,7 @@ export interface SkillsState {
   undoable?: [boolean, boolean];
   /**
    * 巻き戻しで戻す局面（各自の前の手番の頭。王を含む隠し情報なので viewFor が消す）。
-   * 巻き戻しのカードを持つ人の分だけ。中の局面の skills には undo を持たない
+   * 巻き戻し・運命の輪（巻き戻しが出うる）のカードを持つ人の分だけ。中の局面の skills には undo を持たない
    */
   undo?: [GameState | null, GameState | null];
 }

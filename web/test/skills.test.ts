@@ -18,13 +18,14 @@ import {
   useSkill,
   viceInfo,
   viewFor,
+  wheelPool,
   type GameState,
   type MoveEvent,
 } from "../src/engine/game";
 import { chooseMove } from "../src/engine/cpu";
 import { chooseSkillUse, viceWith } from "../src/engine/skillcpu";
 import { NO_KING, type Hand, type PieceKind, type Player } from "../src/engine/rules";
-import { BASE_SKILLS, gaugeMax, GAUGE_UNIT, SKILLS, SKILL_ORDER, type SkillId, type SkillsState } from "../src/engine/skills";
+import { gaugeMax, GAUGE_UNIT, SKILLS, SKILL_ORDER, type SkillId, type SkillsState, type WheelEffect } from "../src/engine/skills";
 import { at, rulesOf } from "./helpers";
 
 /** 全方向・上乗せなし・回復なし・隠し王なしのスキルあり（ダメージ = 返した駒の数字の合計） */
@@ -56,6 +57,12 @@ function full(s: GameState, p: Player = s.turn): GameState {
 const play = (s: GameState, name: string, kind: PieceKind = "fu", king = false) => playMove(s, ...at(name), kind, { king });
 const last = (s: GameState) => lastMoveOf(s) as MoveEvent;
 const gauge = (s: GameState, p: Player) => s.skills!.sides[p].gauge / GAUGE_UNIT;
+/** 運命の輪で effect を引く乱数（wheelPool の並びの真ん中） */
+const drawOf = (s: GameState, effect: WheelEffect) => {
+  const pool = wheelPool(s.rules);
+  if (!pool.includes(effect)) throw new Error(`${effect} は運命の輪から出ません`);
+  return () => (pool.indexOf(effect) + 0.5) / pool.length;
+};
 
 describe("カード", () => {
   it("11 枚の長さと溜めマス点", () => {
@@ -460,17 +467,46 @@ describe("連続行動", () => {
 describe("運命の輪", () => {
   const base = { a1: [0, "fu"], b1: [1, "fu"], a8: [0, "fu"], b8: [1, "fu"], c8: [1, "fu"], d8: [1, "fu"] } as const;
   const kingRules = rulesOf("skill", { dirs: "all", anchor: "none", heal: "none", king: { on: true, penalty: "hp", amount: 30, deadline: 7 } });
-  const spin = (s: GameState, i: number) => useSkill(s, { id: "wheel" }, () => (i + 0.5) / 8);
-  it("基本の 8 枚から等確率で 1 つを引く（隠し王なしのルールでは偵察・王の移し替えを除く 6 枚）", () => {
+  const spin = (s: GameState, effect: WheelEffect) => useSkill(s, { id: "wheel" }, drawOf(s, effect));
+  /** 運命の輪を n 回引いた効果ごとの回数（乱数は種付き） */
+  const tally = (s: GameState, n: number, seed = 1) => {
+    // mulberry32
+    let a = seed >>> 0;
+    const rand = () => {
+      a = (a + 0x6d2b79f5) >>> 0;
+      let t = Math.imul(a ^ (a >>> 15), a | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+    const count: Partial<Record<WheelEffect, number>> = {};
+    for (let i = 0; i < n; i++) {
+      const e = useSkill(s, { id: "wheel" }, rand).skills!.armed!.effect!;
+      count[e] = (count[e] ?? 0) + 1;
+    }
+    return count;
+  };
+  it("運命の輪以外の 10 枚から引く（隠し王なしのルールでは偵察・王の移し替えを除く 8 枚）。自分は出ない", () => {
+    expect(wheelPool(kingRules)).toEqual(SKILL_ORDER.filter((id) => id !== "wheel"));
+    expect(wheelPool(kingRules)).toHaveLength(10);
+    expect(wheelPool(PLAIN)).toEqual(["firstaid", "bigheal", "strong", "omni", "refill", "wall", "fool", "judge"]);
     const s = full(game(base, ["wheel", null], { rules: kingRules, hp: [100, 130] }));
-    expect(BASE_SKILLS.map((_, i) => spin(s, i).skills!.armed!.effect)).toEqual([...BASE_SKILLS]);
+    // 乱数の [0, 1) を 10 等分した区間ごとに 1 枚
+    const grid = Array.from({ length: 1000 }, (_, i) => useSkill(s, { id: "wheel" }, () => i / 1000).skills!.armed!.effect!);
+    for (const e of wheelPool(kingRules)) expect(grid.filter((x) => x === e)).toHaveLength(100);
+    expect(grid).not.toContain("wheel");
     const plain = full(game(base, ["wheel", null], { hp: [100, 130] }));
-    const drawn = new Set(Array.from({ length: 60 }, (_, i) => useSkill(plain, { id: "wheel" }, () => i / 60).skills!.armed!.effect));
-    expect([...drawn].sort()).toEqual(["bigheal", "firstaid", "omni", "refill", "strong", "wall"]);
+    const drawn = new Set(Array.from({ length: 80 }, (_, i) => useSkill(plain, { id: "wheel" }, () => i / 80).skills!.armed!.effect));
+    expect([...drawn].sort()).toEqual(["bigheal", "firstaid", "fool", "judge", "omni", "refill", "strong", "wall"]);
+  });
+  it("十分な回数を引くと 10 枚とも同じくらい出る（20000 回で各 2000 ± 150。標準偏差 42 の 3.5 倍）", () => {
+    const s = full(game(base, ["wheel", null], { rules: kingRules, hp: [100, 130] }));
+    const count = tally(s, 20000);
+    expect(Object.keys(count).sort()).toEqual([...wheelPool(kingRules)].sort());
+    for (const n of Object.values(count)) expect(Math.abs(n! - 2000)).toBeLessThan(150);
   });
   it("その場で使えない効果は不発（ゲージは 0 に戻り、置く手は打てる）", () => {
     // 体力が満タンで応急手当が出た
-    const s = spin(full(game(base, ["wheel", null], { rules: kingRules })), 0);
+    const s = spin(full(game(base, ["wheel", null], { rules: kingRules })), "firstaid");
     expect(s.skills!.armed).toEqual({ id: "wheel", effect: "firstaid", fizzle: true });
     expect(s.skills!.sides[0].gauge).toBe(0);
     expect(s.hp[0]).toBe(129);
@@ -480,14 +516,14 @@ describe("運命の輪", () => {
     expect(last(after).damage).toBe(3);
   });
   it("引いた効果はそのカードと同じに効く（強打 ×1.5・大回復 +20）", () => {
-    const strong = spin(full(game(base, ["wheel", null], { rules: kingRules })), 2);
+    const strong = spin(full(game(base, ["wheel", null], { rules: kingRules })), "strong");
     expect(previewMove(strong, ...at("e8"), "fu")).toMatchObject({ damage: 4, plain: 3, mods: ["strong"] });
-    const heal = spin(full(game(base, ["wheel", null], { rules: kingRules, hp: [100, 130] })), 1);
+    const heal = spin(full(game(base, ["wheel", null], { rules: kingRules, hp: [100, 130] })), "bigheal");
     expect(heal.hp[0]).toBe(120);
     expect(heal.skills!.armed).toEqual({ id: "wheel", effect: "bigheal", heal: 20 });
   });
   it("補充が出たら戻す駒を続けて指定する（指定するまで置けない）", () => {
-    let s = spin(full(game(base, ["wheel", null], { rules: kingRules, hands: [{ fu: 9, yoko: 10, kaku: 4, kin: 2, hi: 2 }, {}] })), 4);
+    let s = spin(full(game(base, ["wheel", null], { rules: kingRules, hands: [{ fu: 9, yoko: 10, kaku: 4, kin: 2, hi: 2 }, {}] })), "refill");
     expect(s.skills!.armed).toEqual({ id: "wheel", effect: "refill", aim: true });
     expect(() => play(s, "e8")).toThrow();
     expect(() => useSkill(s, { id: "wheel", kind: "kin" })).toThrow();
@@ -498,7 +534,7 @@ describe("運命の輪", () => {
     expect(last(play(s, "e8")).skill).toEqual({ id: "wheel", effect: "refill", kind: "hi" });
   });
   it("王の移し替えが出たら移す先を指定する。相手から見た候補は使った時点の自分の駒", () => {
-    let s = spin(full(game({ ...base, c1: [0, "fu"] }, ["wheel", null], { rules: kingRules, kings: ["a1", null] })), 7);
+    let s = spin(full(game({ ...base, c1: [0, "fu"] }, ["wheel", null], { rules: kingRules, kings: ["a1", null] })), "kingmove");
     expect(s.skills!.armed).toMatchObject({ effect: "kingmove", aim: true });
     s = useSkill(s, { id: "wheel", to: at("c1") });
     expect(kingInfo(s, 0).cell).toEqual(at("c1"));
@@ -508,9 +544,60 @@ describe("運命の輪", () => {
     expect(JSON.stringify(last(after).skill)).not.toContain("[0,2]]");
   });
   it("指定を待つ間に時間切れなら、指定も自動で選んで打つ", () => {
-    const s = spin(full(game(base, ["wheel", null], { rules: kingRules, hands: [{ fu: 9, yoko: 10, kaku: 4, kin: 2, hi: 3 }, {}] })), 4);
+    const s = spin(full(game(base, ["wheel", null], { rules: kingRules, hands: [{ fu: 9, yoko: 10, kaku: 4, kin: 2, hi: 3 }, {}] })), "refill");
     const t = playTimeout(s, () => 0.3);
     expect(last(t)).toMatchObject({ timeout: true, skill: { id: "wheel", effect: "refill", kind: "fu" } });
+  });
+  it("連続行動が出たら、カードと同じに 2 手続けて打てる（2 手目のダメージは半分・スキルは使えない）", () => {
+    let s = spin(full(game(base, ["wheel", null], { rules: kingRules })), "fool");
+    expect(s.skills!.armed).toEqual({ id: "wheel", effect: "fool" });
+    s = play(s, "e8");
+    expect(last(s).skill).toEqual({ id: "wheel", effect: "fool" });
+    expect(s.turn).toBe(0);
+    expect(s.skills!.second).toBe(true);
+    expect(skillBlock(viewFor(full(s, 0), 0))).toBe("used");
+    const second = play(s, "c1");
+    expect(last(second)).toMatchObject({ player: 0, second: true });
+    expect(second.turn).toBe(1);
+  });
+  // 先手 c8（1 枚）→ 後手 c1（b1 を返す）→ 先手の手番
+  const undoStones = { a8: [0, "fu"], b8: [1, "fu"], a1: [1, "fu"], b1: [0, "fu"], h4: [1, "fu"], h5: [0, "fu"] } as const;
+  it("巻き戻しが出たら、カードと同じに自分の直前の手と相手の応手を戻す", () => {
+    const s0 = game(undoStones, ["wheel", "strong"], { rules: kingRules });
+    const s = full(playMove(play(s0, "c8"), ...at("c1"), "fu"), 0);
+    // 運命の輪を持つ人も、戻す局面を覚えている（戻せるかは公開）
+    expect(viewFor(s, 1).skills!.undoable).toEqual([true, false]);
+    const back = spin(s, "judge");
+    expect(back.board).toEqual(s0.board);
+    expect(back.history).toEqual(s0.history);
+    expect(back.turn).toBe(0);
+    expect(back.skills!.sides.map((x) => x.gauge)).toEqual([0, 0]);
+    expect(back.skills!.armed).toEqual({ id: "wheel", effect: "judge", back: 2, redo: { r: 7, c: 2, kind: "fu" } });
+    expect(skillBlock(viewFor(back, 0))).toBe("used");
+    expect(last(play(back, "c8")).skill).toEqual({ id: "wheel", effect: "judge", back: 2, redo: { r: 7, c: 2, kind: "fu" } });
+    // CPU は戻した手と同じ手を打ち直さない
+    const ch = chooseMove(viewFor(back, 0), "normal", () => 0.5)!;
+    expect([ch.r, ch.c]).not.toEqual(at("c8"));
+  });
+  it("巻き戻しが出ても戻す手がなければ不発（ゲージは 0、置く手は打てる）", () => {
+    const s = full(game(undoStones, ["wheel", null], { rules: kingRules }));
+    expect(skillBlock(viewFor(s, 0))).toBeNull();
+    const fz = spin(s, "judge");
+    expect(fz.skills!.armed).toEqual({ id: "wheel", effect: "judge", fizzle: true });
+    expect(fz.skills!.sides[0].gauge).toBe(0);
+    expect(fz.board).toEqual(s.board);
+    expect(last(play(fz, "c8")).skill).toEqual({ id: "wheel", effect: "judge", fizzle: true });
+  });
+  it("連続行動で 2 手打った後に巻き戻しが出たら、2 手と相手の応手をまとめて戻す", () => {
+    // e5 の白を e6 で挟めるよう、戻した後にも打てる手を残す
+    const s0 = full(game({ ...undoStones, e4: [0, "fu"], e5: [1, "fu"] }, ["wheel", "strong"], { rules: kingRules }));
+    let s = play(spin(s0, "fool"), "c8");
+    s = play(s, "h3");
+    expect(s.turn).toBe(1);
+    s = full(playMove(s, ...at("c1"), "fu"), 0);
+    const back = spin(s, "judge");
+    expect(back.board).toEqual(s0.board);
+    expect(back.skills!.armed).toMatchObject({ effect: "judge", back: 3 });
   });
 });
 
@@ -597,7 +684,7 @@ describe("新しいカードの CPU", () => {
   it("運命の輪は満タンならいつも使い、補充が出たら戻す駒も選ぶ", () => {
     const s = full(game({ a1: [0, "fu"], b1: [1, "fu"] }, ["wheel", null], { hands: [{ fu: 9, yoko: 10, kaku: 4, kin: 2, hi: 3 }, {}] }));
     expect(chooseSkillUse(viewFor(s, 0), () => 0.5)).toEqual({ id: "wheel" });
-    const aim = useSkill(s, { id: "wheel" }, () => 4.5 / 6);
+    const aim = useSkill(s, { id: "wheel" }, drawOf(s, "refill"));
     expect(aim.skills!.armed).toMatchObject({ effect: "refill", aim: true });
     expect(chooseSkillUse(viewFor(aim, 0), () => 0.5)).toEqual({ id: "wheel", kind: "fu" });
   });
@@ -765,15 +852,14 @@ describe("副将", () => {
     s = full(s);
     const sides = s.skills!.sides;
     s = { ...s, skills: { ...s.skills!, sides: [sides[0], { ...sides[1], gauge: 10 * GAUGE_UNIT }] } };
-    const scoutAt = BASE_SKILLS.indexOf("scout");
-    const spun = useSkill(s, { id: "wheel" }, () => (scoutAt + 0.5) / 8);
+    const spun = useSkill(s, { id: "wheel" }, drawOf(s, "scout"));
     expect(spun.skills!.armed).toEqual({ id: "wheel", effect: "scout", fizzle: true });
     expect(spun.skills!.sides[1].gauge).toBe(10 * GAUGE_UNIT);
     // 副将が決まっていても、期限の手の前なら不発（いつ出したかが分かってしまうので見せない）
-    const early = useSkill(withVice(s, 1, "b1"), { id: "wheel" }, () => (scoutAt + 0.5) / 8);
+    const early = useSkill(withVice(s, 1, "b1"), { id: "wheel" }, drawOf(s, "scout"));
     expect(early.skills!.armed).toMatchObject({ effect: "scout", fizzle: true });
     // 期限を過ぎていれば、運命の輪の偵察で特定する
-    const ok = useSkill(withVice(s, 1, "b1", { since: -7, hit: true }), { id: "wheel" }, () => (scoutAt + 0.5) / 8);
+    const ok = useSkill(withVice(s, 1, "b1", { since: -7, hit: true }), { id: "wheel" }, drawOf(s, "scout"));
     expect(ok.skills!.armed).toEqual({ id: "wheel", effect: "scout", scout: "vice" });
     expect(viewFor(ok, 0).oppVice).toEqual({ set: true, wait: 0, scouted: true, cell: at("b1") });
   });

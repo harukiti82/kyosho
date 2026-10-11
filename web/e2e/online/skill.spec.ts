@@ -498,7 +498,7 @@ test("巻き戻しと連続行動: 2 手目は同じ人の番（相手の画面�
   }
 });
 
-test("運命の輪: 引いた効果が両者の演出に出て、棋譜に残る（補充・王の移し替えなら選んでから置く）", async ({ browser, request, baseURL }, info) => {
+test("運命の輪: 引いた効果が両者の演出に出て、棋譜に残る（補充・王の移し替えなら選んでから置く。連続行動・巻き戻しも出る）", async ({ browser, request, baseURL }, info) => {
   const pre = prefix(info);
   const { room, seat } = await findRoom(request, baseURL!, "wheel", null);
   const host = await enter(browser, info, "host", room.roomId, room.tokens[0]);
@@ -523,7 +523,12 @@ test("運命の輪: 引いた効果が両者の演出に出て、棋譜に残る
       const armed = wheel.last!.view.skills!.armed!;
       // 引く効果はサーバーの乱数。どれを引いたかを結果に残す（補充・王の移し替えなら指定の流れも通る）
       info.annotations.push({ type: "運命の輪", description: `${armed.effect}${armed.fizzle ? "（不発）" : armed.aim ? "（指定）" : ""}` });
-      const text = armed.fizzle ? `${SKILLS[armed.effect!].name}は不発` : SKILLS[armed.effect!].name;
+      // 巻き戻しが出たら戻した手数を添える（連続行動・巻き戻しも運命の輪から出る）
+      const text = armed.fizzle
+        ? `${SKILLS[armed.effect!].name}は不発`
+        : armed.effect === "judge"
+          ? `${SKILLS.judge.name}で${armed.back}手戻す`
+          : SKILLS[armed.effect!].name;
       await Promise.all([seeCast(wheel, "wheel", undefined, text), seeCast(rival, "wheel", `${SHOT}/${pre}-online-skill-wheel-other.png`, text)]);
       expect(rival.last!.view.skills!.armed!.effect).toBe(armed.effect);
       await aimWheel(wheel);

@@ -1156,7 +1156,7 @@ export class App {
       if (this.game !== g) return;
       // 相手の巻き戻しで、王を決めた手を戻された（指定は残る）
       const me = this.me();
-      if (note.id === "judge" && me !== null && me !== p && this.kingOf(g, me).kept) this.showToast("巻き戻された手で王を決めたので、次に置く駒が王になります");
+      if ((note.effect ?? note.id) === "judge" && !note.fizzle && me !== null && me !== p && this.kingOf(g, me).kept) this.showToast("巻き戻された手で王を決めたので、次に置く駒が王になります");
       this.render();
       const q = this.queued;
       this.queued = null;
@@ -3337,8 +3337,9 @@ function skillLogText(e: MoveEvent): string {
   return `${SKILLS[sk.id].name}${effect}${extra}・`;
 }
 
-/** スキルの演出で名前の下に添える結果（運命の輪の引いた効果・不発、巻き戻しの戻した手数、偵察で副将を特定）。なければ null */
+/** スキルの演出で名前の下に添える結果（運命の輪の引いた効果・不発、巻き戻しの戻した手数（運命の輪で出たときも）、偵察で副将を特定）。なければ null */
 function castResult(note: SkillNote): { text: string; miss: boolean } | null {
+  if (note.effect === "judge" && !note.fizzle) return { text: `${SKILLS.judge.name}で${note.back ?? 0}手戻す`, miss: false };
   if (note.effect) return { text: note.fizzle ? `${SKILLS[note.effect].name}は不発` : SKILLS[note.effect].name, miss: !!note.fizzle };
   if (note.id === "judge") return { text: `${note.back ?? 0}手戻す`, miss: false };
   if (note.scout === "vice") return { text: "副将を特定", miss: false };
