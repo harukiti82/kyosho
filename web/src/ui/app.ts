@@ -2164,7 +2164,7 @@ export class App {
           label += "（副将）";
         }
         if (i === viceAt && s) {
-          cell.append(h("span", { class: "king-cand scouted vice", text: "副", attrs: { "aria-hidden": "true" } }));
+          cell.append(h("span", { class: "vice-cand scouted", text: "副", attrs: { "aria-hidden": "true" } }));
           label += " 偵察で分かった相手の副将";
         } else if (i === scoutAt && s) {
           cell.append(h("span", { class: "king-cand scouted", text: "王", attrs: { "aria-hidden": "true" } }));
@@ -2458,7 +2458,7 @@ export class App {
   private viceTag(g: GameState, p: Player): HTMLElement | null {
     if (!vicesOn(g.rules)) return null;
     const tag = (text: string, title: string, cls = "") =>
-      h("span", { class: `king-tag vice-tag${cls}`, attrs: { title } }, [h("span", { class: "king-icon vice-icon", text: "副" }), text]);
+      h("span", { class: `vice-tag${cls}`, attrs: { title } }, [h("span", { class: "vice-icon", text: "副" }), text]);
     const lost = lastViceHit(g, p);
     const lostTag = () => (lost ? tag(` ${cellName(lost.r, lost.c)}`, "副将は返された", " lost") : null);
     if (this.kingsShown(g).includes(p)) {

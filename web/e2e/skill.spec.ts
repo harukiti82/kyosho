@@ -262,16 +262,17 @@ test.describe("スキル", () => {
         await expect(page.locator("#player-1 .king-tag.scouted")).toBeVisible();
         await humanMove(page);
         await expect(lastLog(page)).toContainText("偵察・");
-        // 2 回目は王が分かっているので、相手のゲージを半分にする
+        // 2 回目は王が分かっているので、相手の今の副将を特定する（相手のゲージは減らない）
         await chargeUntilReady(page);
         const gauge = async () => Number(await page.locator("#player-1 .plate-skill .ps-gauge").evaluate((g) => getComputedStyle(g).getPropertyValue("--g")));
         const before = await gauge();
-        expect(before).toBeGreaterThan(0);
         await tapOrClick(page, "#skill-use");
-        await shootCast(page, "scout", "相手のゲージ半分", "scout-drain");
-        expect(await gauge()).toBeCloseTo(before / 2, 1);
+        await shootCast(page, "scout", "副将を特定", "scout-vice");
+        await expect(page.locator(".vice-cand.scouted")).toHaveCount(1);
+        await expect(page.locator("#player-1 .vice-tag.scouted")).toBeVisible();
+        expect(await gauge()).toBeCloseTo(before, 3);
         await humanMove(page);
-        await expect(lastLog(page)).toContainText("偵察 ゲージ半分・");
+        await expect(lastLog(page)).toContainText("偵察 副将・");
       },
     },
     {

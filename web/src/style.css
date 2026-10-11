@@ -870,8 +870,9 @@ button {
     transform: scale(1.18);
   }
 }
-/* 王の状態: 王の駒の形とマス名 */
-.king-tag {
+/* 王・副将の状態: 王（副将）の駒の形とマス名 */
+.king-tag,
+.vice-tag {
   flex: none;
   display: inline-flex;
   align-items: center;
@@ -882,7 +883,8 @@ button {
   white-space: nowrap;
   color: var(--cyan-300);
 }
-.king-icon {
+.king-icon,
+.vice-icon {
   display: inline-grid;
   place-items: center;
   width: 0.95rem;
@@ -898,19 +900,25 @@ button {
 }
 .king-tag.unknown,
 .king-tag.cand,
-.king-tag.unset {
+.king-tag.unset,
+.vice-tag.unknown,
+.vice-tag.unset {
   color: var(--ink-dim);
 }
 .king-tag.unknown .king-icon,
 .king-tag.cand .king-icon,
-.king-tag.unset .king-icon {
+.king-tag.unset .king-icon,
+.vice-tag.unknown .vice-icon,
+.vice-tag.unset .vice-icon {
   opacity: 0.55;
 }
-.king-tag.lost {
+.king-tag.lost,
+.vice-tag.lost {
   color: #ff8a7f;
   text-decoration: line-through;
 }
-.king-tag.lost .king-icon {
+.king-tag.lost .king-icon,
+.vice-tag.lost .vice-icon {
   background: linear-gradient(170deg, #b9a58a, #6f604e);
   filter: grayscale(0.6);
 }
@@ -1094,7 +1102,8 @@ button {
 .player-card.active .player-name {
   color: var(--navy-900);
 }
-.player-card.active .king-tag {
+.player-card.active .king-tag,
+.player-card.active .vice-tag {
   color: var(--navy-700);
 }
 .player-card.active .hand-mini {
@@ -3970,6 +3979,7 @@ button {
 /* ---- オンライン対戦 ---- */
 /* 相手の王の候補（相手の駒の右上。自分の王の印と同じ金色を点線にして「まだ分からない」を表す） */
 .king-cand,
+.vice-cand,
 .key-cand {
   display: inline-grid;
   place-items: center;
@@ -3980,7 +3990,8 @@ button {
   font-weight: 800;
   line-height: 1;
 }
-.king-cand {
+.king-cand,
+.vice-cand {
   position: absolute;
   z-index: 2;
   top: 2%;
@@ -4963,6 +4974,7 @@ button.tarot:focus-visible {
 }
 /* 偵察で分かった相手の王（候補の「?」と違い、金の地に紺の「王」） */
 .king-cand.scouted,
+.vice-cand.scouted,
 .key-cand.scouted {
   background: var(--gold);
   color: var(--navy-900);
@@ -4974,7 +4986,8 @@ button.tarot:focus-visible {
   border-radius: 50%;
   font-size: 0.75em;
 }
-.king-tag.scouted {
+.king-tag.scouted,
+.vice-tag.scouted {
   color: var(--gold);
 }
 .bb-skill {
@@ -5171,7 +5184,7 @@ button.tarot:focus-visible {
   box-shadow: 0 0 0 1.5px #fff;
   pointer-events: none;
 }
-.king-cand.scouted.vice {
+.vice-cand.scouted {
   background: var(--vice);
 }
 .vice-pop {
