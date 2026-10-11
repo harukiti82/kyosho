@@ -5040,6 +5040,39 @@ button.tarot:focus-visible {
   width: 1rem;
   height: 1rem;
 }
+/* 結果の一言（運命の輪の引いた効果・待ったの戻した手数）。名前より遅れてシアンの帯で出す。不発は紺の帯に薄い字 */
+.cast-result {
+  position: relative;
+  margin: 0;
+  padding: 0.2rem 1.1rem;
+  background: var(--go);
+  color: var(--navy-950);
+  clip-path: var(--slant);
+  font-family: var(--font-display);
+  font-weight: 900;
+  font-size: 1.15rem;
+  animation: cast-result var(--cast-ms) ease-out forwards;
+}
+.cast-result.miss {
+  background: var(--navy-800);
+  color: var(--ink-muted);
+  box-shadow: inset 0 0 0 1px var(--rim);
+}
+@keyframes cast-result {
+  0%,
+  52% {
+    opacity: 0;
+    transform: translateY(0.4rem) scale(0.9);
+  }
+  62%,
+  86% {
+    opacity: 1;
+    transform: none;
+  }
+  100% {
+    opacity: 0;
+  }
+}
 @keyframes cast-flip {
   0% {
     opacity: 0;
@@ -5088,7 +5121,8 @@ button.tarot:focus-visible {
   }
 }
 .fx-skill.reduce .cast-flip,
-.fx-skill.reduce .cast-who {
+.fx-skill.reduce .cast-who,
+.fx-skill.reduce .cast-result {
   animation: cast-dim var(--cast-ms) linear forwards;
 }
 .fx-skill.reduce .cast-back {

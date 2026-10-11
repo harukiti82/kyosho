@@ -93,7 +93,7 @@
 | `waiting_opponent` | 相手の参加前に手を送った | 残る |
 | `not_your_turn` | 相手の手番に手を送った | 残る |
 | `illegal_move` | engine が拒否した（置けない・持ち駒にない・王を指定できない・スキルのカードを選び終えていない など。`message` は engine の例外文） | 残る |
-| `illegal_skill` | engine が拒否したカードの選択・スキルの使用（配られていないカード・選び直し・満タンでない・この手番で使った・補充できない駒・移せないマス など） | 残る |
+| `illegal_skill` | engine が拒否したカードの選択・スキルの使用（配られていないカード・選び直し・満タンでない・この手番で使った・補充できない駒・移せないマス・戻す手がない（待った）・相手のゲージが空（偵察の 2 回目） など） | 残る |
 | `game_over` | 終局後に手を送った | 残る |
 | `stale_move` | 締め切りを過ぎてから手が届いた（先に自動の手を打って `state` を配った後に返す）・`seq` がサーバーの局面と違う | 残る |
 | `stale_rematch` | 終局していないのに `rematch` を送った・`gameNo` が今の対局と違う（再戦が成立した後に届いた二重押し） | 残る |
@@ -166,7 +166,11 @@ state{phase:finished, view.result} ◀──────────────
 
 - **配る**: 対局を作るたび（部屋の作成・再戦の成立）に `dealSkills`（乱数は `crypto.getRandomValues`）で各自に 3 枚。`view.skills.sides[you].offer` が自分の 3 枚。相手の配られたカードは送らない（`offer: []`）
 - **選ぶ**: `pick` を engine の `pickSkill` で検証する。相手の選んだカードは、両者が選び終える（`view.skills.ready`）まで `card: null` で送る（後から選ぶ人が見て選べないように）。選び終えるまで手は受けず（`illegal_move`）、制限時間の時計も止める（`clock: null`）。両者が選んだら手番の時計を数え始める。つなぎ直すと、配られたカード・選んだカードがそのまま届く
-- **使う**: `skill` を engine の `useSkill` で検証する（ゲージが満タン・この手番でまだ使っていない・効果ごとの条件）。手番は変わらないので時計はそのまま。両者に `state` が届き、`view.skills.armed` に使ったスキル（公開情報）。次の手の棋譜（`MoveEvent.skill`）に残る。強打・相手の鉄壁で変わったダメージは `MoveEvent.plain`（変わる前）と `shielded`
+- **使う**: `skill` を engine の `useSkill` で検証する（ゲージが満タン・この手番でまだ使っていない・効果ごとの条件）。手番は変わらないので時計はそのまま。両者に `state` が届き、`view.skills.armed` に使ったスキル（公開情報）。次の手の棋譜（`MoveEvent.skill`）に残る。強打・相手の鉄壁・連続行動の 2 手目で変わったダメージは `MoveEvent.plain`（変わる前）と `shielded` / `second`
+- **運命の輪**: 引く効果はサーバーの `crypto.getRandomValues` で決める（`useSkill` の第 3 引数。画面は id だけを送り、効果を選べない）。`armed.effect` が引いた効果、`armed.fizzle` は不発。補充・王の移し替えが出たら `armed.aim: true` で、同じ人がもう一度 `skill`（`id: "wheel"` と `kind` / `to`）を送って指定する。指定するまで `move` は `illegal_move`。指定を待つ間に時間切れなら、`playTimeout` が指定も一様に選んでから打つ
+- **連続行動**: 1 手目の後に置ける手があれば手番は同じ人のまま（`view.skills.second: true`）。サーバーは手番が来たときと同じく時計を数え直す。2 手目に `skill` は `illegal_skill`
+- **待った**: engine が待ったのカードを持つ人の前の手番の頭の局面を `GameState.skills.undo` に持つ（王を含むので `viewFor` が消し、`view.skills.undoable` だけを送る）。`skill` で使うと `state` の棋譜が短くなる（`armed.back` が戻した手数）。画面は `seq` に新しい棋譜の長さを使う。相手の王の指定は戻さず、戻した応手で相手が王を決めていたら、相手の `view.myKing.kept` / `forcedNow` が true（次に置く駒が王）。使った人には何も分からない
+- **偵察の 2 回目**: 王が分かっている・返した後の偵察は、相手のゲージを半分にする（`armed.scout: "drain"`・`drained`）。1 回目の罰 2 倍は `view.skills.hunt` で、その王を返すまで続く
 - **隠し情報**: 偵察で分かった相手の王は `GameState.kings[相手].seen` に、王の移し替えで移した先は `kings[自分].cell` に持つだけで、`viewFor` が使った本人にだけ見せる（偵察した人の `view.oppKing` は `{ candidates: [王のマス], scouted: true }`）。王の移し替えの棋譜・`armed` には移す先を入れない（`cands` は使った時点の自分の駒すべて = 公開されている盤の情報）。`server/test/skill.test.ts` が、移す先だけ違う 2 部屋で相手に届くバイト列が一致することを検査する
 - **再戦**: 次の対局は配り直す（カード・ゲージは持ち越さない）
 

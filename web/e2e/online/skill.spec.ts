@@ -2,7 +2,8 @@
 // 両者がカードを選ぶ（先に選んだ側は「相手が選んでいます」・選ぶ途中の再読み込み）→ 名札のゲージ → 使う → 相手の画面にも演出 →
 // ゲージ満タンのまま終局 → 再戦で配り直し、と、偵察・王の移し替えの隠し情報が相手に届かないこと。
 // 配るカードはサーバーの crypto で決まるので、1 本目は配られた中から溜まりやすいカードを選び、
-// 2 本目は API と WebSocket で部屋を作り直して偵察と王の移し替えが配られた部屋を探し、そのトークンでブラウザを席に入れる
+// 2 本目以降は API と WebSocket で部屋を作り直して目当てのカード（偵察と王の移し替え・待ったと連続行動・運命の輪）が配られた部屋を探し、
+// そのトークンでブラウザを席に入れる
 
 import { expect, test, type APIRequestContext, type Browser, type TestInfo } from "@playwright/test";
 import type { Cell } from "../../src/engine/board";
@@ -13,8 +14,11 @@ import type { CreateRoomResponse, StateMessage } from "../../src/net/protocol";
 import { noHorizontalScroll, play } from "../helpers";
 import { createRoomFromSetup, joinFromInvite, moverOf, newPlayer, playToEnd, prefix, SHOT, waitPlaying, waitResult, type Player } from "./net";
 
-/** 溜まりやすく、満タンになればすぐ使えるカードから選ぶ（偵察・王の移し替え・大回復は使える時期が限られる・長い） */
-const PREFER: readonly SkillId[] = ["wall", "strong", "omni", "firstaid", "refill", "scout", "kingmove", "bigheal"];
+/**
+ * 溜まりやすく、満タンになればすぐ使えて、使った後にそのまま置けるカードから選ぶ
+ * （偵察・王の移し替え・大回復は使える時期が限られる・長い。新しい 3 枚は下の専用のテストで確かめる）
+ */
+const PREFER: readonly SkillId[] = ["wall", "strong", "omni", "firstaid", "refill", "scout", "kingmove", "bigheal", "fool", "judge", "wheel"];
 
 async function tap(p: Player, sel: string) {
   const el = p.page.locator(sel).first();
@@ -86,11 +90,24 @@ async function cast(p: Player, id: SkillId) {
   await expect.poll(() => p.last!.view.skills!.armed?.id).toBe(id);
 }
 
-/** 使った演出（.fx-skill）が出て、消えるのを待つ */
-async function seeCast(p: Player, id: SkillId, shot?: string) {
+/** 運命の輪で補充・王の移し替えが出ていたら、演出の後に戻す駒・移す先を選ぶ（選ぶまで置けない） */
+async function aimWheel(p: Player) {
+  const armed = p.last!.view.skills!.armed;
+  if (!armed?.aim) return;
+  if (armed.effect === "refill") await tap(p, ".skill-aim [data-refill]");
+  else {
+    await expect(p.page.locator(".cell.skill-target").first()).toBeVisible();
+    await tap(p, ".cell.skill-target");
+  }
+  await expect.poll(() => p.last!.view.skills!.armed?.aim).toBeUndefined();
+}
+
+/** 使った演出（.fx-skill）が出て、消えるのを待つ。result なら名前の下の結果の一言（運命の輪の引いた効果・待ったの戻した手数）も確かめる */
+async function seeCast(p: Player, id: SkillId, shot?: string, result?: string) {
   const fx = p.page.locator(".fx-skill");
   await expect(fx).toBeVisible();
   await expect(fx).toHaveAttribute("data-skill", id);
+  if (result) await expect(fx.locator(".cast-result")).toHaveText(result);
   if (shot) await p.page.screenshot({ path: shot });
   await expect(fx).toHaveCount(0, { timeout: 5_000 });
 }
@@ -210,6 +227,7 @@ test("スキルありの部屋: 両者が選ぶ（先に選んだ側は相手待
       await cast(mover, id);
       await Promise.all([seeCast(mover, id), seeCast(other, id, `${SHOT}/${pre}-online-skill-cast-other.png`)]);
       await expect.poll(() => other.last!.view.skills!.armed?.id).toBe(id);
+      await aimWheel(mover);
       await expect(other.page.locator(`#player-${mover.last!.you} .plate-skill`)).toHaveClass(/\barmed\b/);
       // 使ったら手番の頭のまま置ける。置いた手の棋譜にスキルが残る
       await move(mover);
@@ -395,4 +413,128 @@ test("偵察と王の移し替え: 偵察で分かった王は使った人だけ
   }
   // 偵察で分かった王の場所は、偵察された人に scouted として届かない
   for (const m of statesOf(mover2)) expect(m.view.oppKing.scouted).toBe(false);
+});
+
+/** 部屋の席 seat に want が、もう一方に other が配られた部屋を探す（other が null ならもう一方は何でもよい） */
+async function findRoom(request: APIRequestContext, baseURL: string, want: SkillId, other: SkillId | null) {
+  for (let i = 0; i < 80; i++) {
+    const r = await dealt(request, baseURL);
+    for (const s of [0, 1] as const) {
+      if (r.offers[s].includes(want) && (!other || r.offers[1 - s].includes(other))) return { room: r, seat: s as Seat };
+    }
+  }
+  throw new Error(`${want} と ${other} が配られた部屋が見つからない`);
+}
+
+test("待ったと連続行動: 2 手目は同じ人の番（相手の画面にも）、待ったは 2 手以上戻した局面が両者に届き、戻す局面は送らない", async ({ browser, request, baseURL }, info) => {
+  const pre = prefix(info);
+  const { room, seat } = await findRoom(request, baseURL!, "judge", "fool");
+  const host = await enter(browser, info, "host", room.roomId, room.tokens[0]);
+  const guest = await enter(browser, info, "guest", room.roomId, room.tokens[1]);
+  await waitPlaying(host, guest);
+  const judge = seat === 0 ? host : guest;
+  const fool = seat === 0 ? guest : host;
+  await expect(judge.page.locator("#skill-pick")).toBeVisible();
+  await pickCard(judge, "judge");
+  await pickCard(fool, "fool");
+  for (const p of [host, guest]) await expect(p.page.locator("#skill-pick")).toBeHidden();
+
+  let fooled = false;
+  let judged = false;
+  for (let i = 0; i < 160 && !(fooled && judged); i++) {
+    if (host.last!.view.result) break;
+    const mover = moverOf(host, guest);
+    const other = mover === host ? guest : host;
+    await expect(mover.page.locator(".board.acting")).toBeVisible({ timeout: 30_000 });
+    if ((await mover.page.locator("#skill-use").count()) > 0) {
+      if (mover === fool && !fooled) {
+        await cast(fool, "fool");
+        await Promise.all([seeCast(fool, "fool"), seeCast(judge, "fool")]);
+        await move(fool);
+        await synced(fool, judge);
+        // 1 手目の後も連続行動の人の番。相手の画面は「相手の 2 手目」で、盤を操作できない
+        if (fool.last!.view.skills!.second) {
+          await expect(fool.page.locator("#status")).toHaveText("もう 1 手");
+          await expect(judge.page.locator("#status")).toHaveText("相手の 2 手目");
+          await expect(judge.page.locator(".board.acting")).toHaveCount(0);
+          await fool.page.screenshot({ path: `${SHOT}/${pre}-online-skill-fool.png` });
+          await judge.page.screenshot({ path: `${SHOT}/${pre}-online-skill-fool-other.png` });
+          await move(fool);
+          await synced(fool, judge);
+          const m = judge.last!.view.history.filter((e) => e.type === "move").at(-1)!;
+          expect(m.type === "move" && m.second).toBe(true);
+          fooled = true;
+        }
+        continue;
+      }
+      if (mover === judge && !judged) {
+        const before = judge.last!.view.history.length;
+        await cast(judge, "judge");
+        const back = judge.last!.view.skills!.armed!.back!;
+        expect(back).toBeGreaterThanOrEqual(2);
+        await Promise.all([seeCast(judge, "judge", undefined, `${back}手戻す`), seeCast(fool, "judge", `${SHOT}/${pre}-online-skill-judge-other.png`, `${back}手戻す`)]);
+        await synced(judge, fool);
+        expect(judge.last!.view.history.length).toBeLessThan(before);
+        // 戻した後も待ったの人の番で、打ち直せる
+        await expect(judge.page.locator(".board.acting")).toBeVisible();
+        await move(judge);
+        await synced(judge, fool);
+        const m = fool.last!.view.history.at(-1)!;
+        expect(m.type === "move" && m.skill?.id).toBe("judge");
+        judged = true;
+        continue;
+      }
+    }
+    await move(mover, null, true);
+    await synced(mover, other);
+  }
+  expect([fooled, judged]).toEqual([true, true]);
+  // 戻す局面（王を含む skills.undo）と GameState.kings はどちらにも届かない
+  for (const p of [host, guest]) {
+    for (const f of p.frames) {
+      expect(f).not.toContain('"kings"');
+      expect(f).not.toContain('"undo"');
+    }
+  }
+});
+
+test("運命の輪: 引いた効果が両者の演出に出て、棋譜に残る（補充・王の移し替えなら選んでから置く）", async ({ browser, request, baseURL }, info) => {
+  const pre = prefix(info);
+  const { room, seat } = await findRoom(request, baseURL!, "wheel", null);
+  const host = await enter(browser, info, "host", room.roomId, room.tokens[0]);
+  const guest = await enter(browser, info, "guest", room.roomId, room.tokens[1]);
+  await waitPlaying(host, guest);
+  const wheel = seat === 0 ? host : guest;
+  const rival = seat === 0 ? guest : host;
+  await expect(wheel.page.locator("#skill-pick")).toBeVisible();
+  await pickCard(wheel, "wheel");
+  // 相手は運命の輪・待った以外（届いた 3 枚から）
+  await pickCard(rival, PREFER.find((id) => id !== "wheel" && id !== "judge" && offerOf(rival).includes(id))!);
+  for (const p of [host, guest]) await expect(p.page.locator("#skill-pick")).toBeHidden();
+
+  let spun = false;
+  for (let i = 0; i < 160 && !spun; i++) {
+    if (host.last!.view.result) break;
+    const mover = moverOf(host, guest);
+    const other = mover === host ? guest : host;
+    await expect(mover.page.locator(".board.acting")).toBeVisible({ timeout: 30_000 });
+    if (mover === wheel && (await mover.page.locator("#skill-use").count()) > 0) {
+      await cast(wheel, "wheel");
+      const armed = wheel.last!.view.skills!.armed!;
+      const text = armed.fizzle ? `${SKILLS[armed.effect!].name}は不発` : SKILLS[armed.effect!].name;
+      await Promise.all([seeCast(wheel, "wheel", undefined, text), seeCast(rival, "wheel", `${SHOT}/${pre}-online-skill-wheel-other.png`, text)]);
+      expect(rival.last!.view.skills!.armed!.effect).toBe(armed.effect);
+      await aimWheel(wheel);
+      await move(wheel);
+      await synced(wheel, rival);
+      const m = rival.last!.view.history.filter((e) => e.type === "move").at(-1)!;
+      expect(m.type === "move" && m.skill?.effect).toBe(armed.effect);
+      spun = true;
+      continue;
+    }
+    // 相手は自分のカードを使わない（運命の輪の手番を待つ）
+    await move(mover, null, true);
+    await synced(mover, other);
+  }
+  expect(spun).toBe(true);
 });

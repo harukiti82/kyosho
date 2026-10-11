@@ -93,7 +93,9 @@ export interface TossOptions {
 /** スキルを使った演出の長さ（カードが表を向いて名前を見せ、消える）。この間は入力・CPU を待たせる */
 export const SKILL_CAST_MS = 1100;
 export const SKILL_CAST_REDUCED_MS = 700;
-export const skillCastMs = (reduce: boolean) => (reduce ? SKILL_CAST_REDUCED_MS : SKILL_CAST_MS);
+/** 結果の一言（運命の輪の引いた効果・待ったの戻した手数など）を添えるときに延ばす長さ */
+export const SKILL_CAST_RESULT_MS = 600;
+export const skillCastMs = (reduce: boolean, result = false) => (reduce ? SKILL_CAST_REDUCED_MS : SKILL_CAST_MS) + (result ? SKILL_CAST_RESULT_MS : 0);
 
 export interface SkillCastOptions {
   /** カードの面（skillui.ts の tarotCard） */
@@ -104,6 +106,8 @@ export interface SkillCastOptions {
   /** 使った人の名札が盤の上の側（カードは上から来る） */
   fromTop: boolean;
   reduce: boolean;
+  /** 名前の下に遅れて添える結果（運命の輪の引いた効果、不発なら miss）。なければ null */
+  result?: { text: string; miss: boolean } | null;
 }
 
 export interface GaugeFxOptions {
@@ -170,13 +174,14 @@ export class Fx {
    * 動きを減らす設定では回さず、表のカードを出して消すだけ
    */
   skillCast(o: SkillCastOptions) {
-    const ms = skillCastMs(o.reduce);
+    const ms = skillCastMs(o.reduce, !!o.result);
     const root = h("div", { class: `fx-skill p${o.owner}${o.fromTop ? " from-top" : ""}${o.reduce ? " reduce" : ""}`, attrs: { "data-skill": o.card.dataset.skill ?? "" } });
     root.style.setProperty("--cast-ms", `${ms}ms`);
     root.append(
       h("div", { class: "cast-flip" }, [h("div", { class: "cast-back" }), o.card]),
       h("p", { class: "cast-who" }, [h("span", { class: `fin-stone p${o.owner}`, attrs: { "aria-hidden": "true" } }), o.who]),
     );
+    if (o.result) root.append(h("p", { class: `cast-result${o.result.miss ? " miss" : ""}`, text: o.result.text }));
     this.add(root, ms);
   }
 

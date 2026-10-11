@@ -152,7 +152,8 @@ export interface PickMessage {
 
 /**
  * 手番の人がスキルを使う（置く前。ゲージが満タンのとき 1 手番に 1 回）。kind は補充で戻す駒、to は王の移し替えで移す先のマス [行, 列]。
- * サーバーは engine の useSkill で検証して適用する。seq は move と同じ（考えた局面の棋譜の長さ）
+ * 運命の輪で補充・王の移し替えが出たら（view.skills.armed.aim）、id は wheel のまま kind / to を付けてもう一度送る。
+ * サーバーは engine の useSkill で検証して適用する（運命の輪の引く効果はサーバーの乱数）。seq は move と同じ（考えた局面の棋譜の長さ）
  */
 export interface SkillMessage {
   type: "skill";
