@@ -39,12 +39,12 @@ import {
   progressLabel,
   resumeStep,
   saveProgress,
-  SCOUT_LESSON,
   TUTORIAL_KEY,
   VICE_HINT,
   type Lesson,
   type LessonId,
 } from "../src/ui/lessons";
+import { SCOUT_LESSON } from "../src/ui/skilllessons";
 
 /** 遊び方のステップと、流れに入れていないカードごとのステップ（偵察） */
 const ALL = [...LESSONS, SCOUT_LESSON];

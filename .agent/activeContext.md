@@ -5,12 +5,12 @@
 
 ## 現在の対象
 
-- 何を / どこを: スキルありを新しい「標準」にした（表示名の入れ替え: id `skill` =「標準」・既定、id `std` =「スキルなし」。id・`QUERY_BASE` は変えない）。遊び方を新しい標準を 1 本の流れで覚える 16 ステップに一新（章を選ぶ段は撤去）。依頼元セッション（master）経由
-- ステータス: ブランチ `feat/standard-skills`（worktree `../kyosho-tutorial`、:5182 で dev）。PR を出して CI 緑ならマージ → 本番の初回起動で「標準」を確かめる
+- 何を / どこを: スキルごとのチュートリアル「スキル練習」（メニューの「スキル練習」→ 11 枚の札の一覧 → 1 枚 1 ステップ）。`ui/skilllessons.ts`・`App` の遊び方の節（`LessonRun.track`）・`Menu.setSkillLessons`。依頼元セッション（master）経由
+- ステータス: ブランチ `feat/skill-tutorials`（worktree `../kyosho-skilltut`、:5182 で dev）。PR → CI 緑でマージ → 本番で入口を確かめる。前の PR #44（スキルありを「標準」に・遊び方を 1 本の流れに）・#45（旧標準の保存の読み替え）はマージ済み
 - 最終更新: 2026-10-12
-- 遊び方の流れ: 挟む〜予測を読む（スキルなしの要素）→ カードを選ぶ（配り直し）→ ゲージ → 強打を使う → 副将を置く → 副将を裏返す → 標準の実戦。偵察は `SCOUT_LESSON` として流れの外に残す（次の worker のカードごとのチュートリアル用）
-- 仮に決めた点（ユーザーに確認）: 章を選ぶ段はなくした（スキルなしだけ覚えたい人は 10 ステップ目までで足りる）。古い 2 章の進み具合は id で読み替え（基本の途中 → 同じ位置、基本を終えた → カードを選ぶ、両方終えた → クリア済み）。旧標準のまま保存した設定は新しい標準に読み替える（保存の版 `v` のない保存だけ。`fix/save-follow-standard`、RULES.md に記載）
-- 次の worker: 「スキルごとの別チュートリアル」。`Lesson` の形・`judgeMove` / `nextNeed`・`SCOUT_LESSON` を使い、メニューの入口（遊び方の段）を足す
+- 仮に決めた点（ユーザーに確認）: 入口はメニューの「遊び方」と「設定」の間の小さな項目（添え書き「11 枚」「3/11」「クリア済み」）。一覧はタロットの札を 4 列（番号・絵柄・名前だけの `.mini`、終えた札は右上の印、まだの最初の 1 枚はシアンの縁）。1 枚 1 ステップで、運命の輪は補充が出ると決めてある。鉄壁は相手の決めた応手まで見せる。進み具合は終えたカードだけ（`kyosho:skill-tutorial` の `{ v: 1, done }`。前回開いたカードは覚えない）
+- メインの遊び方の流れ: 挟む〜予測を読む（スキルなしの要素）→ カードを選ぶ（配り直し）→ ゲージ → 強打を使う → 副将を置く → 副将を裏返す → 標準の実戦。カードごとの効果はスキル練習で教える
+- 保存した設定: 旧標準のまま保存した設定は新しい標準に読み替える（保存の版 `v` のない保存だけ。PR #45、RULES.md に記載）
 
 ## スキルの要点
 
@@ -34,6 +34,7 @@
 
 ## 未解決・次の一手
 
+- [ ] スキル練習をユーザーに見てもらう（入口の置き場所・一覧の札の大きさ・1 枚 1 ステップで足りるか・運命の輪を補充に決めたこと）
 - [ ] 遊び方の 1 本の流れ（16 ステップ）をユーザーに見てもらう。長さ（16 は多いか）・章を選ぶ段をなくしたこと・カードを選ぶステップは配り直しを必須にしたことを確認
 - [ ] progress.md が 30 件を超えた: `progress-archive.md` への移送をユーザーに提案する
 
@@ -50,7 +51,8 @@
 
 - スキル: `RULES.md`「スキル」「副将」, `web/src/engine/skills.ts`, `web/src/engine/game.ts`（「副将」節・「スキル」節 `useSkill` / `applyEffect` / `takeBack` / `skillsAfterMove`）, `web/src/engine/skillcpu.ts`, `web/src/ui/skillui.ts`, `web/src/ui/app.ts`（「スキル」節）, `server/src/room.ts`（pick / skill）, `.agent/online-protocol.md`「スキル」, `web/test/skills.test.ts`, `server/test/skill.test.ts`, `web/e2e/skill.spec.ts`, `web/e2e/skill-vice.spec.ts`, `web/e2e/online/skill.spec.ts`
 - 通算（CPU 対戦・2 人対戦）: `web/src/ui/record.ts`, `web/src/ui/app.ts`（`countResult` / `recordOf` / `plateRecord`）, `web/src/ui/setup.ts`（`showRecord`）, `web/test/record.test.ts`, `web/e2e/record.spec.ts`
-- 遊び方: `web/src/ui/lessons.ts`（`LESSONS` / `SCOUT_LESSON` / `readLegacy`）, `web/src/ui/coach.ts`, `web/src/ui/app.ts`（「遊び方（チュートリアル）」節 `openLesson` / `inStep`、`onCellClick`・`renderBoard` の誘導）, `web/test/lesson.test.ts`, `web/e2e/tutorial.spec.ts`
+- スキル練習: `web/src/ui/skilllessons.ts`（`SKILL_LESSONS` / `wheelRng` / `loadSkillDone`）, `web/src/ui/lessons.ts`（`Lesson` の `aim` / `wheel` / `then` / `reply`・`judgeUse`）, `web/src/ui/app.ts`（`openSkillLesson` / `lessonSolved` / `playReply`）, `web/src/ui/menu.ts`（`setSkillLessons`）, `web/test/skilllesson.test.ts`, `web/e2e/skill-tutorial.spec.ts`
+- 遊び方: `web/src/ui/lessons.ts`（`LESSONS` / `readLegacy`）, `web/src/ui/coach.ts`, `web/src/ui/app.ts`（「遊び方（チュートリアル）」節 `openLesson` / `inStep`、`onCellClick`・`renderBoard` の誘導）, `web/test/lesson.test.ts`, `web/e2e/tutorial.spec.ts`
 - 待った・「!」・制限時間: `web/src/ui/undo.ts`, `web/src/ui/app.ts`（`takeBack` / `initThreat` / `setThreat` / `syncClock` / `checkTimeout`）, `web/src/ui/setup.ts`（`Saved.threat`）, `web/src/ui/clock.ts`, `web/src/engine/game.ts`（`playTimeout`）, `server/src/room.ts`
 - メニュー・設定メニュー・CPU の強さ: `web/src/ui/menu.ts`, `web/src/ui/setup.ts`, `web/src/ui/app.ts`（`showMenu` / `resume` / `leaveToMenu`）, `web/src/engine/cpu.ts`（`chooseMove`）
 - 画面の見た目を直す: AGENTS.md の「デザイン規約」→ `web/src/style.css`（`:root` のトークン）, `web/index.html`, `web/src/ui/app.ts`（`placeSeats` / `renderPlayers` / `kingTag` / `bubble` / `setTab` / `renderScore`）, `web/src/ui/setup.ts`, `web/src/ui/menu.ts`

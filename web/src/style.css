@@ -630,6 +630,9 @@ button {
 .menu-level:nth-of-type(3) {
   animation-delay: 0.16s;
 }
+#menu-skills {
+  animation-delay: 0.2s;
+}
 #menu-settings {
   animation-delay: 0.24s;
 }
@@ -4629,6 +4632,67 @@ button.tarot:focus-visible {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.6rem;
   padding-top: 0.4rem;
+}
+/*
+ * スキル練習の一覧（メニューの段）: 11 枚の札を 4 列に小さく並べる（番号・絵柄・名前だけ）。
+ * 終えた札は右上の角を白く落として紺の印、まだの札のうち最初の 1 枚はシアンの縁で勧める
+ */
+.skill-lessons {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.2rem 0 0.3rem;
+}
+.tarot.mini {
+  aspect-ratio: 5 / 7;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  padding: 0.4rem 0.2rem 0.45rem;
+  animation: menu-in 0.5s var(--ease-out) both;
+}
+.tarot.mini .tarot-arcana,
+.tarot.mini .tarot-effect,
+.tarot.mini .tarot-len {
+  display: none;
+}
+.tarot.mini .tarot-name {
+  padding: 0.1rem 0.3rem;
+  font-size: min(0.9rem, 12.5cqi);
+}
+.tarot.mini.next {
+  box-shadow:
+    inset 0 0 0 2px var(--go),
+    inset 0 0 0 5px var(--navy-950),
+    inset 0 0 0 6px var(--go);
+}
+.tarot.mini.cleared .tarot-art {
+  opacity: 0.75;
+}
+.tarot-clear {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 1.6rem;
+  aspect-ratio: 1;
+  background: #fff;
+  clip-path: polygon(0 0, 100% 0, 100% 100%);
+}
+/* 紺のチェック（L 字を傾ける） */
+.tarot-clear::after {
+  content: "";
+  position: absolute;
+  top: 0.18rem;
+  right: 0.3rem;
+  width: 0.3rem;
+  height: 0.55rem;
+  border: solid var(--navy-900);
+  border-width: 0 2.5px 2.5px 0;
+  transform: rotate(40deg);
+}
+.menu-head-sub {
+  margin-left: 0.5em;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
 }
 .tarot-row.one {
   grid-template-columns: minmax(0, 9rem);
