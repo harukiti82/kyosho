@@ -1,12 +1,22 @@
 // チュートリアル（遊び方）のステップ: 用意した局面で 1 手ずつ打って、標準（プリセットの id は skill）のルールの要素を易しい順に覚える。
 // 1 本の流れ（LESSONS）: スキルなしの要素（挟む〜予測を読む）→ スキルの仕組み（選ぶ・配り直し・ゲージ・使う）→ 副将 → 標準の実戦。
-// 個々のカードの効果は別のチュートリアルで覚える（ここでは強打 1 枚を例にする）。
+// 個々のカードの効果は別のチュートリアル（ui/skilllessons.ts のスキル練習）で覚える（ここでは強打 1 枚を例にする）。
 // 局面は engine の gameFrom で作り、ダメージ・回復・予測・ゲージはすべてエンジン（playMove / previewMove / useSkill）の結果を見せる。
 // DOM に依存しない（盤の誘導・コーチの表示は ui/app.ts と ui/coach.ts）。
 
 import { parseCell, type Cell } from "../engine/board";
 import { createGame, gameFrom, isLegal, kingInfo, playMove, previewMove, type GameState, type MoveEvent } from "../engine/game";
-import { GAUGE_UNIT, gaugeMax, moverGain, SKILLS, VICE_DEADLINE, VICE_PENALTY, type SkillId } from "../engine/skills";
+import {
+  GAUGE_UNIT,
+  gaugeMax,
+  moverGain,
+  SKILLS,
+  VICE_DEADLINE,
+  VICE_PENALTY,
+  type SkillId,
+  type SkillUse,
+  type WheelEffect,
+} from "../engine/skills";
 import {
   cloneRules,
   KIND_ORDER,
@@ -39,7 +49,8 @@ export type LessonId =
   | "skillUse"
   | "vice"
   | "viceHit"
-  | "scout";
+  // スキル練習（ui/skilllessons.ts）はカードの id
+  | SkillId;
 
 /** プレイヤーが打とうとした手（王・副将にするか、この手番でスキルを使ったかを含む） */
 export interface LessonMove {
@@ -63,6 +74,22 @@ export interface Answer {
   vice?: boolean;
   /** 置く前に名札のスキルを使う */
   skill?: boolean;
+}
+
+/** 盤に置く前にする指定（補充で戻す駒・王の移し替えの先） */
+export interface AimAnswer {
+  /** 補充で戻す駒 */
+  kind?: PieceKind;
+  /** 王の移し替えで移す先 */
+  to?: Cell;
+}
+
+/** 1 つのステップで続けて打つ次の手（連続行動の 2 手目） */
+export interface Follow {
+  task: string;
+  answers: readonly Answer[];
+  guide: readonly Cell[];
+  hint(g: GameState, m: LessonMove): string;
 }
 
 export interface Lesson {
@@ -92,22 +119,34 @@ export interface Lesson {
   marks?: readonly { at: Cell; text: string; label: string }[];
   /** 正解ではないマスに置こうとしたときのヒント（置けないマスなら preview は null） */
   hint(g: GameState, m: LessonMove): string;
-  /** 正解を打った後の、何が起きたかの 1 文（エンジンの棋譜の値を使う。g は打つ前、after は打った後の局面） */
+  /**
+   * 正解を打った後の、何が起きたかの 1 文（エンジンの棋譜の値を使う。g は打つ前、after は打った後の局面）。
+   * then があれば最後の手、reply があれば相手の応手を m に渡す
+   */
   done(m: MoveEvent, g: GameState, after: GameState): string;
+  // ---- スキル練習（ui/skilllessons.ts）だけが使う ----
+  /** スキルを使うときの指定の正解（違う指定はヒントを出して使わない） */
+  aim?: AimAnswer;
+  /** 運命の輪で出る効果（練習では運に任せず決める） */
+  wheel?: WheelEffect;
+  /** 正解の後に、同じ手番で続けて打つ手（連続行動の 2 手目） */
+  then?: Follow;
+  /** 正解の後に相手が打つ手（鉄壁の効き目を見せる。CPU の読みでなく決めた手） */
+  reply?: { at: Cell; kind: PieceKind };
 }
 
-const B: Player = 0;
-const W: Player = 1;
+export const B: Player = 0;
+export const W: Player = 1;
 
 /**
  * 教える標準ルール（表示名「標準」のプリセット。id は skill）。既定の DEFAULT_PRESET が別のプリセットに変わっても、
  * チュートリアルはこのプリセットを教える
  */
-const std = (): RuleSet => cloneRules(presetById("skill").rules);
+export const std = (): RuleSet => cloneRules(presetById("skill").rules);
 const STD = std();
 
 /** 標準から、まだ習っていない要素を外したルール（体力・駒の数字は標準のまま）。スキルを外すと副将もなくなる */
-function rulesWith(on: { dirs?: true; anchor?: true; heal?: true; king?: true; skills?: true }): RuleSet {
+export function rulesWith(on: { dirs?: true; anchor?: true; heal?: true; king?: true; skills?: true }): RuleSet {
   const r = std();
   if (!on.skills) r.skills = false;
   if (!on.dirs) r.dirs = "all";
@@ -117,11 +156,11 @@ function rulesWith(on: { dirs?: true; anchor?: true; heal?: true; king?: true; s
   return r;
 }
 
-const hand = (h: Partial<Hand>): Hand => ({ ...(Object.fromEntries(KIND_ORDER.map((k) => [k, 0])) as Hand), ...h });
+export const hand = (h: Partial<Hand>): Hand => ({ ...(Object.fromEntries(KIND_ORDER.map((k) => [k, 0])) as Hand), ...h });
 
 type StoneSpec = [name: string, owner: Player, kind: PieceKind];
-const stones = (list: StoneSpec[]) => list.map(([name, owner, kind]) => ({ at: parseCell(name), owner, kind }));
-const cells = (...names: string[]) => names.map(parseCell);
+export const stones = (list: StoneSpec[]) => list.map(([name, owner, kind]) => ({ at: parseCell(name), owner, kind }));
+export const cells = (...names: string[]) => names.map(parseCell);
 const sameCell = (a: Cell, r: number, c: number) => a[0] === r && a[1] === c;
 
 // ---- 文の部品 ----
@@ -129,18 +168,18 @@ const sameCell = (a: Cell, r: number, c: number) => a[0] === r && a[1] === c;
 // 結果はいま盤で起きた数字で言う。1 文に 1 つのことだけ。チュートリアルは標準（裏返すルール）だけを教える
 
 /** 駒の名前と数字（例: 「金5」。盤の駒の字と同じ書き方） */
-const label = (g: GameState, k: PieceKind) => pieceLabel(g.rules, k);
+export const label = (g: GameState, k: PieceKind) => pieceLabel(g.rules, k);
 /** 駒の並び（例: 「歩1と金5」） */
-const labels = (g: GameState, kinds: readonly PieceKind[]) => kinds.map((k) => label(g, k)).join("と");
+export const labels = (g: GameState, kinds: readonly PieceKind[]) => kinds.map((k) => label(g, k)).join("と");
 /** 数字の足し算（例: 「1＋5」）。式の途中で行を折り返さないよう、＋の前後に WORD JOINER（U+2060）を挟む */
 export const PLUS = "\u2060＋\u2060";
-const sumText = (g: GameState, kinds: readonly PieceKind[]) => kinds.map((k) => g.rules.values[k]).join(PLUS);
+export const sumText = (g: GameState, kinds: readonly PieceKind[]) => kinds.map((k) => g.rules.values[k]).join(PLUS);
 /** プレビューで裏返す駒の種類 */
 const previewKinds = (g: GameState, cellsOf: readonly Cell[]) => cellsOf.map(([y, x]) => g.board[y][x]!.kind);
 /** 王を裏返されたときに起きること（例: 「体力が 30 減る」） */
-const kingLoss = (r: RuleSet) => (r.king.penalty === "lose" ? "その場で負けになる" : `体力が ${r.king.amount} 減る`);
+export const kingLoss = (r: RuleSet) => (r.king.penalty === "lose" ? "その場で負けになる" : `体力が ${r.king.amount} 減る`);
 
-const pickHint = "光っているマスのどちらかに置く";
+export const pickHint = "光っているマスのどちらかに置く";
 
 // ---- スキルなしの要素（挟む〜予測を読む） ----
 
@@ -415,7 +454,7 @@ const BASIC_LESSONS: readonly Lesson[] = [
 // カード・ゲージの値はエンジン（skills.ts）のものを使い、文に出す数字は打った後の局面との差から取る
 
 /** 隠し王（と副将）を外したスキルのあるルール（ゲージ・使うだけを覚えるステップ。王・副の鍵を出さない） */
-const skillOnly = (): RuleSet => rulesWith({ dirs: true, anchor: true, heal: true, skills: true });
+export const skillOnly = (): RuleSet => rulesWith({ dirs: true, anchor: true, heal: true, skills: true });
 
 /** 手番の人（先手）のゲージの、打つ前から打った後に増えた点（GAUGE_UNIT を 1 点に直す） */
 const gaugeGain = (before: GameState, after: GameState) => (after.skills!.sides[0].gauge - before.skills!.sides[0].gauge) / GAUGE_UNIT;
@@ -572,49 +611,6 @@ const MATCH: Lesson = {
 /** 遊び方のステップ（1 本の流れ。最後は実戦） */
 export const LESSONS: readonly Lesson[] = [...BASIC_LESSONS, ...SKILL_LESSONS, MATCH];
 
-/**
- * 偵察（カードごとの効果のステップ）。遊び方の流れには入れず、カードごとのチュートリアルを作るときの例として残す
- * （局面と文は test/lesson.test.ts が確かめる）
- */
-export const SCOUT_LESSON: Lesson = {
-  id: "scout",
-  title: "偵察",
-  point: "偵察で、相手の王の場所が分かる",
-  note: "王が分かった後に使うと、相手の今の副将の場所が分かる。",
-  task: "名札の偵察を押してから、見えた相手の王を飛で挟む",
-  rules: std(),
-  start() {
-    // 王を決めずに、お互い 7 手ずつ打った局面（7 手目の駒が自動で王。相手の王は d3）。
-    // 自分は左の 2 列を下から・e6、相手は右の 2 列を上から・d3。相手の王の候補は相手が置いた 7 つの駒
-    let g = gameFrom(this.rules, {
-      stones: stones([
-        ["a8", B, "fu"], ["a7", W, "fu"], ["a5", W, "fu"], ["a3", W, "fu"],
-        ["b8", B, "fu"], ["b7", W, "fu"], ["b5", W, "fu"], ["b3", W, "fu"],
-        ["g1", W, "fu"], ["g2", B, "fu"], ["g4", B, "fu"], ["g6", B, "fu"],
-        ["h1", W, "fu"], ["h2", B, "fu"], ["h4", B, "fu"], ["h6", B, "fu"],
-        ["e8", B, "fu"], ["e7", W, "fu"], ["d1", W, "fu"], ["d2", B, "fu"], ["c3", B, "fu"],
-      ]),
-      hands: [hand({ fu: 10, hi: 1 }), hand({ fu: 10 })],
-      // ゲージは満タンから始める（打っていく間も満タンのまま）
-      skills: [{ card: "scout", gauge: gaugeMax("scout") }, {}],
-    });
-    const mine = ["a6", "a4", "a2", "b6", "b4", "b2", "e6"];
-    const theirs = ["g3", "g5", "g7", "h3", "h5", "h7", "d3"];
-    for (const [i, name] of mine.entries()) {
-      for (const at of [name, theirs[i]]) g = playMove(g, ...parseCell(at), "fu");
-    }
-    return g;
-  },
-  answers: [{ at: parseCell("e3"), kind: "hi", skill: true }],
-  guide: cells("e3"),
-  hint: () => "光っているマスに飛を置いて、見えた相手の王を挟む",
-  done(m) {
-    const extra = m.king?.penalty ?? 0;
-    if (m.king?.lose) return "偵察で見えた相手の王を裏返したので、あなたの勝ち。";
-    return `偵察で見えた相手の王を裏返した。ダメージ ${m.damage} に王の分の ${extra} が加わり、相手の体力が ${m.damage + extra} 減った。`;
-  },
-};
-
 /** 実戦を終えたときのコーチの 1 文 */
 export const FINISHED_TEXT = "遊び方はこれで終わり。メニューから、同じルールで CPU や人と対局できる。";
 
@@ -656,6 +652,15 @@ export function judgeMove(l: Lesson, g: GameState, m: LessonMove): string | null
 export function illegalHint(l: Lesson, g: GameState, m: LessonMove): string | null {
   if (g.board[m.r][m.c] !== null) return null;
   return judgeMove(l, g, m) ?? l.hint(g, m);
+}
+
+/** スキルを使うときの指定（補充で戻す駒・王の移し替えの先）の判定。正解・指定のないステップなら null、違えばヒント */
+export function judgeUse(l: Lesson, use: SkillUse): string | null {
+  const a = l.aim;
+  if (!a) return null;
+  if (a.kind && use.kind && use.kind !== a.kind) return `この練習では${PIECES[a.kind].name}を戻す`;
+  if (a.to && use.to && !sameCell(a.to, use.to[0], use.to[1])) return "光っている駒へ王を移す";
+  return null;
 }
 
 /** 盤より先にすること */
