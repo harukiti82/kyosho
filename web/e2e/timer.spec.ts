@@ -12,12 +12,15 @@ const moves = (page: Page) => page.locator("#log .log-item.move");
 const clock = (page: Page) => page.locator("#turn-clock");
 const clockNum = (page: Page) => page.locator("#turn-clock .clock-num");
 
-/** 時計を偽物にして（時間は自然に進む）、種付きの CPU でメニューを開く */
+/** 時計を偽物にして（時間は自然に進む）、種付きの CPU でメニューを開く。ルールはスキルなしを保存する（カードを選ぶ間は時計が止まるため） */
 async function open(page: Page, seed = 7) {
   await seedPage(page, seed);
   await page.clock.install();
   await page.goto("/");
   await expect(page.locator("#menu")).toBeVisible();
+  await openSettings(page);
+  await page.locator(".preset[data-preset=std]").click();
+  await saveSettings(page);
 }
 
 /** 設定メニューのラジオ（ラベルを押す。スマホ幅では隠れた input への直接のクリックが効かない） */

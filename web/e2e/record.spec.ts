@@ -201,7 +201,7 @@ test("設定メニューの「通算を消す」は画面内で確かめてか�
     }
   }, RECORD_KEY);
   await page.goto("/");
-  await startGame(page, { level: "normal" });
+  await startGame(page, { level: "normal", preset: "std" });
   await expectPlates(page, { wins: 3, losses: 2, draws: 0 });
   await page.locator("#btn-menu").click();
   await openSettings(page);

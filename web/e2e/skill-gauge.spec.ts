@@ -239,7 +239,7 @@ test.describe("スキルのゲージが溜まる演出", () => {
     await page.clock.install();
     // 体力 2 ずつ: 最初に 2 以上のダメージを与えた手で決着
     await page.goto("/?take=flip&gate=0&dmg=sum&heal=none&hp1=2&hp2=2&dir=all&anc=none&skill=1");
-    await startGame(page, { mode: "pvp" });
+    await startGame(page, { mode: "pvp", cards: true });
     await pauseClock(page);
     for (let i = 0; i < 30 && !(await page.locator("#result[open]").count()); i++) {
       if ((await page.locator(".board.acting").count()) > 0) await playOne(page, false);

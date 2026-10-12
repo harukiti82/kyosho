@@ -1,7 +1,7 @@
 // URL クエリ（設定の共有）とルールカードの文言のテスト
 
 import { describe, expect, it } from "vitest";
-import { defaultRules, matchPreset, NO_KING, PRESETS, presetById, sameRules, type PresetId, type RuleSet } from "../src/engine/rules";
+import { cloneRules, defaultRules, matchPreset, NO_KING, PRESETS, presetById, sameRules, type PresetId, type RuleSet } from "../src/engine/rules";
 import { decodeRules, encodeRules, QUERY_BASE } from "../src/ui/query";
 import compat from "./fixtures/query-compat.json";
 import { endDetails, ruleDetails, ruleLines, sentenceText } from "../src/ui/ruletext";
@@ -18,9 +18,11 @@ describe("URL クエリ", () => {
     expect(decodeRules(encodeRules(r)).rules).toEqual(r);
     expect(matchPreset(r)).toBeNull();
   });
-  it("クエリがなければ既定値（標準）。ルール以外のキー（部屋・計測用）だけでも既定値", () => {
+  it("クエリがなければ既定値（標準。id は skill）。ルール以外のキー（部屋・計測用）だけでも既定値", () => {
     expect(decodeRules("")).toEqual({ rules: defaultRules(), present: false, invalid: [] });
-    expect(matchPreset(defaultRules())?.id).toBe("std");
+    expect(matchPreset(defaultRules())?.id).toBe("skill");
+    expect(matchPreset(defaultRules())?.name).toBe("標準");
+    expect(defaultRules()).toMatchObject({ skills: true, hp: [136, 134] });
     for (const q of ["?utm_source=x", `?room=${"A".repeat(22)}`]) {
       expect(decodeRules(q)).toEqual({ rules: defaultRules(), present: false, invalid: [] });
     }
@@ -80,19 +82,27 @@ describe("URL クエリ", () => {
 });
 
 describe("既定（標準）と共有済みの URL の互換", () => {
-  // 今の標準の URL のクエリ（ユーザーが既定に指定した URL から、回復を低い方−1・王の期限を 7 手に変え、先手の体力を測り直した）
+  // スキルなし（2026-10-12 までの標準。id std）の URL のクエリ（ユーザーが既定に指定した URL から、回復を低い方−1・王の期限を 7 手に変え、先手の体力を測り直した）
   const STD_QUERY =
     "take=flip&gate=0&dmg=sum&heal=low&hp1=129&hp2=130&fu=10&gin=0&kin=2&hi=3&limit=0&king=1&kpen=hp&kdmg=30&kdue=7&dir=piece&yoko=10&kaku=4&vkin=5&vhi=3&anc=atk";
   // 回復・王の期限を変える前の標準の URL（回復は平均・体力 110・130・期限 5 手）
   const OLD_STD_QUERY =
     "take=flip&gate=0&dmg=sum&heal=avg&hp1=110&hp2=130&fu=10&gin=0&kin=2&hi=3&limit=0&king=1&kpen=hp&kdmg=30&kdue=5&dir=piece&yoko=10&kaku=4&vkin=5&vhi=3&anc=atk";
+  // 今の標準（id skill）の URL のクエリ（スキルなしに体力 136・134 とスキルを足す）
+  const SKILL_QUERY = `${STD_QUERY.replace("hp1=129&hp2=130", "hp1=136&hp2=134")}&skill=1`;
   const oldStd = () => {
-    const r = defaultRules();
+    const r = cloneRules(presetById("std").rules);
     return { ...r, heal: "avg" as const, hp: [110, 130] as [number, number], king: { ...r.king, deadline: 5 } };
   };
   it("今の標準の URL を読むと、丸めも不正もなく既定の設定と同じ。既定を書き出すと同じ URL", () => {
-    expect(decodeRules(`?${STD_QUERY}`)).toEqual({ rules: defaultRules(), present: true, invalid: [] });
-    expect(encodeRules(defaultRules())).toBe(STD_QUERY);
+    expect(decodeRules(`?${SKILL_QUERY}`)).toEqual({ rules: defaultRules(), present: true, invalid: [] });
+    expect(encodeRules(defaultRules())).toBe(SKILL_QUERY);
+  });
+  it("既定をスキルありに変える前に共有した標準の URL は、スキルなし（id std）として読む", () => {
+    const d = decodeRules(`?${STD_QUERY}`);
+    expect(d).toEqual({ rules: presetById("std").rules, present: true, invalid: [] });
+    expect(matchPreset(d.rules)).toMatchObject({ id: "std", name: "スキルなし" });
+    expect(encodeRules(presetById("std").rules)).toBe(STD_QUERY);
   });
   it("回復・王の期限を変える前に共有した標準の URL は、平均・体力 110・130・期限 5 手のまま読める（標準とは別の設定）", () => {
     const d = decodeRules(`?${OLD_STD_QUERY}`);
@@ -124,7 +134,7 @@ describe("既定（標準）と共有済みの URL の互換", () => {
 
 describe("ルールカードの文言", () => {
   const card = (id: string) => ruleLines(PRESETS.find((p) => p.id === id)!.rules).map(sentenceText);
-  it("プリセットは 3〜5 行（方向駒は方向の 1 行が増えて 6 行、拠点・標準は端の駒の 1 行が増えて 7 行、スキルありはスキルと副将の 2 行で 9 行）", () => {
+  it("プリセットは 3〜5 行（方向駒は方向の 1 行が増えて 6 行、拠点・スキルなしは端の駒の 1 行が増えて 7 行、標準はスキルと副将の 2 行で 9 行）", () => {
     expect(ruleLines(rulesOf("dir"))).toHaveLength(6);
     expect(ruleLines(rulesOf("anchor"))).toHaveLength(7);
     expect(ruleLines(rulesOf("std"))).toHaveLength(7);
@@ -164,7 +174,7 @@ describe("ルールカードの文言", () => {
   it("原案", () => {
     expect(card("orig")).toContain("挟むと体力を回復 挟んだ両端の駒の平均だけ");
   });
-  it("標準（既定）: 方向・反対側の駒・回復・隠し王（−30）の行がすべて入る", () => {
+  it("スキルなし: 方向・反対側の駒・回復・隠し王（−30）の行がすべて入る", () => {
     expect(card("std")).toEqual([
       "挟んだ相手の駒を裏返す 挟めるマスにだけ置ける",
       "駒ごとに挟める向きが違う 矢印の方向だけ挟める 歩↕ 横↔ 角✕ 飛✚ 金✱",
@@ -175,7 +185,7 @@ describe("ルールカードの文言", () => {
       "体力が 0 で負け 先手 129・後手 130 から",
     ]);
   });
-  it("スキルあり: 標準の行の後にスキルと副将の 1 行ずつ。詳細にゲージ・副将と 11 枚の効果", () => {
+  it("標準（既定。id skill）: スキルなしの行の後にスキルと副将の 1 行ずつ。詳細にゲージ・副将と 11 枚の効果", () => {
     expect(card("skill")).toEqual([
       ...card("std").slice(0, 6),
       "ゲージが満タンでスキルを使う 配られた3枚から1枚を選ぶ。返した枚数と受けたダメージで溜まる",
@@ -339,6 +349,11 @@ describe("設定メニューの保存（localStorage）", () => {
     const v10 = presetById("v10").rules;
     expect(loadSaved(memory({ [SETTINGS_KEY]: JSON.stringify({ rules: encodeRules(v10), side: 1, host: null }) }))).toEqual({ ...defaultSaved(), rules: v10 });
   });
+  it("既定をスキルありに変える前に保存した標準は、スキルなし（id std）のまま読む（新しい標準に置き換えない）", () => {
+    const saved = loadSaved(memory({ [SETTINGS_KEY]: JSON.stringify({ rules: encodeRules(presetById("std").rules), side: "0", host: "random" }) }));
+    expect(saved.rules).toEqual(presetById("std").rules);
+    expect(matchPreset(saved.rules)).toMatchObject({ id: "std", name: "スキルなし" });
+  });
   it("標準を変える前に保存した設定は、保存した値のまま読む（新しい標準に置き換えない）", () => {
     // 回復・王の期限を変える前の標準（回復は平均・体力 110・130・期限 5 手）を保存していた場合
     const old = "take=flip&gate=0&dmg=sum&heal=avg&hp1=110&hp2=130&fu=10&gin=0&kin=2&hi=3&limit=0&king=1&kpen=hp&kdmg=30&kdue=5&dir=piece&yoko=10&kaku=4&vkin=5&vhi=3&anc=atk";
@@ -378,7 +393,7 @@ describe("設定メニューの保存（localStorage）", () => {
       { ...base, hand: { ...base.hand, hi: 2 } },
       { ...base, values: { ...base.values, kin: 4 } },
       { ...base, anchor: "none" },
-      // 体力だけ前の値で、スキルなし（＝標準）
+      // 体力だけ前の値で、スキルなし
       { ...base, skills: false },
     ];
     for (const r of tweaked) expect(savedOf(encodeRules(r)).rules).toEqual(r);

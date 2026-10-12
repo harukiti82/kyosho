@@ -178,7 +178,7 @@ test("隠し王: 自分の王の指定と相手の王の候補。相手に届く
   await host.page.screenshot({ path: `${SHOT}/${pre}-online-king-result.png` });
 });
 
-test("既定（標準）のまま部屋を作る: 部屋のルールが標準になり、終局まで打てる", async ({ browser }, info) => {
+test("既定（標準。id skill）のまま部屋を作る: 部屋のルールが標準になり、両者がカードを選んで終局まで打てる", async ({ browser }, info) => {
   const pre = prefix(info);
   const host = await newPlayer(browser, info, "host");
   const guest = await newPlayer(browser, info, "guest");
@@ -187,8 +187,17 @@ test("既定（標準）のまま部屋を作る: 部屋のルールが標準に
   await waitPlaying(host, guest);
   // サーバーが持つ部屋のルール（両者に届く view.rules）が既定と同じ
   for (const p of [host, guest]) expect(p.last!.view.rules).toEqual(defaultRules());
-  await expect(host.page.locator("#rules4-name")).toHaveText(`ルール ${presetById("std").name}`);
-  await expect(guest.page.locator("#player-1 .hp-max")).toHaveText("/ 130");
+  await expect(host.page.locator("#rules4-name")).toHaveText(`ルール ${presetById("skill").name}`);
+  await expect(guest.page.locator("#player-1 .hp-max")).toHaveText("/ 134");
+  // 標準はスキルあり: 両者が配られた先頭のカードを選んでから打つ
+  for (const p of [host, guest]) {
+    await expect(p.page.locator("#skill-pick .tarot")).toHaveCount(3);
+    const first = p.page.locator("#skill-pick .tarot[data-skill]").first();
+    await (p.touch ? first.tap() : first.click());
+    const ok = p.page.locator("#skill-pick-ok");
+    await (p.touch ? ok.tap() : ok.click());
+  }
+  await expect.poll(() => host.last!.view.skills?.ready).toBe(true);
 
   // 招待リンクから入った側もメニューへ出られ、部屋の URL と接続を保ったまま「対局に戻る」で戻れる
   await guest.page.locator("#btn-menu").click();
@@ -210,7 +219,7 @@ test("普通のオセロなら置けるマス: 自分の手番だけ、自分の
   const pre = prefix(info);
   const host = await newPlayer(browser, info, "host");
   const guest = await newPlayer(browser, info, "guest");
-  const url = await createRoomFromSetup(host, null, "first");
+  const url = await createRoomFromSetup(host, "std", "first");
   await joinFromInvite(guest, url);
   await waitPlaying(host, guest);
   const marked = (p: Player) =>

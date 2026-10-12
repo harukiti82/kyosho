@@ -53,11 +53,13 @@ export async function readSetup(page: Page): Promise<RuleSet> {
  * CPU 対戦で side を省くと先手（人間から打つ）を選ぶ（画面の既定はランダムだが、種付きの CPU の手を再現するテストは人間が先手の前提）。
  * 設定メニューで選んだ手番をそのまま使うときは side: "saved"。
  * threat は取られる駒の警告「!」（画面の既定はオフ。「!」を確かめるテストは true）。
- * スキルありのルールでカードを選ぶ画面が出たら、配られた先頭のカードを選ぶ（2 人対戦は両者。cards: false なら選ばない）
+ * カードを選ぶ画面（スキルのあるルール）が出たら、cards: true か preset: "skill" なら配られた先頭のカードを選び（2 人対戦は両者）、
+ * cards: false なら選ばずに返す。どちらも指定していないのに出たら例外にする（画面の既定の「標準」はスキルありなので、
+ * スキルを前提にしないテストが既定のルールのまま黙ってスキルありで打たないよう、preset: "std"（スキルなし）を指定させる）
  */
 export async function startGame(
   page: Page,
-  opts: { mode?: "cpu" | "pvp"; side?: 0 | 1 | "random" | "saved"; preset?: PresetId; level?: CpuLevel; threat?: boolean; cards?: false } = {},
+  opts: { mode?: "cpu" | "pvp"; side?: 0 | 1 | "random" | "saved"; preset?: PresetId; level?: CpuLevel; threat?: boolean; cards?: boolean } = {},
 ) {
   const mode = opts.mode ?? "cpu";
   const side = mode === "cpu" ? (opts.side ?? 0) : "saved";
@@ -87,6 +89,13 @@ export async function startGame(
   await expect(page.locator("#menu")).toBeHidden();
   await expect(page.locator("#game")).toBeVisible();
   if (opts.cards === false) return;
+  const pickCards = opts.cards ?? opts.preset === "skill";
+  if (!pickCards) {
+    if (await page.locator("#skill-pick").isVisible()) {
+      throw new Error("カードを選ぶ画面が出た。スキルを前提にしないテストは preset: \"std\"、スキルのテストは cards を指定する");
+    }
+    return;
+  }
   for (let i = 0; i < 2 && (await page.locator("#skill-pick").isVisible()); i++) {
     await page.locator("#skill-pick .tarot[data-skill]").first().click();
     await page.locator("#skill-pick-ok").click();

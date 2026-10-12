@@ -41,8 +41,8 @@ describe("部屋の作成", () => {
     }
   });
 
-  it("画面の既定（標準）を rules で送ると、そのルールの部屋になる", async () => {
-    expect(defaultRules()).toEqual(presetById("std").rules);
+  it("画面の既定（標準。id skill）を rules で送ると、そのルールの部屋になる", async () => {
+    expect(defaultRules()).toEqual(presetById("skill").rules);
     const res = await post(JSON.stringify({ rules: defaultRules() }));
     expect(res.status).toBe(201);
     const { roomId } = (await res.json()) as { roomId: string };

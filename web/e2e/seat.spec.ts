@@ -13,6 +13,8 @@ const prefix = (page: Page) => ((page.viewportSize()?.width ?? 1280) < 600 ? "sp
 /** 設定メニューで CPU 対戦の手番 side を選んで保存し、メニューから CPU 対戦（ノーマル）を始める（ラベルを押す。スマホ幅では隠れた input への直接のクリックが効かない） */
 async function startCpu(page: Page, side: "random" | "0" | "1", shot?: string) {
   await openSettings(page);
+  // スキルなし（カードを配る抽選が crypto を使わないように）
+  await page.locator(".preset[data-preset=std]").click();
   await page.locator(`label:has(> input[name=side][value="${side}"])`).click();
   await expect(page.locator(`input[name=side][value="${side}"]`)).toBeChecked();
   if (shot) {
@@ -54,7 +56,7 @@ test("ランダム: 乱数が 0.5 未満なら先手になり、すぐに打て�
   await page.screenshot({ path: `${SHOT}/${prefix(page)}-seat-first.png` });
 });
 
-test("ランダム: 乱数が 0.5 以上なら後手になり、CPU が初手を打つ（標準の隠し王あり）", async ({ page }) => {
+test("ランダム: 乱数が 0.5 以上なら後手になり、CPU が初手を打つ（スキルなしの隠し王あり）", async ({ page }) => {
   await stubDraws(page, [0.9]);
   await page.goto("/");
   await startCpu(page, "random");

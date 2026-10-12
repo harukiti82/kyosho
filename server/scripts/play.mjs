@@ -1,7 +1,9 @@
 // tako:run node scripts/play.mjs
 // 動いている Worker（wrangler dev など）に WebSocket のクライアントを 2 つつなぎ、1 局を最後まで打つ。
 // 途中で 存在しない部屋・満員の部屋への参加・対局途中の切断と再接続・終局後の手 も確かめる。
-// 使い方: node scripts/play.mjs [サイトのオリジン=http://localhost:8787] [プリセット=std（既定）]（API はその /api の下）
+// 使い方: node scripts/play.mjs [サイトのオリジン=http://localhost:8787] [プリセット=std]（API はその /api の下）
+// 既定のプリセットは画面の既定（標準 = id skill）に追従させず、スキルなし（id std）に固定する（カードを選ぶ pick を送らないため。
+// スキルのあるプリセットはこのスクリプトでは打てない）
 // 手は engine を使わず「空きマスと持ち駒を順に試し、illegal_move なら次」で選ぶ（どのプリセットでも打てる）。
 
 const BASE = process.argv[2] ?? "http://localhost:8787";
