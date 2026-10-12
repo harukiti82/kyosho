@@ -80,12 +80,20 @@ export const defaultSaved = (): Saved => ({
 });
 
 /**
+ * 保存の形の版（JSON の v）。v のない保存は版 1（この版を足す前の保存）。
+ * 版 2 で、既定をスキルありに変える前の標準（id std）の読み替えを足した。版 2 の保存はその後にユーザーが
+ * 選び直して保存したものなので、スキルなしと全項目一致しても読み替えない
+ */
+export const SAVE_VERSION = 2;
+
+/**
  * 前のプリセットの値のまま保存された設定と、読み替える先のプリセット。保存はルールの値をまるごと持つので、
  * プリセットの値を変えると前に保存した人は前の値のまま遊び、プリセットの選択もどれとも一致しなくなる。
  * プリセットの値はユーザーが選んだものではないので、全項目が一致する保存だけ今のプリセットに追従させる
- * （1 項目でも違えばユーザーが調整した設定としてそのまま読む）。共有された URL（decodeRules）は読み替えない
+ * （1 項目でも違えばユーザーが調整した設定としてそのまま読む）。共有された URL（decodeRules）は読み替えない。
+ * before: この版より前の保存だけを読み替える（それ以降の保存は読み替えの後に選び直したもの）
  */
-const LEGACY_PRESETS: readonly { rules: RuleSet; to: PresetId }[] = [
+const LEGACY_PRESETS: readonly { rules: RuleSet; to: PresetId; before: number }[] = [
   {
     // スキルあり（PR #42 で公開）。2026-10-12 に体力を 129・130 → 136・134 に
     rules: {
@@ -98,12 +106,28 @@ const LEGACY_PRESETS: readonly { rules: RuleSet; to: PresetId }[] = [
       skills: true,
     },
     to: "skill",
+    before: 2,
+  },
+  {
+    // 2026-10-12 までの標準（既定）。スキルあり（id skill）を標準にしたとき、id std は表示名を「スキルなし」に変えた。
+    // 標準のまま保存した人は新しい標準に追従させる。値は今のスキルなしと同じなので、版 1 の保存では区別できない
+    rules: {
+      action: "flip", gate: false, dirs: "piece", damage: "sum", anchor: "attack", heal: "lowMinus1",
+      hp: [129, 130],
+      hand: { fu: 10, yoko: 10, gin: 0, kaku: 4, kin: 2, hi: 3 },
+      values: { ...DEFAULT_VALUES, hi: 3, kin: 5 },
+      maxPlies: 0,
+      king: { on: true, penalty: "hp", amount: 30, deadline: 7 },
+      skills: false,
+    },
+    to: "skill",
+    before: 2,
   },
 ];
 
-/** 保存したルールが前のプリセットと全項目一致すれば、今のプリセットの値に読み替える */
-function followPreset(r: RuleSet): RuleSet {
-  const old = LEGACY_PRESETS.find((l) => sameRules(l.rules, r));
+/** 保存したルールが前のプリセットと全項目一致すれば（その読み替えより前の版の保存だけ）、今のプリセットの値に読み替える */
+function followPreset(r: RuleSet, version: number): RuleSet {
+  const old = LEGACY_PRESETS.find((l) => version < l.before && sameRules(l.rules, r));
   return old ? cloneRules(presetById(old.to).rules) : r;
 }
 
@@ -113,7 +137,7 @@ const isHost = (v: unknown): v is HostSeat => v === "random" || v === "first" ||
 /**
  * 保存した設定を読む。保存がない・壊れている・読めない値がある（ストレージが使えない場合を含む）ときは、
  * その部分を既定（標準・CPU 対戦の手番はランダム・オンラインの席はランダム・強さに合わせる・45 秒・警告なし）にする。ルールは一部でも読めなければ全体を標準にする。
- * 前のプリセットの値のままの保存は今のプリセットに読み替える（followPreset）
+ * 前のプリセットの値のままの保存は今のプリセットに読み替える（followPreset。保存の版 v で、読み替えの後に選び直した保存は除く）
  */
 export function loadSaved(store: KeyValueStore): Saved {
   const out = defaultSaved();
@@ -127,7 +151,9 @@ export function loadSaved(store: KeyValueStore): Saved {
   const o = raw as Record<string, unknown>;
   if (typeof o.rules === "string") {
     const d = decodeRules(`?${o.rules}`);
-    if (d.present && d.invalid.length === 0) out.rules = followPreset(d.rules);
+    // v のない保存は版 1。数でない v は今の版として読む（読み替えない）
+    const version = o.v === undefined ? 1 : typeof o.v === "number" ? o.v : SAVE_VERSION;
+    if (d.present && d.invalid.length === 0) out.rules = followPreset(d.rules, version);
   }
   if (isSide(o.side)) out.side = o.side;
   if (isHost(o.host)) out.host = o.host;
@@ -140,7 +166,7 @@ export function loadSaved(store: KeyValueStore): Saved {
 export function storeSaved(store: KeyValueStore, s: Saved) {
   store.setItem(
     SETTINGS_KEY,
-    JSON.stringify({ rules: encodeRules(s.rules), side: s.side, host: s.host, timeCpu: s.timeCpu, timeMulti: s.timeMulti, threat: s.threat }),
+    JSON.stringify({ v: SAVE_VERSION, rules: encodeRules(s.rules), side: s.side, host: s.host, timeCpu: s.timeCpu, timeMulti: s.timeMulti, threat: s.threat }),
   );
 }
 

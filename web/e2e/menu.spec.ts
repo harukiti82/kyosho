@@ -195,7 +195,7 @@ test("保存した設定が壊れている・ストレージが使えないと�
   }
 });
 
-test("体力を変える前のスキルあり（129・130）の保存は今の標準（136・134）で始まり、1 項目でも違う保存・前の標準はそのまま（スキルなし）", async ({ page }) => {
+test("体力を変える前のスキルあり（129・130）の保存・前の標準の保存は今の標準（136・134）で始まり、1 項目でも違う保存はそのまま", async ({ page }) => {
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(String(e)));
   const skill = presetById("skill").rules;
@@ -203,8 +203,10 @@ test("体力を変える前のスキルあり（129・130）の保存は今の�
     { rules: encodeRules({ ...skill, hp: [129, 130] }), name: "標準", preset: "skill", hp: [136, 134] },
     // ユーザーが体力を調整した保存は読み替えない
     { rules: encodeRules({ ...skill, hp: [129, 131] }), name: "カスタム", preset: null, hp: [129, 131] },
-    // 既定をスキルありに変える前の標準（体力 129・130 でスキルなし）の保存は、スキルなしとして読む
-    { rules: encodeRules({ ...skill, hp: [129, 130], skills: false }), name: "スキルなし", preset: "std", hp: [129, 130] },
+    // 既定をスキルありに変える前の標準（体力 129・130 でスキルなし）の保存も、今の標準として読む
+    { rules: encodeRules({ ...skill, hp: [129, 130], skills: false }), name: "標準", preset: "skill", hp: [136, 134] },
+    // 前の標準を調整した保存は読み替えない
+    { rules: encodeRules({ ...skill, hp: [129, 131], skills: false }), name: "カスタム", preset: null, hp: [129, 131] },
   ];
   for (const c of cases) {
     await page.goto("/");
@@ -221,6 +223,51 @@ test("体力を変える前のスキルあり（129・130）の保存は今の�
     await expect(page.locator("#player-0 .hp-num")).toHaveText(String(c.hp[0]));
     await expect(page.locator("#player-1 .hp-num")).toHaveText(String(c.hp[1]));
   }
+  expect(errors).toEqual([]);
+});
+
+test("前の標準のまま保存した人は今の標準で始まり（ルール以外の保存はそのまま）、スキルなしを選んで保存し直せば再読み込みしてもスキルなし", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(String(e)));
+  await page.goto("/");
+  // 版（v）を足す前の保存: 前の標準（今のスキルなしと同じ値）・後手・席は先・CPU は 20 秒・マルチは 90 秒・「!」オン
+  const old = { rules: encodeRules(presetById("std").rules), side: "1", host: "first", timeCpu: "20", timeMulti: "90", threat: true };
+  await page.evaluate((v) => localStorage.setItem("kyosho:settings", JSON.stringify(v)), old);
+  await page.reload();
+  await expect(page.locator("#menu-rule-name")).toHaveText("標準");
+  await openSettings(page);
+  await expect(page.locator(".preset[aria-pressed=true]")).toHaveAttribute("data-preset", "skill");
+  await expect(page.locator("input[name=hp0]")).toHaveValue("136");
+  await expect(page.locator("input[name=hp1]")).toHaveValue("134");
+  for (const [name, value] of [["side", "1"], ["host", "first"], ["timeCpu", "20"], ["timeMulti", "90"], ["threat", "1"]]) {
+    await expect(page.locator(`input[name=${name}][value="${value}"]`), name).toBeChecked();
+  }
+  // 読み込んだだけでは保存を書き換えない
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem("kyosho:settings") ?? "null"))).toEqual(old);
+  await page.locator("#setup-cancel").click();
+  await startGame(page, { mode: "pvp", cards: true });
+  await expect(page.locator("#player-0 .hp-num")).toHaveText("136");
+  await expect(page.locator("#player-1 .hp-num")).toHaveText("134");
+
+  // スキルなしを選んで保存し直すと、再読み込みしても（2 回）スキルなしのまま
+  await page.goto("/");
+  await openSettings(page);
+  await page.locator(".preset[data-preset=std]").click();
+  await saveSettings(page);
+  await expect(page.locator("#menu-rule-name")).toHaveText("スキルなし");
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem("kyosho:settings") ?? "null"))).toMatchObject({ v: 2, side: "1", threat: true });
+  for (let i = 0; i < 2; i++) {
+    await page.reload();
+    await expect(page.locator("#menu-rule-name")).toHaveText("スキルなし");
+  }
+  await openSettings(page);
+  await expect(page.locator(".preset[aria-pressed=true]")).toHaveAttribute("data-preset", "std");
+  await expect(page.locator("input[name=hp0]")).toHaveValue("129");
+  await saveSettings(page);
+  await startGame(page, { mode: "pvp", cards: false });
+  await expect(page.locator("#skill-pick")).toBeHidden();
+  await expect(page.locator("#player-0 .hp-num")).toHaveText("129");
+  await expect(page.locator("#player-1 .hp-num")).toHaveText("130");
   expect(errors).toEqual([]);
 });
 

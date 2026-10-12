@@ -5,7 +5,7 @@ import { cloneRules, defaultRules, matchPreset, NO_KING, PRESETS, presetById, sa
 import { decodeRules, encodeRules, QUERY_BASE } from "../src/ui/query";
 import compat from "./fixtures/query-compat.json";
 import { endDetails, ruleDetails, ruleLines, sentenceText } from "../src/ui/ruletext";
-import { cryptoRandom, defaultSaved, drawSeat, loadSaved, seatChoice, SETTINGS_KEY, storeSaved } from "../src/ui/setup";
+import { cryptoRandom, defaultSaved, drawSeat, loadSaved, SAVE_VERSION, seatChoice, SETTINGS_KEY, storeSaved } from "../src/ui/setup";
 import { rulesOf } from "./helpers";
 
 describe("URL クエリ", () => {
@@ -349,10 +349,28 @@ describe("設定メニューの保存（localStorage）", () => {
     const v10 = presetById("v10").rules;
     expect(loadSaved(memory({ [SETTINGS_KEY]: JSON.stringify({ rules: encodeRules(v10), side: 1, host: null }) }))).toEqual({ ...defaultSaved(), rules: v10 });
   });
-  it("既定をスキルありに変える前に保存した標準は、スキルなし（id std）のまま読む（新しい標準に置き換えない）", () => {
-    const saved = loadSaved(memory({ [SETTINGS_KEY]: JSON.stringify({ rules: encodeRules(presetById("std").rules), side: "0", host: "random" }) }));
-    expect(saved.rules).toEqual(presetById("std").rules);
-    expect(matchPreset(saved.rules)).toMatchObject({ id: "std", name: "スキルなし" });
+  it("既定をスキルありに変える前に標準のまま保存した設定は、新しい標準（id skill）として読む。ルール以外の保存はそのまま", () => {
+    const std = presetById("std").rules;
+    const saved = loadSaved(memory({ [SETTINGS_KEY]: JSON.stringify({ rules: encodeRules(std), side: "0", host: "first", timeCpu: "20", timeMulti: "90", threat: true }) }));
+    expect(saved).toEqual({ rules: presetById("skill").rules, side: "0", host: "first", timeCpu: "20", timeMulti: "90", threat: true });
+    expect(matchPreset(saved.rules)).toMatchObject({ id: "skill", name: "標準" });
+    // 版 1 と明示した保存も同じ
+    expect(loadSaved(memory({ [SETTINGS_KEY]: JSON.stringify({ v: 1, rules: encodeRules(std) }) })).rules).toEqual(presetById("skill").rules);
+  });
+  it("読み替えを足した後の保存（版 2）は、スキルなしを選んで保存すれば再読み込みしてもスキルなし", () => {
+    const store = memory();
+    storeSaved(store, { ...defaultSaved(), rules: presetById("std").rules });
+    expect(JSON.parse(store.getItem(SETTINGS_KEY) ?? "null")).toMatchObject({ v: SAVE_VERSION });
+    expect(SAVE_VERSION).toBe(2);
+    for (let i = 0; i < 2; i++) {
+      const got = loadSaved(store);
+      expect(matchPreset(got.rules)?.id).toBe("std");
+      storeSaved(store, got);
+    }
+    // 先の版・数でない版も読み替えない（ユーザーが選び直した保存を戻さない側に倒す）
+    for (const v of [3, "1", null]) {
+      expect(matchPreset(loadSaved(memory({ [SETTINGS_KEY]: JSON.stringify({ v, rules: encodeRules(presetById("std").rules) }) })).rules)?.id).toBe("std");
+    }
   });
   it("標準を変える前に保存した設定は、保存した値のまま読む（新しい標準に置き換えない）", () => {
     // 回復・王の期限を変える前の標準（回復は平均・体力 110・130・期限 5 手）を保存していた場合
@@ -393,15 +411,19 @@ describe("設定メニューの保存（localStorage）", () => {
       { ...base, hand: { ...base.hand, hi: 2 } },
       { ...base, values: { ...base.values, kin: 4 } },
       { ...base, anchor: "none" },
-      // 体力だけ前の値で、スキルなし
-      { ...base, skills: false },
+      // スキルなしで 1 項目違う（前の標準を調整した保存）
+      { ...base, skills: false, hp: [129, 131] },
+      { ...base, skills: false, king: { ...base.king, deadline: 5 } },
     ];
     for (const r of tweaked) expect(savedOf(encodeRules(r)).rules).toEqual(r);
-    expect(matchPreset(savedOf(encodeRules({ ...base, skills: false })).rules)?.id).toBe("std");
+    // 体力だけ前の値でスキルなし＝前の標準そのものは、新しい標準に読み替える
+    expect(matchPreset(savedOf(encodeRules({ ...base, skills: false })).rules)?.id).toBe("skill");
     // 今のスキルありの保存はそのまま
     expect(savedOf(encodeRules(presetById("skill").rules)).rules).toEqual(presetById("skill").rules);
     // 壊れた保存は今までどおり標準
     expect(savedOf(OLD_SKILL.replace("hp1=129", "hp1=zz")).rules).toEqual(defaultSaved().rules);
+    // 読み替えの後の版で前のスキルありの値を保存した（ユーザーが体力を 129・130 に調整した）ものは読み替えない
+    expect(loadSaved(memory({ [SETTINGS_KEY]: JSON.stringify({ v: SAVE_VERSION, rules: OLD_SKILL }) })).rules.hp).toEqual([129, 130]);
   });
   it("ストレージが例外を投げても標準（safeStore 越し）", async () => {
     const { safeStore } = await import("../src/net/online");
