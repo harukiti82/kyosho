@@ -2252,10 +2252,10 @@ export class App {
     // 遊び方: 打つマスを光らせ、駒台で選ぶもの（駒・王）がなければ矢印も出す。1 マスだけのときだけ矢印（候補から選ぶステップは光だけ）
     const step = this.inStep();
     const need = this.lessonNeed(g);
-    // スキルを使ってから置くステップは、使うまでマスを光らせない（偵察で見える王を先に教えない）
     // スキル: 溜めマス・王の移し替えで移せる駒・偵察で分かった相手の王
     const zones = !!g.skills;
     const aimNow = act ? this.aimOf(g) : null;
+    // スキルを使ってから置くステップは、使うまでマスを光らせない（偵察で見える王を先に教えない）。
     // 指定（補充の駒・王を移す先）を選んでいる間は、置くマスでなく指定の答え（王を移す先）を光らせる
     const aimTo = step?.lesson.aim?.to;
     const guideCells = aimNow ? (aimNow === "kingmove" && aimTo ? [aimTo] : []) : !need.skill ? step?.lesson.guide ?? [] : [];
