@@ -1,9 +1,11 @@
-// チュートリアル（遊び方）のステップ: 用意した局面で 1 手ずつ打って、標準ルールの要素を易しい順に覚える。
-// 局面は engine の gameFrom で作り、ダメージ・回復・予測はすべてエンジン（playMove / previewMove）の結果を見せる。
+// チュートリアル（遊び方）のステップ: 用意した局面で 1 手ずつ打って、ルールの要素を易しい順に覚える。
+// 章は 2 つ: 標準ルール（LESSONS）と、標準を覚えた人がプリセット「スキルあり」で足されるものを覚える章（SKILL_LESSONS）。
+// 局面は engine の gameFrom で作り、ダメージ・回復・予測・ゲージはすべてエンジン（playMove / previewMove / useSkill）の結果を見せる。
 // DOM に依存しない（盤の誘導・コーチの表示は ui/app.ts と ui/coach.ts）。
 
 import { parseCell, type Cell } from "../engine/board";
 import { createGame, gameFrom, isLegal, kingInfo, playMove, previewMove, type GameState, type MoveEvent } from "../engine/game";
+import { GAUGE_UNIT, gaugeMax, moverGain, SKILLS, VICE_DEADLINE, VICE_PENALTY, type SkillId } from "../engine/skills";
 import {
   cloneRules,
   KIND_ORDER,
@@ -17,16 +19,41 @@ import {
   type RuleSet,
 } from "../engine/rules";
 import type { KeyValueStore } from "../net/online";
-import { pieceLabel } from "./ruletext";
+import { pieceLabel, skillText } from "./ruletext";
 
-export type LessonId = "flank" | "damage" | "dirs" | "hand" | "anchor" | "heal" | "king" | "kingAuto" | "kingHit" | "read" | "match";
+export type LessonId =
+  | "flank"
+  | "damage"
+  | "dirs"
+  | "hand"
+  | "anchor"
+  | "heal"
+  | "king"
+  | "kingAuto"
+  | "kingHit"
+  | "read"
+  | "match"
+  | "skillPick"
+  | "skillGauge"
+  | "skillUse"
+  | "vice"
+  | "viceHit"
+  | "scout"
+  | "skillMatch";
 
-/** プレイヤーが打とうとした手（王にするかを含む） */
+/** 遊び方の章（標準ルール・スキルあり） */
+export type ChapterId = "std" | "skill";
+
+/** プレイヤーが打とうとした手（王・副将にするか、この手番でスキルを使ったかを含む） */
 export interface LessonMove {
   r: number;
   c: number;
   kind: PieceKind;
   king: boolean;
+  /** 副将にして置く */
+  vice?: boolean;
+  /** この手番でスキルを使ってある */
+  skill?: boolean;
 }
 
 /** 正解の手 */
@@ -35,6 +62,10 @@ export interface Answer {
   kind: PieceKind;
   /** 王にして置く */
   king?: boolean;
+  /** 副将にして置く */
+  vice?: boolean;
+  /** 置く前に名札のスキルを使う */
+  skill?: boolean;
 }
 
 export interface Lesson {
@@ -48,8 +79,13 @@ export interface Lesson {
   /** 盤ですること（命令形の 1 文） */
   task: string;
   rules: RuleSet;
-  /** 実戦（CPU イージー・標準・制限時間なし）。局面・正解・誘導はない */
+  /** 実戦（CPU イージー・章のルール・制限時間なし）。局面・正解・誘導はない */
   match?: true;
+  /**
+   * 盤に打たず、対局の前のカードを選ぶステップ（配り直してから 1 枚選べば正解）。answers・guide は空。
+   * done はカードを選んだ後の 1 文
+   */
+  pick?: { done(card: SkillId, g: GameState): string };
   /** 始めの局面（先手 = プレイヤーの手番） */
   start(): GameState;
   answers: readonly Answer[];
@@ -59,8 +95,8 @@ export interface Lesson {
   marks?: readonly { at: Cell; text: string; label: string }[];
   /** 正解ではないマスに置こうとしたときのヒント（置けないマスなら preview は null） */
   hint(g: GameState, m: LessonMove): string;
-  /** 正解を打った後の、何が起きたかの 1 文（エンジンの棋譜の値を使う） */
-  done(m: MoveEvent, g: GameState): string;
+  /** 正解を打った後の、何が起きたかの 1 文（エンジンの棋譜の値を使う。g は打つ前、after は打った後の局面） */
+  done(m: MoveEvent, g: GameState, after: GameState): string;
 }
 
 const B: Player = 0;
@@ -387,11 +423,228 @@ export const LESSONS: readonly Lesson[] = [
   },
 ];
 
+// ---- スキルあり の章 ----
+// 標準を覚えた人に、プリセット「スキルあり」で足されるもの（カードを選ぶ・ゲージ・使う・副将・偵察）を教える。
+// カード・ゲージの値はエンジン（skills.ts）のものを使い、文に出す数字は打った後の局面との差から取る
+
+/** 教えるスキルありのルール（標準＋スキル。副将は隠し王ありのときだけ） */
+const skillRules = (): RuleSet => cloneRules(presetById("skill").rules);
+/** スキルありから隠し王（と副将）を外したルール（ゲージ・使うだけを覚えるステップ。王・副の鍵を出さない） */
+function skillOnly(): RuleSet {
+  const r = skillRules();
+  r.king = { ...NO_KING };
+  return r;
+}
+
+/** 手番の人（先手）のゲージの、打つ前から打った後に増えた点（GAUGE_UNIT を 1 点に直す） */
+const gaugeGain = (before: GameState, after: GameState) => (after.skills!.sides[0].gauge - before.skills!.sides[0].gauge) / GAUGE_UNIT;
+/** 先手のカードの名前 */
+const cardName = (g: GameState) => {
+  const card = g.skills?.sides[0].card;
+  return card ? SKILLS[card].name : "スキル";
+};
+
+export const SKILL_LESSONS: readonly Lesson[] = [
+  {
+    id: "skillPick",
+    title: "カードを選ぶ",
+    point: "対局の前に、3 枚から 1 枚を選ぶ",
+    note: "配り直しは 1 局に 1 回で、ほかの 8 枚から新しく 3 枚が来る。",
+    task: "配り直しを押してから、好きなカードを 1 枚選ぶ",
+    rules: skillRules(),
+    start() {
+      // 盤は選ぶ画面の後ろに見えるだけ（「!」の出ない形）。相手は選び終えてある
+      return gameFrom(this.rules, {
+        stones: stones([["e8", B, "fu"], ["e7", W, "fu"]]),
+        hands: [hand({ fu: 3 }), hand({ fu: 3 })],
+        skills: [{ offer: ["firstaid", "strong", "wall"] }, { card: "firstaid" }],
+      });
+    },
+    answers: [],
+    guide: [],
+    pick: {
+      done(card, g) {
+        return `${SKILLS[card].name}を選んだ。${skillText(card, g.rules).point}。ゲージが満タンになるたびに使える。`;
+      },
+    },
+    hint: () => PICK_HINT,
+    done: () => "",
+  },
+  {
+    id: "skillGauge",
+    title: "ゲージを溜める",
+    point: "裏返した数だけ、ゲージが溜まる",
+    note: "1 手で多く裏返すほど、まとめて多く溜まる。",
+    task: "光っているマスのうち、多く裏返せるほうに歩を置く",
+    rules: skillOnly(),
+    start() {
+      // 強打のゲージは満タンの 4 点手前。h4 は 3 つ裏返して 4 点で満タン、b6 は 1 つで 1 点（どちらも溜めマスの外）
+      return gameFrom(this.rules, {
+        stones: stones([["h8", B, "fu"], ["h7", W, "fu"], ["h6", W, "fu"], ["h5", W, "fu"], ["b8", B, "fu"], ["b7", W, "fu"]]),
+        hands: [hand({ fu: 3 }), hand({ fu: 3 })],
+        skills: [{ card: "strong", gauge: gaugeMax("strong") - 4 * GAUGE_UNIT }, {}],
+      });
+    },
+    answers: [{ at: parseCell("h4"), kind: "fu" }],
+    guide: cells("b6", "h4"),
+    hint(g, m) {
+      const pv = previewMove(g, m.r, m.c, m.kind);
+      const card = g.skills?.sides[0].card;
+      if (!pv || !card) return pickHint;
+      const gain = moverGain(card, [m.r, m.c], pv.targets.map(([r, c]) => ({ r, c }))) / GAUGE_UNIT;
+      return `そこで裏返せるのは ${pv.targets.length} つで、ゲージは ${gain} しか溜まらない。多く裏返せるマスに置く`;
+    },
+    done(m, g, after) {
+      const full = after.skills!.sides[0].gauge >= gaugeMax(after.skills!.sides[0].card!);
+      return `${PIECES[m.kind].name}で ${m.targets.length} つ裏返して、ゲージが ${gaugeGain(g, after)} 溜まった。${full ? "満タンになったので、次の自分の手番で使える。" : ""}`;
+    },
+  },
+  {
+    id: "skillUse",
+    title: "スキルを使う",
+    point: "満タンになったら、置く前に使う",
+    note: "使えるのは自分の手番の初めで、使うとゲージは 0 に戻る。",
+    task: "名札の強打を押してから、光っているマスに歩を置く",
+    rules: skillOnly(),
+    start() {
+      return gameFrom(this.rules, {
+        stones: stones([["d8", B, "kin"], ["d7", W, "fu"], ["d6", W, "fu"]]),
+        hands: [hand({ fu: 3 }), hand({ fu: 3 })],
+        skills: [{ card: "strong", gauge: gaugeMax("strong") }, {}],
+      });
+    },
+    answers: [{ at: parseCell("d5"), kind: "fu", skill: true }],
+    guide: cells("d5"),
+    hint: () => "光っているマスに歩を置く",
+    done(m) {
+      const name = m.skill ? SKILLS[m.skill.id].name : "スキル";
+      return m.plain === undefined ? `${name}を使った。` : `${name}で、ダメージ ${m.plain} が ${m.damage} になった。ゲージはまた 0 から溜める。`;
+    },
+  },
+  {
+    id: "vice",
+    title: "副将を置く",
+    point: `王の後は、${VICE_DEADLINE} 手ごとに副将を置き直す`,
+    note: `置かないと、${VICE_DEADLINE} 手目に置いた駒が自動で副将になる。`,
+    task: "駒台の右にある副をタップしてから、光っているマスに歩を置く",
+    rules: skillRules(),
+    start() {
+      // 王はお互い決めてある（自分は e8、相手は h1）。a1・a2 は正解の後も自分に打てる手を残し、終局させない（終局すると相手の王が見える）
+      return gameFrom(this.rules, {
+        stones: stones([["e8", B, "fu"], ["e7", W, "fu"], ["h1", W, "fu"], ["a1", B, "fu"], ["a2", W, "fu"]]),
+        hands: [hand({ fu: 3 }), hand({ fu: 3 })],
+        kings: [parseCell("e8"), parseCell("h1")],
+        skills: [{}, {}],
+      });
+    },
+    answers: [{ at: parseCell("e6"), kind: "fu", vice: true }],
+    guide: cells("e6"),
+    hint: () => "光っているマスに歩を置く",
+    done: (m, g) =>
+      `この${label(g, m.kind)}があなたの副将になった。相手には見えず、裏返されると体力が ${VICE_PENALTY} 減る。${VICE_DEADLINE} 手ごとに新しい副将を置き、前の副将はふつうの駒に戻る。`,
+  },
+  {
+    id: "viceHit",
+    title: "副将を裏返す",
+    point: `副将を裏返すと、相手の体力が ${VICE_PENALTY} 減る`,
+    task: "この練習では「?」の駒が相手の副将。光っているマスに歩を置いて挟む",
+    rules: skillRules(),
+    start() {
+      // 王と副将はお互い決めてある（自分の王 g8・副将 a8、相手の王 h1・副将 c7）。a1・a2 は終局させないため
+      return gameFrom(this.rules, {
+        stones: stones([["c8", B, "fu"], ["c7", W, "kin"], ["g8", B, "fu"], ["a8", B, "fu"], ["h1", W, "fu"], ["a1", B, "fu"], ["a2", W, "fu"]]),
+        hands: [hand({ fu: 3 }), hand({ fu: 3 })],
+        kings: [parseCell("g8"), parseCell("h1")],
+        vices: [parseCell("a8"), parseCell("c7")],
+        skills: [{}, {}],
+      });
+    },
+    answers: [{ at: parseCell("c6"), kind: "fu" }],
+    guide: cells("c6"),
+    marks: [{ at: parseCell("c7"), text: "?", label: "相手の副将" }],
+    hint: () => "光っているマスに歩を置いて、「?」の駒を挟む",
+    done(m) {
+      const extra = m.vice?.penalty ?? 0;
+      return `相手の副将を裏返した。ダメージ ${m.damage} に副将の分の ${extra} が加わり、相手の体力が ${m.damage + extra} 減った。裏返した副将はふつうの駒になり、相手は次の ${VICE_DEADLINE} 手の区切りで新しい副将を置く。`;
+    },
+  },
+  {
+    id: "scout",
+    title: "偵察",
+    point: "偵察で、相手の王の場所が分かる",
+    note: "王が分かった後に使うと、相手の今の副将の場所が分かる。",
+    task: "名札の偵察を押してから、見えた相手の王を飛で挟む",
+    rules: skillRules(),
+    start() {
+      // 王を決めずに、お互い 7 手ずつ打った局面（7 手目の駒が自動で王。相手の王は d3）。
+      // 自分は左の 2 列を下から・e6、相手は右の 2 列を上から・d3。相手の王の候補は相手が置いた 7 つの駒
+      let g = gameFrom(this.rules, {
+        stones: stones([
+          ["a8", B, "fu"], ["a7", W, "fu"], ["a5", W, "fu"], ["a3", W, "fu"],
+          ["b8", B, "fu"], ["b7", W, "fu"], ["b5", W, "fu"], ["b3", W, "fu"],
+          ["g1", W, "fu"], ["g2", B, "fu"], ["g4", B, "fu"], ["g6", B, "fu"],
+          ["h1", W, "fu"], ["h2", B, "fu"], ["h4", B, "fu"], ["h6", B, "fu"],
+          ["e8", B, "fu"], ["e7", W, "fu"], ["d1", W, "fu"], ["d2", B, "fu"], ["c3", B, "fu"],
+        ]),
+        hands: [hand({ fu: 10, hi: 1 }), hand({ fu: 10 })],
+        // ゲージは満タンから始める（打っていく間も満タンのまま）
+        skills: [{ card: "scout", gauge: gaugeMax("scout") }, {}],
+      });
+      const mine = ["a6", "a4", "a2", "b6", "b4", "b2", "e6"];
+      const theirs = ["g3", "g5", "g7", "h3", "h5", "h7", "d3"];
+      for (const [i, name] of mine.entries()) {
+        for (const at of [name, theirs[i]]) g = playMove(g, ...parseCell(at), "fu");
+      }
+      return g;
+    },
+    answers: [{ at: parseCell("e3"), kind: "hi", skill: true }],
+    guide: cells("e3"),
+    hint: () => "光っているマスに飛を置いて、見えた相手の王を挟む",
+    done(m) {
+      const extra = m.king?.penalty ?? 0;
+      if (m.king?.lose) return "偵察で見えた相手の王を裏返したので、あなたの勝ち。";
+      return `偵察で見えた相手の王を裏返した。ダメージ ${m.damage} に王の分の ${extra} が加わり、相手の体力が ${m.damage + extra} 減った。`;
+    },
+  },
+  {
+    id: "skillMatch",
+    title: "実戦",
+    point: "スキルを使って対局",
+    note: "この対局には時間の制限がない。",
+    task: "カードを選んで、強さイージーの CPU と最後まで対局する",
+    rules: skillRules(),
+    match: true,
+    start() {
+      return createGame(this.rules);
+    },
+    answers: [],
+    guide: [],
+    hint: () => "",
+    done: () => "",
+  },
+];
+
+/** 章ごとのステップ */
+export const CHAPTERS: Readonly<Record<ChapterId, readonly Lesson[]>> = { std: LESSONS, skill: SKILL_LESSONS };
+export const CHAPTER_IDS: readonly ChapterId[] = ["std", "skill"];
+/** 章の名前（メニューの遊び方の項目） */
+export const CHAPTER_NAME: Readonly<Record<ChapterId, string>> = { std: "基本のルール", skill: "スキルあり" };
+
 /** 実戦を終えたときのコーチの 1 文 */
 export const FINISHED_TEXT = "遊び方はこれで終わり。メニューから、同じルールで CPU や人と対局できる。";
+/** スキルありの実戦を終えたときのコーチの 1 文 */
+export const SKILL_FINISHED_TEXT = "スキルありの遊び方はこれで終わり。設定でスキルありを選ぶと、スキルを使って対局できる。";
+/** 章を終えたときの 1 文 */
+export const finishedText = (chapter: ChapterId) => (chapter === "skill" ? SKILL_FINISHED_TEXT : FINISHED_TEXT);
 
 /** 王にしないで置こうとしたときのヒント */
 export const KING_HINT = "王にするには、先に駒台の右にある王をタップする";
+/** 副将にしないで置こうとしたときのヒント */
+export const VICE_HINT = "副将にするには、先に駒台の右にある副をタップする";
+/** 配り直す前にカードを選ぼうとしたときのヒント */
+export const PICK_HINT = "選ぶ前に、配り直しを押す";
+/** スキルを使う前に置こうとしたときのヒント */
+export const skillHint = (g: GameState) => `先に名札の${cardName(g)}を押して使う`;
 
 /** 選んでいる駒（have）では正解の駒（need）の向きに挟めない・違う駒のときのヒント */
 export function kindHint(r: RuleSet, have: PieceKind, need: PieceKind): string {
@@ -407,11 +660,14 @@ export function kindHint(r: RuleSet, have: PieceKind, need: PieceKind): string {
  * 違う駒でもそのマスに置ける（向きは合う）なら、なぜその駒ではだめかはステップのヒントが言う
  */
 export function judgeMove(l: Lesson, g: GameState, m: LessonMove): string | null {
+  // スキルを使ってから置くステップは、使う前に置こうとしたらどこでも先に使うよう知らせる
+  if (l.answers.length > 0 && l.answers.every((a) => a.skill) && !m.skill) return skillHint(g);
   const here = l.answers.filter((a) => sameCell(a.at, m.r, m.c));
   if (here.length === 0) return l.hint(g, m);
   const a = here.find((x) => x.kind === m.kind);
   if (!a) return isLegal(g, m.r, m.c, m.kind) ? l.hint(g, m) : kindHint(l.rules, m.kind, here[0].kind);
   if (a.king && !m.king) return KING_HINT;
+  if (a.vice && !m.vice) return VICE_HINT;
   return null;
 }
 
@@ -421,11 +677,28 @@ export function illegalHint(l: Lesson, g: GameState, m: LessonMove): string | nu
   return judgeMove(l, g, m) ?? l.hint(g, m);
 }
 
-/** 次にすること（盤より先に駒台で選ぶ駒・王を押す）。選んでいる駒・王の選択から決める */
-export function nextNeed(l: Lesson, selected: PieceKind, kingOn: boolean): { kind?: PieceKind; king?: true } {
+/** 盤より先にすること */
+export interface Need {
+  /** 名札のスキルを使う */
+  skill?: true;
+  /** 駒台で選ぶ駒 */
+  kind?: PieceKind;
+  /** 王の鍵を押す */
+  king?: true;
+  /** 副の鍵を押す */
+  vice?: true;
+}
+
+/**
+ * 次にすること（盤より先に名札のスキルを使う・駒台で選ぶ駒・王・副を押す）。選んでいる駒・王と副の選択・使ったスキルから決める。
+ * スキルを使うまでは、ほかの誘導を出さない（光るマスも App が隠す）
+ */
+export function nextNeed(l: Lesson, selected: PieceKind, kingOn: boolean, more: { viceOn?: boolean; skill?: boolean } = {}): Need {
+  if (l.answers.length > 0 && l.answers.every((a) => a.skill) && !more.skill) return { skill: true };
   const kinds = new Set(l.answers.map((a) => a.kind));
   if (kinds.size === 1 && !kinds.has(selected)) return { kind: [...kinds][0] };
   if (l.answers.some((a) => a.king) && !kingOn) return { king: true };
+  if (l.answers.some((a) => a.vice) && !more.viceOn) return { vice: true };
   return {};
 }
 
@@ -433,6 +706,10 @@ export function nextNeed(l: Lesson, selected: PieceKind, kingOn: boolean): { kin
 
 export const TUTORIAL_KEY = "kyosho:tutorial";
 
+/**
+ * 保存の形: 標準の章は従来どおり一番上の { step, reached, done }、スキルありの章は skill キーの中に同じ形で持つ
+ * （skill キーのない古い保存は、スキルありを開いたことがないものとして読む）
+ */
 export interface Progress {
   /** 前回開いていたステップ（0 始まり） */
   step: number;
@@ -442,25 +719,39 @@ export interface Progress {
   done: boolean;
 }
 
-const isStep = (v: unknown): v is number => Number.isInteger(v) && (v as number) >= 0 && (v as number) < LESSONS.length;
+const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 
-/** 保存した進み具合。保存がない・読めないときは null（はじめて） */
-export function loadProgress(store: KeyValueStore): Progress | null {
-  let raw: unknown;
+/** 保存の中身（読めない・壊れていれば null） */
+function readSaved(store: KeyValueStore): Record<string, unknown> | null {
   try {
-    raw = JSON.parse(store.getItem(TUTORIAL_KEY) ?? "null");
+    const raw: unknown = JSON.parse(store.getItem(TUTORIAL_KEY) ?? "null");
+    return isObject(raw) ? raw : null;
   } catch {
     return null;
   }
-  if (typeof raw !== "object" || raw === null) return null;
-  const o = raw as Record<string, unknown>;
+}
+
+/** 章の進み具合を検証する（範囲外・形が違えば null） */
+function progressOf(o: unknown, count: number): Progress | null {
+  if (!isObject(o)) return null;
+  const isStep = (v: unknown): v is number => Number.isInteger(v) && (v as number) >= 0 && (v as number) < count;
   if (!isStep(o.step)) return null;
   const reached = isStep(o.reached) ? Math.max(o.reached, o.step) : o.step;
   return { step: o.step, reached, done: o.done === true };
 }
 
-export function saveProgress(store: KeyValueStore, p: Progress) {
-  store.setItem(TUTORIAL_KEY, JSON.stringify(p));
+/** 保存した章の進み具合。保存がない・読めないときは null（はじめて） */
+export function loadProgress(store: KeyValueStore, chapter: ChapterId = "std"): Progress | null {
+  const o = readSaved(store);
+  if (!o) return null;
+  return progressOf(chapter === "std" ? o : o.skill, CHAPTERS[chapter].length);
+}
+
+/** 章の進み具合を保存する（もう一方の章の保存は残す） */
+export function saveProgress(store: KeyValueStore, p: Progress, chapter: ChapterId = "std") {
+  const o = readSaved(store) ?? {};
+  const plain = { step: p.step, reached: p.reached, done: p.done };
+  store.setItem(TUTORIAL_KEY, JSON.stringify(chapter === "std" ? { ...o, ...plain } : { ...o, skill: plain }));
 }
 
 /** i 番目のステップを開いたときの進み具合 */
@@ -473,9 +764,9 @@ export const progressAt = (p: Progress | null, i: number): Progress => ({
 /** メニューから始めるステップ（途中なら前回の位置、終えていれば最初から） */
 export const resumeStep = (p: Progress | null) => (!p || p.done ? 0 : p.step);
 
-/** メニューの「遊び方」に添える短い状態 */
-export function progressLabel(p: Progress | null): string {
-  if (!p) return "おすすめ";
+/** メニューの「遊び方」・章の項目に添える短い状態（スキルありは、はじめてなら何も添えない） */
+export function progressLabel(p: Progress | null, chapter: ChapterId = "std"): string {
+  if (!p) return chapter === "std" ? "おすすめ" : "";
   if (p.done) return "クリア済み";
-  return `つづき ${p.step + 1}/${LESSONS.length}`;
+  return `つづき ${p.step + 1}/${CHAPTERS[chapter].length}`;
 }

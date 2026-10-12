@@ -20,6 +20,7 @@ import {
   type JoinedMessage,
   type MoveMessage,
   type PickMessage,
+  type RerollMessage,
   type RematchAction,
   type RematchMessage,
   type RoomInfoResponse,
@@ -278,9 +279,10 @@ export class OnlineSession {
    * 手を送る。つながっていなければ false。
    * seq は手を考えた局面の棋譜の長さ（制限時間切れの自動の手と入れ違ったら、サーバーが stale_move で拒否する）
    */
-  sendMove(r: number, c: number, kind: PieceKind, king = false, seq?: number): boolean {
+  sendMove(r: number, c: number, kind: PieceKind, king = false, seq?: number, vice = false): boolean {
     if (!this.ready) return false;
     const msg: MoveMessage = king ? { type: "move", r, c, kind, king: true } : { type: "move", r, c, kind };
+    if (vice) msg.vice = true;
     if (seq !== undefined) msg.seq = seq;
     this.ws!.send(JSON.stringify(msg));
     return true;
@@ -290,6 +292,13 @@ export class OnlineSession {
   sendPick(card: SkillId): boolean {
     if (!this.ready) return false;
     this.ws!.send(JSON.stringify({ type: "pick", card } satisfies PickMessage));
+    return true;
+  }
+
+  /** 配られた 3 枚を配り直す（選ぶ前に 1 局 1 回）。つながっていなければ false */
+  sendReroll(): boolean {
+    if (!this.ready) return false;
+    this.ws!.send(JSON.stringify({ type: "reroll" } satisfies RerollMessage));
     return true;
   }
 

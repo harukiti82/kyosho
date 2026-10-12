@@ -71,14 +71,18 @@ export function parseClientMessage(data: string | ArrayBuffer): Parsed {
       if (!isCoord(x.r) || !isCoord(x.c)) return bad(`r・c は 0〜${SIZE - 1} の整数です`);
       if (typeof x.kind !== "string" || !Object.hasOwn(PIECES, x.kind)) return bad("kind が駒の種類ではありません");
       if (x.king !== undefined && typeof x.king !== "boolean") return bad("king は true / false です");
+      if (x.vice !== undefined && typeof x.vice !== "boolean") return bad("vice は true / false です");
       if (x.seq !== undefined && (!Number.isInteger(x.seq) || (x.seq as number) < 0)) return bad("seq は 0 以上の整数です");
       const msg: ClientMessage = { type: "move", r: x.r, c: x.c, kind: x.kind as PieceKind, king: x.king === true };
+      if (x.vice === true) msg.vice = true;
       if (x.seq !== undefined) msg.seq = x.seq as number;
       return { ok: true, msg };
     }
     case "pick":
       if (typeof x.card !== "string" || !Object.hasOwn(SKILLS, x.card)) return bad("card がスキルではありません");
       return { ok: true, msg: { type: "pick", card: x.card as SkillId } };
+    case "reroll":
+      return { ok: true, msg: { type: "reroll" } };
     case "skill": {
       if (typeof x.id !== "string" || !Object.hasOwn(SKILLS, x.id)) return bad("id がスキルではありません");
       if (x.kind !== undefined && (typeof x.kind !== "string" || !Object.hasOwn(PIECES, x.kind))) return bad("kind が駒の種類ではありません");
@@ -100,6 +104,6 @@ export function parseClientMessage(data: string | ArrayBuffer): Parsed {
     case "leave":
       return { ok: true, msg: { type: "leave" } };
     default:
-      return bad("type は join / move / pick / skill / rematch / leave です");
+      return bad("type は join / move / pick / reroll / skill / rematch / leave です");
   }
 }

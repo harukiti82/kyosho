@@ -28,6 +28,8 @@
   --heal: #63c472;
   --warn: #f5c12e;
   --gold: #d9aa45;
+  /* 副将（王の金に対して銀） */
+  --vice: #dce7f2;
   --anchor: #5fe3ff;
   --othello: rgba(230, 248, 255, 0.6);
   /* 形: 角は丸めず、帯・鍵は -12° の斜め（見出し・メニューは傾けない） */
@@ -621,7 +623,8 @@ button {
 /* 上から順に少しずつ遅らせて出す */
 #menu-multi,
 .menu-level:nth-of-type(2),
-#menu-online {
+#menu-online,
+#menu-learn-skill {
   animation-delay: 0.08s;
 }
 #menu-learn,
@@ -868,8 +871,9 @@ button {
     transform: scale(1.18);
   }
 }
-/* 王の状態: 王の駒の形とマス名 */
-.king-tag {
+/* 王・副将の状態: 王（副将）の駒の形とマス名 */
+.king-tag,
+.vice-tag {
   flex: none;
   display: inline-flex;
   align-items: center;
@@ -880,7 +884,8 @@ button {
   white-space: nowrap;
   color: var(--cyan-300);
 }
-.king-icon {
+.king-icon,
+.vice-icon {
   display: inline-grid;
   place-items: center;
   width: 0.95rem;
@@ -896,19 +901,25 @@ button {
 }
 .king-tag.unknown,
 .king-tag.cand,
-.king-tag.unset {
+.king-tag.unset,
+.vice-tag.unknown,
+.vice-tag.unset {
   color: var(--ink-dim);
 }
 .king-tag.unknown .king-icon,
 .king-tag.cand .king-icon,
-.king-tag.unset .king-icon {
+.king-tag.unset .king-icon,
+.vice-tag.unknown .vice-icon,
+.vice-tag.unset .vice-icon {
   opacity: 0.55;
 }
-.king-tag.lost {
+.king-tag.lost,
+.vice-tag.lost {
   color: #ff8a7f;
   text-decoration: line-through;
 }
-.king-tag.lost .king-icon {
+.king-tag.lost .king-icon,
+.vice-tag.lost .vice-icon {
   background: linear-gradient(170deg, #b9a58a, #6f604e);
   filter: grayscale(0.6);
 }
@@ -1092,7 +1103,8 @@ button {
 .player-card.active .player-name {
   color: var(--navy-900);
 }
-.player-card.active .king-tag {
+.player-card.active .king-tag,
+.player-card.active .vice-tag {
   color: var(--navy-700);
 }
 .player-card.active .hand-mini {
@@ -3968,6 +3980,7 @@ button {
 /* ---- オンライン対戦 ---- */
 /* 相手の王の候補（相手の駒の右上。自分の王の印と同じ金色を点線にして「まだ分からない」を表す） */
 .king-cand,
+.vice-cand,
 .key-cand {
   display: inline-grid;
   place-items: center;
@@ -3978,7 +3991,8 @@ button {
   font-weight: 800;
   line-height: 1;
 }
-.king-cand {
+.king-cand,
+.vice-cand {
   position: absolute;
   z-index: 2;
   top: 2%;
@@ -4403,6 +4417,36 @@ button {
 .king-toggle .guide-arrow {
   bottom: 104%;
 }
+/* 名札のスキルの鍵（使ってから置くステップ）: 札を囲む四角の輪と、上で弾む矢印 */
+.skill-hit.guide {
+  position: relative;
+}
+.skill-hit .guide-ring {
+  inset: 0;
+  border-radius: 0;
+}
+.skill-hit .guide-arrow {
+  bottom: 100%;
+}
+/* カードを選ぶ画面の遊び方: 要点・課題とヒントを見出しの下に、配り直しは白く脈打たせる */
+.pick-coach {
+  margin: -0.2rem 0 0.8rem;
+}
+.btn.pick-reroll.guide {
+  background: #fff;
+  color: var(--navy-900);
+  animation: pick-guide 0.9s ease-in-out infinite alternate;
+}
+@keyframes pick-guide {
+  to {
+    opacity: 0.65;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .btn.pick-reroll.guide {
+    animation: none;
+  }
+}
 /* 見えないはずの駒の印（王を返すステップの相手の王の「?」） */
 .lesson-mark {
   z-index: 3;
@@ -4667,6 +4711,26 @@ button.tarot:focus-visible {
 }
 .pick-detail p {
   margin: 0;
+}
+/* 配り直し（1 局 1 回）: 見出しの行の右端の小さい鍵。使った後は沈めて押せない */
+.btn.pick-reroll {
+  margin-left: auto;
+  min-height: 2rem;
+  padding: 0.2rem 0.75rem;
+  font-size: 0.78rem;
+}
+@media (pointer: coarse) {
+  .btn.pick-reroll {
+    min-height: 2.5rem;
+  }
+}
+.btn.pick-reroll:disabled,
+.btn.pick-reroll:disabled:hover {
+  background: var(--surface-2);
+  color: var(--ink-dim);
+  box-shadow: none;
+  opacity: 0.55;
+  cursor: default;
 }
 
 /* 名札のスキル: 番号・名前・斜めに切ったゲージ・残り（満タンは白く光る）。手番で使えるときは白い板に反転して押せる */
@@ -4961,6 +5025,7 @@ button.tarot:focus-visible {
 }
 /* 偵察で分かった相手の王（候補の「?」と違い、金の地に紺の「王」） */
 .king-cand.scouted,
+.vice-cand.scouted,
 .key-cand.scouted {
   background: var(--gold);
   color: var(--navy-900);
@@ -4972,7 +5037,8 @@ button.tarot:focus-visible {
   border-radius: 50%;
   font-size: 0.75em;
 }
-.king-tag.scouted {
+.king-tag.scouted,
+.vice-tag.scouted {
   color: var(--gold);
 }
 .bb-skill {
@@ -5040,6 +5106,39 @@ button.tarot:focus-visible {
   width: 1rem;
   height: 1rem;
 }
+/* 結果の一言（運命の輪の引いた効果・巻き戻しの戻した手数）。名前より遅れてシアンの帯で出す。不発は紺の帯に薄い字 */
+.cast-result {
+  position: relative;
+  margin: 0;
+  padding: 0.2rem 1.1rem;
+  background: var(--go);
+  color: var(--navy-950);
+  clip-path: var(--slant);
+  font-family: var(--font-display);
+  font-weight: 900;
+  font-size: 1.15rem;
+  animation: cast-result var(--cast-ms) ease-out forwards;
+}
+.cast-result.miss {
+  background: var(--navy-800);
+  color: var(--ink-muted);
+  box-shadow: inset 0 0 0 1px var(--rim);
+}
+@keyframes cast-result {
+  0%,
+  52% {
+    opacity: 0;
+    transform: translateY(0.4rem) scale(0.9);
+  }
+  62%,
+  86% {
+    opacity: 1;
+    transform: none;
+  }
+  100% {
+    opacity: 0;
+  }
+}
 @keyframes cast-flip {
   0% {
     opacity: 0;
@@ -5088,9 +5187,69 @@ button.tarot:focus-visible {
   }
 }
 .fx-skill.reduce .cast-flip,
-.fx-skill.reduce .cast-who {
+.fx-skill.reduce .cast-who,
+.fx-skill.reduce .cast-result {
   animation: cast-dim var(--cast-ms) linear forwards;
 }
 .fx-skill.reduce .cast-back {
   display: none;
+}
+
+/* ---- 副将（スキルありで隠し王ありのルール。王の金に対して銀の「副」） ---- */
+.vice-box {
+  display: contents;
+}
+.vice-icon {
+  background: linear-gradient(170deg, #f7fbff, var(--vice) 55%, #9fb2c6);
+  color: var(--navy-900);
+}
+.vice-tag.seen {
+  color: var(--warn);
+}
+/* 今の窓でまだ置き直していない: 期限までの手数を小さく添える */
+.vice-due {
+  margin-left: 0.15rem;
+  font-size: 0.62rem;
+  font-weight: 700;
+  color: var(--ink-dim);
+}
+.vice-toggle .king-piece {
+  color: var(--navy-900);
+}
+.vice-toggle .king-piece::before {
+  background: linear-gradient(170deg, #f7fbff, var(--vice) 60%, #8ea3b9);
+}
+/* 副将にして置く: 吹き出しの 1 行と、狙ったマスの石の印 */
+.bb-vice {
+  color: var(--vice);
+}
+/* 自分の副将の印（石の左上。王の印は右上） */
+.vice-mark {
+  position: absolute;
+  z-index: 2;
+  top: 2%;
+  left: 2%;
+  display: grid;
+  place-items: center;
+  width: 30%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: var(--vice);
+  color: var(--navy-900);
+  font-family: var(--font-piece);
+  font-size: 2.6cqi;
+  font-weight: 800;
+  line-height: 1;
+  box-shadow: 0 0 0 1.5px #fff;
+  pointer-events: none;
+}
+.vice-mark.ghost {
+  opacity: 0.8;
+}
+.vice-cand.scouted {
+  background: var(--vice);
+}
+.vice-pop {
+  background: var(--vice);
+  color: var(--navy-900);
 }

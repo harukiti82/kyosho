@@ -2,7 +2,8 @@
 // 各行を要点と補足に分けて返し、DOM への流し込みは呼び出し側（ui/setup.ts の fillSentences）が textContent で行う。
 
 import { kindsByValue, kindsInRules, KIND_ORDER, PIECES, REACH_MARK, type PieceKind, type RuleSet } from "../engine/rules";
-import { FLIP_POINTS, KINGMOVE_RANGE, REFILL_MAX_VALUE, SCOUT_PENALTY_RATE, SKILL_HEAL, SKILL_ORDER, SKILLS, type SkillId } from "../engine/skills";
+import { wheelPool } from "../engine/game";
+import { FLIP_POINTS, KINGMOVE_RANGE, SKILL_HEAL, SKILL_ORDER, SKILLS, VICE_DEADLINE, VICE_PENALTY, type SkillId } from "../engine/skills";
 
 /**
  * ルールの 1 行: 要点の一言（大きく太く。1 行に 1 か所だけ）と、その下に小さく添える補足（括弧で囲まず、薄い字）。
@@ -54,6 +55,12 @@ export function kingLine(r: RuleSet): Sentence {
 /** 反対側の駒の力（攻撃に上乗せ）のルールカードの 1 行。遊び方と同じく「反対側」と言う */
 export const anchorLine = (): Sentence => ({ point: "反対側の自分の駒もダメージに足す", note: "挟んだ列の、置いた駒と反対側にある自分の駒の数字" });
 
+/** 副将（スキルありで隠し王ありのルール）のルールカードの 1 行 */
+export const viceLine = (r: RuleSet): Sentence => ({
+  point: `副将を${verb(r).hitIf}体力−${VICE_PENALTY}`,
+  note: `王を決めた後、${VICE_DEADLINE}手ごとに置く駒を1つ副将にする。前の副将はふつうの駒に戻る。相手に見えない`,
+});
+
 /** スキルのルールカードの 1 行 */
 export const skillLine = (): Sentence => ({ point: "ゲージが満タンでスキルを使う", note: "配られた3枚から1枚を選ぶ。返した枚数と受けたダメージで溜まる" });
 
@@ -70,22 +77,36 @@ export function skillText(id: SkillId, r: RuleSet): { short: string; point: stri
     case "omni":
       return { short: "8 方向に挟む", point: "その手で置く駒が 8 方向に挟める", note: "駒の矢印に関係なく挟める" };
     case "refill":
-      return { short: "駒を 1 つ戻す", point: "使い切った駒を 1 つ駒台に戻す", note: `数字 ${REFILL_MAX_VALUE} 以下の駒だけ` };
+      return { short: "駒を 1 つ戻す", point: "減った駒を 1 つ駒台に戻す", note: "始めの数より減った駒ならどれでも" };
     case "wall":
       return { short: "相手の次の手を半減", point: "相手の次の手のダメージが半分", note: `駒は${verb(r).hit.replace("された", "る").replace("られた", "られる")}。小数は切り捨て` };
-    case "scout": {
-      const pen = r.king.penalty === "lose" ? "" : `。その手で王を${verb(r).past.replace("した", "す").replace("った", "る")}と罰が ${SCOUT_PENALTY_RATE} 倍の体力−${r.king.amount * SCOUT_PENALTY_RATE}`;
-      return { short: "相手の王が見える", point: "相手の王の場所が自分にだけ分かる", note: `相手が最初の${r.king.deadline}手を打ち終えてから使える${pen}` };
-    }
+    case "scout":
+      return {
+        short: "相手の王・副将が見える",
+        point: "相手の王の場所が自分にだけ分かる",
+        note: `相手が最初の${r.king.deadline}手を打ち終えてから使える。王が分かった後は、相手が副将を置く期限の後に、使った時点の今の副将の場所が分かる。次の期限の後にまた使える。罰は変わらない`,
+      };
     case "kingmove":
       return { short: `王を ${KINGMOVE_RANGE} マス内へ`, point: "自分の王を近くの自分の駒へ移す", note: `今の王から ${KINGMOVE_RANGE} マス以内。どこへ移したかは相手に見えない` };
+    case "fool":
+      return { short: "2 手続けて打つ", point: "この手番に 2 手続けて打てる", note: "2 手目のダメージは半分。小数は切り捨て" };
+    case "wheel": {
+      const n = wheelPool(r).length;
+      return {
+        short: `${n} 枚から 1 つ`,
+        point: `ほかの ${n} 枚のどれかの効果が出る`,
+        note: `運命の輪以外の${n}枚から同じ確率。その場で使えない効果は不発`,
+      };
+    }
+    case "judge":
+      return { short: "2 手戻す", point: "自分の直前の手と相手の応手を戻す", note: "戻した局面から打ち直す。相手の王の指定は残る" };
   }
 }
 
 /** 始めの体力（例: 「先手 129・後手 130 から」「どちらも 20 から」） */
 const hpStart = (r: RuleSet) => (r.hp[0] === r.hp[1] ? `どちらも ${r.hp[0]} から` : `先手 ${r.hp[0]}・後手 ${r.hp[1]} から`);
 
-/** ルールカードの 3〜8 行（一目で今のルールが分かる短文） */
+/** ルールカードの 3〜9 行（一目で今のルールが分かる短文） */
 export function ruleLines(r: RuleSet): Sentence[] {
   const v = verb(r);
   const lines: Sentence[] = [];
@@ -100,6 +121,7 @@ export function ruleLines(r: RuleSet): Sentence[] {
   else lines.push({ point: "挟むと体力を回復", note: `挟んだ両端の駒の${r.heal === "avg" ? "平均" : "低い方−1"}だけ` });
   if (r.king.on) lines.push(kingLine(r));
   if (r.skills) lines.push(skillLine());
+  if (r.skills && r.king.on) lines.push(viceLine(r));
   const limit = r.maxPlies > 0 ? `。${r.maxPlies} 手で終われば体力の多い方が勝ち` : "";
   lines.push({ point: "体力が 0 で負け", note: `${hpStart(r)}${limit}` });
   return lines;
@@ -183,15 +205,28 @@ export function ruleDetails(r: RuleSet): Sentence[] {
   return out;
 }
 
-/** スキルの詳細（ゲージの溜め方と 8 枚の効果） */
+/** スキルの詳細（ゲージの溜め方と 11 枚の効果） */
 export function skillDetails(r: RuleSet): Sentence[] {
   const steps = FLIP_POINTS.slice(1).map((n, i) => `${i + 1} 枚${i === FLIP_POINTS.length - 2 ? "以上" : ""} +${n}`).join("・");
   const out: Sentence[] = [
-    { point: "スキル: 対局の前に配られた 3 枚から 1 枚を選ぶ", note: "選んだカードは相手にも見える。相手のカードは両方が選び終えてから見える" },
+    { point: "スキル: 対局の前に配られた 3 枚から 1 枚を選ぶ", note: "選ぶ前に 1 回だけ、残りのカードから 3 枚を配り直せる。選んだカードは相手にも見える。相手のカードは両方が選び終えてから見える" },
     { point: `ゲージは${verb(r).past}枚数で溜まる`, note: `1 手で ${steps}。受けたダメージ 1 点ごとに +0.15` },
     { point: "溜めマスでは多く溜まる", note: "盤の星の 4 マス c3・f3・c6・f6。置くか、その上の相手の駒を返すと 1 回ごとにカードの溜めマス点" },
     { point: "満タンになったら自分の手番の始めに使える", note: "使ってから駒を置く。1 手番に 1 回。使うとゲージは 0 から溜め直す" },
   ];
+  if (r.king.on) {
+    const v = verb(r);
+    out.push(
+      {
+        point: `副将: 王を決めた後、自分の手で ${VICE_DEADLINE} 手ごとに置く駒を 1 つ副将にする`,
+        note: `王を決めた次の手から ${VICE_DEADLINE} 手ずつ区切り、区切りごとに置き直す。前の副将はふつうの駒に戻り、副将はいつも 1 つまで。区切りの最後の手まで置かなければ、その手で置いた駒が副将になる。相手には見えない`,
+      },
+      {
+        point: `副将を${v.hitIf}体力 −${VICE_PENALTY}`,
+        note: `通常のダメージに加えて減る。王と同じ手なら両方。${v.hitIf}副将はふつうの駒になり、次の区切りで新しい副将を置くまで副将はない。区切りはずれない`,
+      },
+    );
+  }
   for (const id of SKILL_ORDER) {
     if (!r.king.on && (id === "scout" || id === "kingmove")) continue;
     const t = skillText(id, r);

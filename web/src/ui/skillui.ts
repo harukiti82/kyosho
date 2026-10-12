@@ -71,6 +71,19 @@ export function tarotArt(id: SkillId): SVGSVGElement {
       case "kingmove":
         // 元の駒（線だけ）から新しい駒へ
         return [piece(16, 48, 16, "ring"), piece(44, 30, 16, "fill-w"), svg("path", { class: "ln", d: "M20 26 Q28 12 36 18" })];
+      case "fool":
+        // 続けて置いた 2 つの石と、2 つの山形
+        return [stone(20, 40, 8, "fill-b"), stone(40, 40, 8, "fill-b dim"), svg("path", { class: "ln thick", d: "M14 14 L22 21 L14 28 M28 14 L36 21 L28 28" })];
+      case "wheel":
+        // 輪と 8 本の輻、縁に黒と白の石
+        return [
+          stone(30, 30, 20, "ring"),
+          ...rays(30, 30, 5, 20),
+          ...[0, 1, 2, 3].map((i) => stone(30 + Math.cos((Math.PI * i) / 2) * 20, 30 + Math.sin((Math.PI * i) / 2) * 20, 5, i % 2 ? "fill-w" : "fill-b")),
+        ];
+      case "judge":
+        // 盤に戻る石と、左へ巻き戻す矢印
+        return [stone(22, 42, 8, "fill-w"), stone(40, 42, 8, "fill-b dim"), svg("path", { class: "ln thick", d: "M46 22 Q30 6 14 20 M14 20 L15 11 M14 20 L23 22" })];
     }
   })();
   root.append(...art);
@@ -122,7 +135,12 @@ export interface PickView {
   rules: RuleSet;
   /** もう選んだカード（オンラインで相手を待っている間） */
   chosen: SkillId | null;
+  /** 配り直しを押せる（1 局 1 回。使った後は押せない鍵を出す） */
+  reroll: boolean;
+  /** 遊び方のステップ: 覚えることの要点・補足・課題を見出しの下に出し、配り直せる間は配り直しを光らせる */
+  lesson?: { point: string; note?: string; task: string };
   onPick: (id: SkillId) => void;
+  onReroll: () => void;
   onMenu: () => void;
 }
 
@@ -165,9 +183,24 @@ export class SkillPick {
   private draw() {
     const v = this.view!;
     const waiting = v.chosen !== null;
-    const head = h("p", { class: "pick-who" }, [
+    // 配り直し（1 局 1 回）。見出しの行の右端に小さく。押したらすぐ押せなくする（二度押し・届くまでの間）。新しい 3 枚は同じ配る動きと音で出す
+    const again = h("button", {
+      class: "btn ghost pick-reroll",
+      text: "配り直し",
+      attrs: { type: "button", id: "skill-pick-reroll", title: v.reroll ? "3 枚を配り直す。1 局 1 回" : "配り直しは 1 局 1 回" },
+    }) as HTMLButtonElement;
+    again.disabled = !v.reroll;
+    again.addEventListener("click", () => {
+      if (again.disabled) return;
+      again.disabled = true;
+      this.sound.select();
+      v.onReroll();
+    });
+    if (v.lesson && v.reroll) again.classList.add("guide");
+    const head = h("div", { class: "pick-who" }, [
       v.stone !== null ? h("i", { class: `seg-stone p${v.stone}`, attrs: { "aria-hidden": "true" } }) : null,
       waiting ? "相手が選んでいます" : `${v.who}のカード`,
+      waiting ? null : again,
     ]);
     // 配られたカードは 1 枚ずつ飛んできて表に返る（動きを減らす設定では並べるだけ）。相手を待つ間の自分のカードは配らない
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -194,7 +227,7 @@ export class SkillPick {
     const row = h("div", { class: `tarot-row${waiting ? " one" : ""}${deal ? " dealing" : ""}` }, cards);
     row.style.setProperty("--deal-step", `${DEAL_STEP_MS}ms`);
     row.style.setProperty("--deal-ms", `${DEAL_MS}ms`);
-    this.body.replaceChildren(head, row, detail);
+    this.body.replaceChildren(...(v.lesson ? [this.lessonBox(v.lesson)] : []), head, row, detail);
     if (!waiting) {
       // 1 枚ごとに配る音（動きを減らす設定では 1 回だけ）
       if (deal) cards.forEach((_, i) => this.sound.deal((i * DEAL_STEP_MS) / 1000));
@@ -216,6 +249,27 @@ export class SkillPick {
     });
     this.actions.replaceChildren(menu, ok);
     this.showDetail(null);
+  }
+
+  /** 遊び方のステップ: 違う操作のヒント（揺らして知らせる。カードは配り直さない） */
+  hint(text: string) {
+    const m = this.body.querySelector<HTMLElement>(".pick-coach .coach-msg");
+    if (!m) return;
+    m.textContent = text;
+    m.hidden = false;
+    m.className = "coach-msg hint";
+    void m.offsetWidth;
+    m.classList.add("shake");
+  }
+
+  /** 遊び方のステップの要点・補足・課題とヒントの欄（コーチと同じ見た目。ダイアログの間はコーチが隠れるので、ここに出す） */
+  private lessonBox(l: NonNullable<PickView["lesson"]>): HTMLElement {
+    return h("div", { class: "pick-coach coach-goal" }, [
+      h("p", { class: "coach-point", text: l.point }),
+      l.note ? h("p", { class: "coach-note", text: l.note }) : null,
+      h("p", { class: "coach-task", text: l.task }),
+      h("p", { class: "coach-msg", attrs: { role: "status", "aria-live": "polite", hidden: "" } }),
+    ]);
   }
 
   private select(id: SkillId) {

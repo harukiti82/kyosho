@@ -36,19 +36,22 @@ import {
   KINGMOVE_RANGE,
   moverGain,
   OFFER_SIZE,
-  REFILL_MAX_VALUE,
-  SCOUT_PENALTY_RATE,
+  secondDamage,
   shieldDamage,
   SKILL_HEAL,
   SKILL_ORDER,
   strongDamage,
+  VICE_DEADLINE,
+  VICE_PENALTY,
   victimGain,
+  type EffectBlock,
   type SkillBlock,
   type SkillId,
   type SkillNote,
   type SkillSide,
   type SkillsState,
   type SkillUse,
+  type WheelEffect,
 } from "./skills";
 
 /** ko: 体力 0 以下 / limit: 手数上限に到達 / stalled: 両者とも打てない（持ち駒切れ・置ける所なし） / king: 王を返された（罰が即負け） */
@@ -93,6 +96,21 @@ export interface MoveEvent {
   plain?: number;
   /** 相手の鉄壁でダメージが半分になった手。なっていなければキー自体がない */
   shielded?: true;
+  /** 連続行動の 2 手目（ダメージ半分）。そうでなければキー自体がない */
+  second?: true;
+  /** 相手の副将を返した（公開情報）。返していなければキー自体がない */
+  vice?: ViceHit;
+}
+
+/** 相手の副将を返したときの記録（公開情報） */
+export interface ViceHit {
+  r: number;
+  c: number;
+  kind: PieceKind;
+  /** 減らした体力（VICE_PENALTY） */
+  penalty: number;
+  /** 偵察で特定していた副将。そうでなければキー自体がない */
+  scouted?: true;
 }
 
 /** 相手の王を返した（取った）ときの記録（公開情報） */
@@ -117,6 +135,46 @@ export interface KingState {
   revealed: boolean;
   /** 相手が偵察で場所を知っている（王の移し替えで移すまで）。知られていなければキー自体がない */
   seen?: true;
+  /**
+   * 王を指定した手を相手の巻き戻しで戻された（指定は戻さない）。次に置く駒がそのまま王になる。
+   * cell は null。そうでなければキー自体がない
+   */
+  kept?: true;
+  /** 副将（スキルありで隠し王ありのルールだけ。王を決めた手から始まる）。始まる前・副将なしのルールではキー自体がない */
+  vice?: ViceState;
+}
+
+/**
+ * 副将の真の状態（隠し情報。kings の中だけに持つ）。王を決めた手から VICE_DEADLINE 手ごとの窓が続き、窓ごとに副将を置き直す。
+ * 窓 k（1 始まり）は自分の since + VICE_DEADLINE × (k − 1) + 1 〜 since + VICE_DEADLINE × k 手目。副将を返されても窓はずれない。
+ * 副将はいつも最大 1 つ: 今の副将は list の最後（返されていなければ）で、それより前は置き直してふつうの駒に戻ったもの
+ */
+export interface ViceState {
+  /** 周期の起点（王を決めた手の自分の手数。局面の指定から始めたときは負にもなる） */
+  since: number;
+  /**
+   * 相手に見せる時期の起点（公開情報だけで決まる値）。窓 k の副将は、持ち主の手数が base + VICE_DEADLINE × k 以上になったら「いる」として見せる。
+   * 対局では王の期限（王を決めた手は隠し情報なので、必ず決まっている手から数える）、局面の指定から始めたときは since
+   */
+  base: number;
+  /** これまでに窓ごとに置いた副将（窓の順。置き直した前の副将・返された副将も残す。相手に見せる窓の副将を引くため） */
+  list: Vice[];
+  /** 副将を出した手を相手の巻き戻しで戻された（指定は戻さない）。次に置く駒がそのまま今の窓の副将になる。そうでなければキー自体がない */
+  kept?: true;
+}
+
+/** 1 つの副将（隠し情報） */
+export interface Vice {
+  /** 副将の駒のマス */
+  cell: Cell;
+  /** 相手に見せる時期（持ち主の手数がこれ以上になったら）。base から決まる公開の値 */
+  due: number;
+  /** 期限の手で自動的に決まった。そうでなければキー自体がない */
+  auto?: true;
+  /** 相手が偵察で場所を知っている（置き直した後も印は残り、相手に見せる窓が進むまで見える）。知られていなければキー自体がない */
+  seen?: true;
+  /** 相手に返された（公開されてふつうの駒）。返されていなければキー自体がない */
+  hit?: true;
 }
 
 /** 打てない手番。noPieces: 持ち駒切れ / noMoves: 置けるマスがない */
@@ -165,7 +223,17 @@ export function availableKinds(hand: Hand): PieceKind[] {
  * 手番の人がこの手で使うルール。全方向のスキルを使った手番だけ、置く駒が 8 方向に挟める（それ以外は rules そのもの）
  */
 export function moveRules(state: Pick<GameState, "rules"> & { skills?: SkillsState }): RuleSet {
-  return state.skills?.armed?.id === "omni" ? { ...state.rules, dirs: "all" } : state.rules;
+  return armedEffect(state.skills) === "omni" ? { ...state.rules, dirs: "all" } : state.rules;
+}
+
+/**
+ * 手番の人がこの手番で使って効いているスキルの効果（運命の輪は引いた効果）。
+ * 使っていない・不発・運命の輪の指定待ちなら null
+ */
+export function armedEffect(sk: SkillsState | undefined): SkillId | null {
+  const a = sk?.armed;
+  if (!a || a.fizzle || a.aim) return null;
+  return a.effect ?? a.id;
 }
 
 /** p が (r, c) に kind を置ける場合に返せる（取れる）列。置けなければ null */
@@ -242,6 +310,23 @@ export interface Position {
   turn?: Player;
   /** 隠し王の駒のマス [先手, 後手]（隠れた状態から始める）。null・省略は未指定 */
   kings?: [Cell | null, Cell | null];
+  /**
+   * 副将の駒のマス [先手, 後手]（副将のあるルールで、王を指定した人だけ。今の窓（自分の 1〜VICE_DEADLINE 手目）の副将として、
+   * 隠れた状態から始め、相手には初めから「いる」と見せる）。null・省略は未指定（今の窓に置く）
+   */
+  vices?: [Cell | null, Cell | null];
+  /**
+   * スキルのルールの各自のカード [先手, 後手]。offer は配られた 3 枚（card がなければ選ぶ前）、card は選んだカード、gauge は GAUGE_UNIT 単位
+   * （満タンを超えない）。省略すると createGame と同じく配る前から始める
+   */
+  skills?: [PositionSkill, PositionSkill];
+}
+
+/** 指定した局面のスキルの 1 人分（チュートリアル） */
+export interface PositionSkill {
+  offer?: SkillId[];
+  card?: SkillId | null;
+  gauge?: number;
 }
 
 /**
@@ -263,6 +348,18 @@ export function gameFrom(rules: RuleSet, pos: Position): GameState {
     if (!r.king.on) throw new Error("隠し王なしのルールで王を指定しています");
     if (board[cell[0]][cell[1]]?.owner !== p) throw new Error(`王のマス (${cell[0]}, ${cell[1]}) に持ち主の駒がありません`);
     kings[p] = { cell: [cell[0], cell[1]], auto: false, revealed: false };
+    // 副将のあるルールなら、王を決めた後と同じく、自分の 1 手目からの窓で副将を出すところから始める
+    if (vicesOn(r)) kings[p].vice = { since: 0, base: 0, list: [] };
+  }
+  for (const p of [0, 1] as const) {
+    const cell = pos.vices?.[p] ?? null;
+    if (!cell) continue;
+    if (!kings[p].vice) throw new Error("副将は、副将のあるルールで王を指定した人だけに置けます");
+    if (board[cell[0]][cell[1]]?.owner !== p) throw new Error(`副将のマス (${cell[0]}, ${cell[1]}) に持ち主の駒がありません`);
+    const k = kings[p].cell!;
+    if (k[0] === cell[0] && k[1] === cell[1]) throw new Error("王と副将は同じ駒にできません");
+    // 今の窓（1〜VICE_DEADLINE 手目）の副将。指定した副将は相手にも初めから「いる」と見せる
+    kings[p].vice = { since: 0, base: 0, list: [{ cell: [cell[0], cell[1]], due: 0 }] };
   }
   const hands = pos.hands ?? [r.hand, r.hand];
   const g: GameState = {
@@ -276,8 +373,20 @@ export function gameFrom(rules: RuleSet, pos: Position): GameState {
     result: null,
     kings,
   };
-  if (r.skills) g.skills = newSkills();
+  if (r.skills) g.skills = pos.skills ? skillsFrom(pos.skills) : newSkills();
+  else if (pos.skills) throw new Error("スキルなしのルールでカードを指定しています");
   return settleTurn(g, g.turn);
+}
+
+/** 指定したカード・ゲージのスキルの状態。両者が選び終えていれば（カードを選んだか、配られていなければ）打てる */
+function skillsFrom(spec: [PositionSkill, PositionSkill]): SkillsState {
+  const sides = spec.map((s) => {
+    const card = s.card ?? null;
+    const offer = [...(s.offer ?? (card ? [card] : []))];
+    if (card && !offer.includes(card)) throw new Error(`${card} は配られていません`);
+    return { offer, card, gauge: card ? Math.max(0, Math.min(gaugeMax(card), s.gauge ?? 0)) : 0 };
+  }) as [SkillSide, SkillSide];
+  return { ...newSkills(), sides, ready: sides.every((s) => s.card !== null || s.offer.length === 0) };
 }
 
 /** 手番のプレイヤーが (r, c) に kind を置けるか */
@@ -364,8 +473,8 @@ export interface Preview {
   damage: number;
   /** スキル（強打・相手の鉄壁）で変わる前のダメージ。変わらなければキー自体がない */
   plain?: number;
-  /** ダメージを変えたスキル（強打で ×1.5・相手の鉄壁で半分）。なければキー自体がない */
-  mods?: ("strong" | "shield")[];
+  /** ダメージを変えたスキル（強打で ×1.5・相手の鉄壁で半分・連続行動の 2 手目で半分）。なければキー自体がない */
+  mods?: DamageMod[];
   /** 返した（取った）駒の分のダメージ（上乗せを除く） */
   base: number;
   /** 端の駒の上乗せに使う自分の駒（列ごとの反対端）。端の駒の力が「なし」なら空 */
@@ -406,23 +515,30 @@ export function previewMove(state: GameState, r: number, c: number, kind: PieceK
     heal,
     exposed: attackable(rules, board, state.hands[q], q),
     // 鉄壁を使った手番なら、相手の次の手のダメージは半分
-    exposedDamage: state.skills?.armed?.id === "wall" ? shieldDamage(reply) : reply,
+    exposedDamage: armedEffect(state.skills) === "wall" ? shieldDamage(reply) : reply,
   };
 }
 
-/** 手番の人のこの手のダメージにスキル（自分の強打・相手の鉄壁）を掛ける。スキルなしなら damage そのもの */
-function skillDamage(state: Pick<GameState, "turn"> & { skills?: SkillsState }, damage: number): { damage: number; mods: ("strong" | "shield")[] } {
+/** ダメージを変えるスキル。strong: 自分の強打 ×1.5 / shield: 相手の鉄壁で半分 / second: 連続行動の 2 手目で半分 */
+export type DamageMod = "strong" | "shield" | "second";
+
+/** 手番の人のこの手のダメージにスキル（自分の強打・相手の鉄壁・連続行動の 2 手目）を掛ける。スキルなしなら damage そのもの */
+function skillDamage(state: Pick<GameState, "turn"> & { skills?: SkillsState }, damage: number): { damage: number; mods: DamageMod[] } {
   const sk = state.skills;
-  const mods: ("strong" | "shield")[] = [];
+  const mods: DamageMod[] = [];
   if (!sk) return { damage, mods };
   let d = damage;
-  if (sk.armed?.id === "strong") {
+  if (armedEffect(sk) === "strong") {
     d = strongDamage(d);
     mods.push("strong");
   }
   if (sk.shielded[state.turn]) {
     d = shieldDamage(d);
     mods.push("shield");
+  }
+  if (sk.second) {
+    d = secondDamage(d);
+    mods.push("second");
   }
   return { damage: d, mods };
 }
@@ -441,6 +557,7 @@ export function threatenedPieces(state: GameState, victim: Player): Cell[] {
 
 /**
  * 手番のプレイヤーが (r, c) に kind を置く。opts.king なら置いた駒を自分の王にする（隠し王）。
+ * opts.vice なら置いた駒を自分の副将にする（副将を決める期間だけ。王と同じ手では出せない）。
  * opts.timeout は制限時間切れの自動の手として棋譜に印を付ける（playTimeout が使う）。不正な手は例外
  */
 export function playMove(
@@ -448,10 +565,11 @@ export function playMove(
   r: number,
   c: number,
   kind: PieceKind,
-  opts: { king?: boolean; timeout?: boolean } = {},
+  opts: { king?: boolean; vice?: boolean; timeout?: boolean } = {},
 ): GameState {
   if (state.result) throw new Error("対局は終了しています");
   if (state.skills && !state.skills.ready) throw new Error("スキルのカードを選び終えていません");
+  if (state.skills?.armed?.aim) throw new Error("運命の輪の指定が済んでいません");
   const { rules } = state;
   const p = state.turn;
   const q = other(p);
@@ -461,6 +579,8 @@ export function playMove(
   if (!lines) throw new Error(`(${r}, ${c}) に ${kind} を置いても返せる駒がありません`);
   const mine = kingInfo(state, p);
   if (opts.king && !mine.canDesignate) throw new Error("王はもう指定できません");
+  if (opts.vice && opts.king) throw new Error("王と副将は同じ手では出せません");
+  if (opts.vice && viceInfo(state, p).status !== "unset") throw new Error("副将はいま出せません");
 
   const targets: Target[] = targetsOf(lines).map(([y, x]) => ({ r: y, c: x, kind: state.board[y][x]!.kind }));
   const raw = damageOf(state.board, lines, rules);
@@ -475,38 +595,67 @@ export function playMove(
 
   const kings: [KingState, KingState] = [state.kings[0], state.kings[1]];
   // 王の指定。期限の手までに指定しなければ、期限の手で置いた駒が自動で王になる
-  if (mine.canDesignate && (opts.king || mine.forcedNow)) kings[p] = { cell: [r, c], auto: !opts.king, revealed: false };
+  if (mine.canDesignate && (opts.king || mine.forcedNow)) kings[p] = { cell: [r, c], auto: opts.king ? false : mine.kept ? state.kings[p].auto : true, revealed: false };
   // 相手の隠れた王を返した（取った）ら、罰を与えて王を公開する
   let hit: KingHit | undefined;
   const qk = kings[q];
   if (rules.king.on && qk.cell && !qk.revealed && targets.some((t) => t.r === qk.cell![0] && t.c === qk.cell![1])) {
     const lose = rules.king.penalty === "lose";
-    // 偵察した手で返したら罰が SCOUT_PENALTY_RATE 倍
-    const amount = rules.king.amount * (armed?.id === "scout" ? SCOUT_PENALTY_RATE : 1);
-    hit = { r: qk.cell[0], c: qk.cell[1], kind: state.board[qk.cell[0]][qk.cell[1]]!.kind, penalty: lose ? 0 : amount, lose };
+    hit = { r: qk.cell[0], c: qk.cell[1], kind: state.board[qk.cell[0]][qk.cell[1]]!.kind, penalty: lose ? 0 : rules.king.amount, lose };
     kings[q] = { ...qk, revealed: true };
+  }
+  // 相手の今の副将を返したら罰。返された副将は公開されてふつうの駒になり、窓の周期はそのまま（次の窓で置くまで副将はない）。
+  // 置き直してふつうの駒に戻った前の副将は、返しても罰はない
+  let viceHit: ViceHit | undefined;
+  const qv = kings[q].vice;
+  const live = liveVice(qv);
+  if (qv && live && targets.some((t) => t.r === live.cell[0] && t.c === live.cell[1])) {
+    const [y, x] = live.cell;
+    viceHit = { r: y, c: x, kind: state.board[y][x]!.kind, penalty: VICE_PENALTY };
+    if (live.seen) viceHit.scouted = true;
+    kings[q] = { ...kings[q], vice: { ...qv, list: [...qv.list.slice(0, -1), { ...live, hit: true }] } };
+  }
+  // 自分の副将: 王を決めた手から VICE_DEADLINE 手ごとの窓で、置く駒を新しい副将にして置き直す（前の副将はふつうの駒に戻る）。
+  // 窓の最後の手（巻き戻しで戻された指定なら次の手）まで置かなければ、その手で置いた駒が自動で副将になる
+  if (vicesOn(rules)) {
+    const pk = kings[p];
+    const n = movesBy(state, p) + 1;
+    if (!pk.vice && pk.cell) kings[p] = { ...pk, vice: { since: n, base: rules.king.deadline, list: [] } };
+    else if (pk.vice) {
+      const v = pk.vice;
+      const w = windowOf(v, n);
+      if (v.list.length < w && (opts.vice || v.kept || n >= v.since + VICE_DEADLINE * w)) {
+        const { kept: _kept, ...rest } = v;
+        const vice: Vice = { cell: [r, c], due: v.base + VICE_DEADLINE * w, ...(opts.vice ? {} : { auto: true as const }) };
+        kings[p] = { ...pk, vice: { ...rest, list: [...v.list, vice] } };
+      }
+    }
   }
 
   const hp: [number, number] = [...state.hp];
-  hp[q] -= damage + (hit?.penalty ?? 0);
+  hp[q] -= damage + (hit?.penalty ?? 0) + (viceHit?.penalty ?? 0);
   hp[p] += heal;
   const ply = state.ply + 1;
   const move: MoveEvent = { type: "move", ply, player: p, r, c, kind, targets, damage, heal };
   const anchors = anchorTargets(state.board, lines, rules);
   if (anchors.length > 0) move.anchors = anchors;
   if (hit) move.king = hit;
+  if (viceHit) move.vice = viceHit;
   if (opts.timeout) move.timeout = true;
   if (armed) move.skill = armed;
   if (mods.length > 0) move.plain = raw;
   if (mods.includes("shield")) move.shielded = true;
+  if (mods.includes("second")) move.second = true;
   const history: GameEvent[] = [...state.history, move];
   const next: GameState = { ...state, board, hands, hp, ply, history, kings };
-  if (state.skills) next.skills = skillsAfterMove(state.skills, move, state.hp[q] - hp[q]);
+  if (state.skills) next.skills = skillsAfterMove(state, move, state.hp[q] - hp[q]);
 
   if (hit?.lose) return { ...next, result: { winner: p, reason: "king", byDiscs: false } };
   // 体力 0 以下になった時点で即敗北
   if (hp[q] <= 0) return { ...next, result: { winner: p, reason: "ko", byDiscs: false } };
   if (rules.maxPlies > 0 && ply >= rules.maxPlies) return { ...next, result: judge(board, hp, "limit") };
+  // 連続行動の 1 手目: 置ける手があれば続けて 2 手目（なければふつうに相手の番）
+  if (armedEffect(state.skills) === "fool" && canMove(next, p)) return { ...next, turn: p, skills: { ...next.skills!, second: true } };
   // 相手が打てれば相手番。打てなければ相手はパスし、自分が続けて打つ。両者打てなければ終局
   return settleTurn(next, q);
 }
@@ -535,8 +684,12 @@ export function randomMove(
   return moves[Math.min(moves.length - 1, Math.floor(rng() * moves.length))];
 }
 
-/** 制限時間切れ: 手番のプレイヤーの手を randomMove で選んで打つ（棋譜の手に timeout の印）。終局後は例外 */
+/**
+ * 制限時間切れ: 手番のプレイヤーの手を randomMove で選んで打つ（棋譜の手に timeout の印）。終局後は例外。
+ * 運命の輪の指定を待っていれば、戻す駒・移す先も rng で選んでから打つ
+ */
 export function playTimeout(state: GameState, rng: () => number): GameState {
+  if (state.skills?.armed?.aim) state = useSkill(state, randomAim(state, rng));
   const m = randomMove(state, rng);
   if (!m) throw new Error("対局は終了しています");
   return playMove(state, m.r, m.c, m.kind, { timeout: true });
@@ -555,6 +708,8 @@ export function movesBy(state: Pick<GameState, "history">, p: Player): number {
 export interface KingInfo {
   /** off: 隠し王なし / unset: まだ決めていない / hidden: 隠れている / revealed: 返されて公開済み */
   status: "off" | "unset" | "hidden" | "revealed";
+  /** 王を指定した手を相手の巻き戻しで戻された。次に置く駒がそのまま王になる（forcedNow も true） */
+  kept: boolean;
   /** 王の駒のマス（hidden のときだけ） */
   cell: Cell | null;
   /** 期限の手で自動的に決まった */
@@ -576,16 +731,18 @@ export function kingInfo(state: GameState, p: Player): KingInfo {
   const { king } = state.rules;
   const ks = state.kings[p];
   const nextMove = movesBy(state, p) + 1;
-  if (!king.on) return { status: "off", cell: null, auto: false, nextMove, canDesignate: false, forcedNow: false, seen: false };
+  if (!king.on) return { status: "off", kept: false, cell: null, auto: false, nextMove, canDesignate: false, forcedNow: false, seen: false };
   const status = ks.revealed ? "revealed" : ks.cell ? "hidden" : "unset";
   const canDesignate = status === "unset" && nextMove <= king.deadline && !state.result;
+  const kept = canDesignate && ks.kept === true;
   return {
     status,
+    kept,
     cell: status === "hidden" ? ks.cell : null,
     auto: ks.auto,
     nextMove,
     canDesignate,
-    forcedNow: canDesignate && nextMove === king.deadline,
+    forcedNow: canDesignate && (nextMove === king.deadline || kept),
     seen: status === "hidden" && ks.seen === true,
   };
 }
@@ -609,8 +766,9 @@ export function kingCandidates(
   let cands = new Map<number, Cell>();
   // 王の移し替えの後は、使った時点の自分の駒が候補（以後に置いた駒は王になれない）
   let moved = false;
+  // 王の移し替え（運命の輪で出たものを含む）の印は、使った時点の自分の駒 cands
   const moveKing = (note: SkillNote | undefined | null) => {
-    if (note?.id !== "kingmove" || !note.cands) return;
+    if (!note?.cands) return;
     cands = new Map(note.cands.map(([y, x]) => [y * SIZE + x, [y, x] as Cell]));
     moved = true;
   };
@@ -631,7 +789,102 @@ export function kingCandidates(
   return [...cands.values()];
 }
 
-/** viewer から見える局面。相手の王の真の場所は含まない（CPU はこれだけを見て打つ） */
+// ---- 副将（スキルありで隠し王ありのルールだけ） ----
+
+/** 副将のあるルールか（スキルありで隠し王あり） */
+export const vicesOn = (rules: RuleSet): boolean => rules.skills && rules.king.on;
+
+/** 次の自分の手（自分の n 手目）が入る副将の窓（1 始まり） */
+const windowOf = (v: ViceState, n: number) => Math.max(1, Math.ceil((n - v.since) / VICE_DEADLINE));
+
+/** 今の副将（最後に置いた副将が返されていなければそれ。前の副将は置き直してふつうの駒に戻っている） */
+const liveVice = (v: ViceState | undefined): Vice | null => {
+  const last = v?.list.at(-1);
+  return last && !last.hit ? last : null;
+};
+
+/** p 自身から見た自分の副将 */
+export interface ViceInfo {
+  /** off: 副将なしのルール / wait: 王を決める前 / unset: 今の窓の副将をまだ置いていない / set: 今の窓の副将は置いてある（返されたら cell は null） */
+  status: "off" | "wait" | "unset" | "set";
+  /** 今の副将の駒のマス（なければ null。unset のときは前の窓の副将が残っていればそのマス） */
+  cell: Cell | null;
+  /** 今の副将は窓の最後の手で自動的に決まった */
+  auto: boolean;
+  /** 今の窓の残りの手数（次の自分の手を含む。unset なら期限まで、set なら次の窓が始まるまで。ほかは 0） */
+  left: number;
+  /** 次の自分の手が今の窓の期限（置かなければ置いた駒が自動で副将になる。巻き戻しで戻された指定のときも） */
+  forcedNow: boolean;
+  /** 巻き戻しで戻された指定。次に置く駒がそのまま副将になる（forcedNow も true） */
+  kept: boolean;
+  /** 相手が偵察で今の副将を知っている */
+  seen: boolean;
+  /** 今の副将を置いたときにふつうの駒に戻った前の副将のマス（前の副将が返されずに残っていたとき）。なければ null */
+  replaced: Cell | null;
+}
+
+/** p の副将の情報。p 本人だけが見てよい（kingInfo と同じ扱い） */
+export function viceInfo(state: GameState, p: Player): ViceInfo {
+  const off: ViceInfo = { status: "off", cell: null, auto: false, left: 0, forcedNow: false, kept: false, seen: false, replaced: null };
+  if (!vicesOn(state.rules)) return off;
+  const v = state.kings[p].vice;
+  if (!v) return { ...off, status: "wait" };
+  const live = liveVice(v);
+  const prev = v.list.at(-2);
+  const now = live
+    ? { cell: [live.cell[0], live.cell[1]] as Cell, auto: live.auto === true, seen: live.seen === true, replaced: prev && !prev.hit ? ([prev.cell[0], prev.cell[1]] as Cell) : null }
+    : {};
+  const n = movesBy(state, p) + 1;
+  const w = windowOf(v, n);
+  const left = v.since + VICE_DEADLINE * w - n + 1;
+  if (v.list.length >= w) return { ...off, ...now, status: "set", left };
+  const kept = v.kept === true;
+  return { ...off, ...now, status: "unset", left, forcedNow: !state.result && (left === 1 || kept), kept };
+}
+
+/**
+ * 相手に見せている窓の副将（持ち主の手数が due を過ぎた最後の窓の副将）の list の添字。その窓より後に返された副将があれば
+ * （返されたのは公開情報）−1。置き直してふつうの駒に戻っていても、次の窓を見せるまではこれを「いる」として見せる
+ */
+function shownIndex(v: ViceState | undefined, ownerMoves: number): number {
+  if (!v) return -1;
+  let i = v.list.length - 1;
+  while (i >= 0 && v.list[i].due > ownerMoves) i--;
+  if (i < 0 || v.list.slice(i).some((x) => x.hit)) return -1;
+  return i;
+}
+
+/**
+ * 相手の副将について分かること。set は相手の副将が「いる」と見せているか（偵察を使えるかに要る）。
+ * 副将は置く駒で置き直すので、置いた時点で見せると置いた駒が副将だと分かってしまう。そこで各窓の副将は、その窓の期限の手
+ * （必ず副将が決まる手）を相手が打ち終えてから「いる」と見せる。王を決めた手は隠し情報なので、対局では窓 k の分を相手の
+ * 「王の期限 ＋ VICE_DEADLINE × k 手目」の後から見せる（ViceState.base）。返されたら次の窓を見せるまで「いない」。
+ * wait は次の窓を見せる時期までの相手の手数。偵察で知った副将（偵察した時点の今の副将）があれば scouted が true で cell がそのマス。
+ * 印はその時点の写しで、その副将の窓より後の窓を見せるまで残る（置き直されてふつうの駒に戻っていることもある）
+ */
+export interface OppVice {
+  set: boolean;
+  wait: number;
+  scouted: boolean;
+  cell: Cell | null;
+}
+
+function oppViceOf(state: GameState, owner: Player): OppVice {
+  const none: OppVice = { set: false, wait: 0, scouted: false, cell: null };
+  if (!vicesOn(state.rules)) return none;
+  const v = state.kings[owner].vice;
+  const m = movesBy(state, owner);
+  const base = v?.base ?? state.rules.king.deadline;
+  const k = Math.max(1, Math.floor((m - base) / VICE_DEADLINE) + 1);
+  const wait = base + VICE_DEADLINE * k - m;
+  const i = shownIndex(v, m);
+  if (i < 0) return { ...none, wait };
+  // 偵察の印: 見せている窓かそれより後の窓の副将で、偵察で知ったもの（偵察は印が見えている間は使えないので、あっても 1 つ）
+  const known = v!.list.slice(i).filter((x) => x.seen && !x.hit).at(-1);
+  return known ? { set: true, wait, scouted: true, cell: [known.cell[0], known.cell[1]] } : { ...none, set: true, wait };
+}
+
+/** viewer から見える局面。相手の王・副将の真の場所は含まない（CPU はこれだけを見て打つ） */
 export interface PlayerView extends Omit<GameState, "kings"> {
   viewer: Player;
   /** 自分の王 */
@@ -640,6 +893,10 @@ export interface PlayerView extends Omit<GameState, "kings"> {
    * 相手の王について分かること（公開されたか・候補）。偵察で場所を知っているときは scouted が true で、候補はその 1 マス
    */
   oppKing: { revealed: boolean; candidates: Cell[]; scouted: boolean };
+  /** 自分の副将 */
+  myVice: ViceInfo;
+  /** 相手の副将について分かること */
+  oppVice: OppVice;
 }
 
 export function viewFor(state: GameState, viewer: Player): PlayerView {
@@ -653,6 +910,8 @@ export function viewFor(state: GameState, viewer: Player): PlayerView {
     viewer,
     myKing: kingInfo(state, viewer),
     oppKing: { revealed, candidates: scouted ? [[ok.cell![0], ok.cell![1]]] : kingCandidates(state, opp), scouted },
+    myVice: viceInfo(state, viewer),
+    oppVice: oppViceOf(state, opp),
   };
   if (skills) view.skills = skillsFor(skills, viewer);
   return view;
@@ -663,32 +922,64 @@ export function viewFor(state: GameState, viewer: Player): PlayerView {
 const emptySide = (): SkillSide => ({ offer: [], card: null, gauge: 0 });
 const newSkills = (): SkillsState => ({ sides: [emptySide(), emptySide()], ready: false, armed: null, shielded: [false, false] });
 
-/** viewer に見せるスキルの状態。相手の配られたカードは見せず、相手の選んだカードは両者が選び終えるまで見せない */
+/**
+ * viewer に見せるスキルの状態。相手の配られたカード・配り直したかは見せず、相手の選んだカードは両者が選び終えるまで見せない。
+ * 巻き戻しで戻す局面（undo。王を含む）は消し、戻せるか（undoable）だけを見せる
+ */
 function skillsFor(sk: SkillsState, viewer: Player): SkillsState {
+  const { undo, ...rest } = sk;
   const sides = sk.sides.map((s, i) =>
     i === viewer ? { ...s, offer: [...s.offer] } : { offer: [], card: sk.ready ? s.card : null, gauge: s.gauge },
   ) as [SkillSide, SkillSide];
-  return { ...sk, sides, shielded: [sk.shielded[0], sk.shielded[1]] };
+  const out: SkillsState = { ...rest, sides, shielded: [sk.shielded[0], sk.shielded[1]] };
+  if (undo) out.undoable = [undo[0] !== null, undo[1] !== null];
+  return out;
 }
 
 /** 配れるカード（隠し王なしのルールでは偵察・王の移し替えを除く） */
 export const skillPool = (rules: RuleSet): SkillId[] =>
   SKILL_ORDER.filter((id) => rules.king.on || (id !== "scout" && id !== "kingmove"));
 
+/** 運命の輪が引く効果（運命の輪を除く 10 枚。隠し王なしのルールでは偵察・王の移し替えも除く） */
+export const wheelPool = (rules: RuleSet): WheelEffect[] => skillPool(rules).filter((id): id is WheelEffect => id !== "wheel");
+
+/** pool から OFFER_SIZE 枚を重ならずに引く（pool の並びで rng を OFFER_SIZE 回使う） */
+function drawOffer(pool: SkillId[], rng: () => number): SkillId[] {
+  for (let i = 0; i < Math.min(OFFER_SIZE, pool.length); i++) {
+    const j = i + Math.min(pool.length - i - 1, Math.floor(rng() * (pool.length - i)));
+    [pool[i], pool[j]] = [pool[j], pool[i]];
+  }
+  return pool.slice(0, OFFER_SIZE);
+}
+
 /** 両者に OFFER_SIZE 枚ずつ配る（各自のカードは重ならない。両者の間では重なってよい）。スキルなし・配り済みなら例外 */
 export function dealSkills(state: GameState, rng: () => number): GameState {
   const sk = state.skills;
   if (!sk) throw new Error("スキルなしのルールです");
   if (sk.sides.some((s) => s.offer.length > 0 || s.card)) throw new Error("もう配りました");
-  const deal = (): SkillId[] => {
-    const pool = skillPool(state.rules);
-    for (let i = 0; i < Math.min(OFFER_SIZE, pool.length); i++) {
-      const j = i + Math.min(pool.length - i - 1, Math.floor(rng() * (pool.length - i)));
-      [pool[i], pool[j]] = [pool[j], pool[i]];
-    }
-    return pool.slice(0, OFFER_SIZE);
-  };
+  const deal = () => drawOffer(skillPool(state.rules), rng);
   const sides: [SkillSide, SkillSide] = [{ ...sk.sides[0], offer: deal() }, { ...sk.sides[1], offer: deal() }];
+  return { ...state, skills: { ...sk, sides } };
+}
+
+/** p が配り直しを使えないなら理由、使えるなら null（選ぶ前に 1 局 1 回） */
+export function rerollBlock(sk: SkillsState | undefined, p: Player): "off" | "picked" | "rerolled" | null {
+  if (!sk || sk.sides[p].offer.length === 0) return "off";
+  if (sk.ready || sk.sides[p].card) return "picked";
+  return sk.sides[p].rerolled ? "rerolled" : null;
+}
+
+/**
+ * p が配られた 3 枚を配り直す（選ぶ前に 1 局 1 回）。新しい 3 枚は、配られていた 3 枚を除いた残りから引く（同じ札は戻らず、前の 3 枚にも戻れない）。
+ * 乱数は引数（画面は crypto、サーバーは crypto）。配り直したことは相手に見せない（viewFor が消す）。使えないなら例外
+ */
+export function rerollSkills(state: GameState, p: Player, rng: () => number): GameState {
+  const block = rerollBlock(state.skills, p);
+  if (block) throw new Error(block === "rerolled" ? "配り直しは 1 回までです" : block === "picked" ? "もう選びました" : "配られていません");
+  const sk = state.skills!;
+  const old = sk.sides[p].offer;
+  const sides: [SkillSide, SkillSide] = [sk.sides[0], sk.sides[1]];
+  sides[p] = { ...sides[p], offer: drawOffer(skillPool(state.rules).filter((id) => !old.includes(id)), rng), rerolled: true };
   return { ...state, skills: { ...sk, sides } };
 }
 
@@ -710,20 +1001,36 @@ export function setSkills(state: GameState, cards: [SkillId | null, SkillId | nu
   return { ...state, skills: { ...state.skills, sides, ready: true } };
 }
 
-/** 補充で戻せる駒（使い切った駒のうち数字が REFILL_MAX_VALUE 以下。表示の順） */
+/** 補充で戻せる駒（初期の数より減っている駒。数字は問わない。表示の順） */
 export function refillKinds(view: Pick<GameState, "rules" | "hands" | "turn">): PieceKind[] {
   const hand = view.hands[view.turn];
-  return kindsInRules(view.rules).filter((k) => hand[k] === 0 && view.rules.values[k] <= REFILL_MAX_VALUE);
+  return kindsInRules(view.rules).filter((k) => hand[k] < view.rules.hand[k]);
 }
 
-/** 王の移し替えで移せるマス（今の王から KINGMOVE_RANGE マス以内の自分の駒。今の王のマスは除く） */
-export function kingMoveCells(view: Pick<PlayerView, "board" | "turn" | "myKing">): Cell[] {
+/**
+ * 手番の人から見て、targets（返す駒）に入る相手の王・副将のうち場所が分かっているもの（偵察で特定した王・副将）の罰。
+ * 公開情報と偵察で知った場所だけで決める（予測の吹き出し）。king は王の罰（即負けなら "lose"）、vice は副将の罰。
+ * 偵察で知った副将が置き直されていれば、実際には罰はない（相手が置き直したかは見えない）
+ */
+export function knownPenalties(view: Pick<PlayerView, "rules" | "oppKing" | "oppVice">, targets: readonly Cell[]): { king: number | "lose" | null; vice: number | null } {
+  const has = (cell: Cell) => targets.some(([y, x]) => y === cell[0] && x === cell[1]);
+  const ok = view.oppKing;
+  const kingHit = ok.scouted && !ok.revealed && has(ok.candidates[0]);
+  const king = kingHit ? (view.rules.king.penalty === "lose" ? "lose" : view.rules.king.amount) : null;
+  const vice = view.oppVice.scouted && view.oppVice.cell && has(view.oppVice.cell) ? VICE_PENALTY : null;
+  return { king, vice };
+}
+
+/** 王の移し替えで移せるマス（今の王から KINGMOVE_RANGE マス以内の自分の駒。今の王のマスと自分の副将のマスは除く） */
+export function kingMoveCells(view: Pick<PlayerView, "board" | "turn" | "myKing"> & { myVice?: ViceInfo }): Cell[] {
   const k = view.myKing.status === "hidden" ? view.myKing.cell : null;
   if (!k) return [];
+  const v = view.myVice?.cell;
   const out: Cell[] = [];
   for (let r = 0; r < SIZE; r++) {
     for (let c = 0; c < SIZE; c++) {
       if (r === k[0] && c === k[1]) continue;
+      if (v && r === v[0] && c === v[1]) continue;
       if (view.board[r][c]?.owner !== view.turn) continue;
       if (Math.max(Math.abs(r - k[0]), Math.abs(c - k[1])) <= KINGMOVE_RANGE) out.push([r, c]);
     }
@@ -732,12 +1039,47 @@ export function kingMoveCells(view: Pick<PlayerView, "board" | "turn" | "myKing"
 }
 
 /**
- * 偵察を使えるか（公開情報だけで決める）: 相手の王が隠れていて、相手が期限の手まで打ち終えている（王が必ず決まっている）。
- * 相手が期限より前に王を決めたかは隠し情報なので、期限まで待つ
+ * 偵察の効果（公開情報だけで決める）。find: 相手の王を特定する（相手の王が隠れていて、まだ知らず、候補が 2 つ以上）/
+ * vice: 使った時点の相手の今の副将を特定する（王が分かっている・返した後）
  */
-function scoutable(view: Pick<GameState, "rules" | "history" | "turn">): boolean {
+export function scoutMode(view: Pick<PlayerView, "oppKing">): "find" | "vice" {
+  const ok = view.oppKing;
+  return !ok.revealed && !ok.scouted && ok.candidates.length >= 2 ? "find" : "vice";
+}
+
+/**
+ * 偵察を使えない理由。相手が期限の手まで打ち終えるまでは使えない（相手が期限より前に王を決めたかは隠し情報なので、期限まで待つ。
+ * 先に王を返していれば使える）。副将を特定する効果は、相手の副将が「いる」と見えていない間（noVice）・
+ * 偵察の印が見えている間（viceSeen。印の副将の窓より後の窓を見せるとまた使える）は使えない
+ */
+function scoutBlock(view: PlayerView): EffectBlock | null {
   const opp = other(view.turn);
-  return view.rules.king.on && movesBy(view, opp) >= view.rules.king.deadline && !kingRevealed(view, opp);
+  if (!view.rules.king.on) return "noTarget";
+  if (!view.oppKing.revealed && movesBy(view, opp) < view.rules.king.deadline) return "noTarget";
+  if (scoutMode(view) === "find") return null;
+  if (view.oppVice.scouted) return "viceSeen";
+  return view.oppVice.set ? null : "noVice";
+}
+
+/** 運命の輪以外の 10 枚の効果を、手番の人がいま使えない理由（使えるなら null）。カードの使う判定と運命の輪の不発の判定で同じ */
+export function effectBlock(view: PlayerView, effect: WheelEffect): EffectBlock | null {
+  const p = view.turn;
+  switch (effect) {
+    case "firstaid":
+    case "bigheal":
+      return view.hp[p] >= view.rules.hp[p] ? "fullHp" : null;
+    case "refill":
+      return refillKinds(view).length === 0 ? "noRefill" : null;
+    case "scout":
+      return scoutBlock(view);
+    case "kingmove":
+      if (view.myKing.status !== "hidden") return "noKing";
+      return kingMoveCells(view).length === 0 ? "noRoom" : null;
+    case "judge":
+      return view.skills?.undoable?.[p] ? null : "noUndo";
+    default:
+      return null;
+  }
 }
 
 /** 手番の人がいまスキルを使えないなら理由、使えるなら null（PlayerView でも GameState を viewFor したものでも同じ） */
@@ -749,22 +1091,10 @@ export function skillBlock(view: PlayerView): SkillBlock | null {
   const card = sk.sides[p].card;
   if (!card) return "off";
   if (view.result) return "over";
-  if (sk.armed) return "used";
+  if (sk.armed || sk.second) return "used";
   if (sk.sides[p].gauge < gaugeMax(card)) return "charging";
-  switch (card) {
-    case "firstaid":
-    case "bigheal":
-      return view.hp[p] >= view.rules.hp[p] ? "fullHp" : null;
-    case "refill":
-      return refillKinds(view).length === 0 ? "noRefill" : null;
-    case "scout":
-      return scoutable(view) ? null : "noTarget";
-    case "kingmove":
-      if (view.myKing.status !== "hidden") return "noKing";
-      return kingMoveCells(view).length === 0 ? "noRoom" : null;
-    default:
-      return null;
-  }
+  // 運命の輪は引いた効果が使えなければ不発（使うことはできる）
+  return card === "wheel" ? null : effectBlock(view, card);
 }
 
 /** 手番の人のゲージが満タンか（使えるかは skillBlock） */
@@ -774,28 +1104,64 @@ export function gaugeFull(sk: SkillsState, p: Player): boolean {
 }
 
 /**
- * 手番の人がスキルを使う（置く前。効果のうち回復・補充・鉄壁・偵察・王の移し替えはすぐ、強打・全方向・偵察の罰はこの手番の手で効く）。
- * ゲージは 0 に戻る。使えない・指定が違うなら例外
+ * 手番の人がスキルを使う（置く前）。ゲージは 0 に戻る。使えない・指定が違うなら例外。
+ * 効果のうち回復・補充・鉄壁・偵察・王の移し替え・巻き戻しはすぐ、強打・全方向・連続行動はこの手番の手で効く。
+ * 運命の輪は rng で運命の輪以外の 10 枚から 1 つを引き（乱数は引数。画面は crypto、サーバーは crypto）、その場で使えなければ不発。
+ * 連続行動・巻き戻しが出たらカードと同じに効く（巻き戻しはすぐ戻す）。
+ * 補充・王の移し替えが出たら armed.aim になり、続けて同じ id で戻す駒・移す先を指定する（この 2 回目は rng を使わない）
  */
-export function useSkill(state: GameState, use: SkillUse): GameState {
+export function useSkill(state: GameState, use: SkillUse, rng?: () => number): GameState {
   const p = state.turn;
-  const q = other(p);
+  const sk = state.skills;
+  const armed = sk?.armed;
+  if (sk && armed?.aim) {
+    if (use.id !== armed.id) throw new Error("運命の輪の指定を待っています");
+    const { aim: _aim, ...note } = armed;
+    return applyEffect({ ...state, skills: { ...sk, armed: null } }, armed.effect as "refill" | "kingmove", use, note);
+  }
   const view = viewFor(state, p);
   const block = skillBlock(view);
   if (block) throw new Error(`スキルを使えません: ${block}`);
-  const sk = state.skills!;
-  const card = sk.sides[p].card!;
+  const card = sk!.sides[p].card!;
   if (use.id !== card) throw new Error(`${use.id} は自分のカードではありません`);
-  const sides: [SkillSide, SkillSide] = [sk.sides[0], sk.sides[1]];
+  const sides: [SkillSide, SkillSide] = [sk!.sides[0], sk!.sides[1]];
   sides[p] = { ...sides[p], gauge: 0 };
-  const note: SkillNote = { id: card };
-  const shielded: [boolean, boolean] = [sk.shielded[0], sk.shielded[1]];
-  let next: GameState = { ...state };
+  const spent: GameState = { ...state, skills: { ...sk!, sides } };
   switch (card) {
+    case "judge":
+      return takeBack(spent, p);
+    case "fool":
+      return { ...spent, skills: { ...spent.skills!, armed: { id: card } } };
+    case "wheel": {
+      if (!rng) throw new Error("運命の輪には乱数が要ります");
+      const pool = wheelPool(state.rules);
+      const effect = pool[Math.min(pool.length - 1, Math.floor(rng() * pool.length))];
+      const note: SkillNote = { id: card, effect };
+      if (effectBlock(viewFor(spent, p), effect)) note.fizzle = true;
+      else if (effect === "refill" || effect === "kingmove") note.aim = true;
+      else if (effect === "judge") return takeBack(spent, p, note);
+      else return applyEffect(spent, effect, {}, note);
+      return { ...spent, skills: { ...spent.skills!, armed: note } };
+    }
+    default:
+      return applyEffect(spent, card, use, { id: card });
+  }
+}
+
+/** 巻き戻し以外の効果を手番の人に掛け、note を armed にする（ゲージは減らしてある前提） */
+function applyEffect(state: GameState, effect: Exclude<WheelEffect, "judge">, use: Pick<SkillUse, "kind" | "to">, note: SkillNote): GameState {
+  const p = state.turn;
+  const q = other(p);
+  const sk = state.skills!;
+  const sides: [SkillSide, SkillSide] = [sk.sides[0], sk.sides[1]];
+  const shielded: [boolean, boolean] = [sk.shielded[0], sk.shielded[1]];
+  const next: GameState = { ...state };
+  const view = viewFor(state, p);
+  switch (effect) {
     case "firstaid":
     case "bigheal": {
       const hp: [number, number] = [state.hp[0], state.hp[1]];
-      hp[p] = Math.min(state.rules.hp[p], hp[p] + SKILL_HEAL[card]);
+      hp[p] = Math.min(state.rules.hp[p], hp[p] + SKILL_HEAL[effect]);
       note.heal = hp[p] - state.hp[p];
       next.hp = hp;
       break;
@@ -812,31 +1178,90 @@ export function useSkill(state: GameState, use: SkillUse): GameState {
       shielded[q] = true;
       break;
     case "scout": {
-      const kings: [KingState, KingState] = [state.kings[0], state.kings[1]];
-      kings[q] = { ...kings[q], seen: true };
-      next.kings = kings;
+      if (scoutBlock(view)) throw new Error("偵察できません");
+      if (scoutMode(view) === "find") {
+        const kings: [KingState, KingState] = [state.kings[0], state.kings[1]];
+        if (!kings[q].cell) throw new Error("相手の王が決まっていません");
+        kings[q] = { ...kings[q], seen: true };
+        next.kings = kings;
+        note.scout = "find";
+      } else {
+        // 使った時点の相手の今の副将（置き直していれば新しい副将。置き直したかは偵察した人に分かる）。
+        // 使えるのは相手の副将を「いる」と見せている間（scoutBlock）で、そのときは見せている窓から後に返された副将がないので、今の副将は必ずある
+        const kings: [KingState, KingState] = [state.kings[0], state.kings[1]];
+        const v = kings[q].vice;
+        const live = liveVice(v);
+        if (!v || !live) throw new Error("相手の今の副将がありません");
+        kings[q] = { ...kings[q], vice: { ...v, list: v.list.map((x) => (x === live ? { ...x, seen: true as const } : x)) } };
+        next.kings = kings;
+        note.scout = "vice";
+      }
       break;
     }
     case "kingmove": {
       const to = use.to;
       if (!to || !kingMoveCells(view).some(([y, x]) => y === to[0] && x === to[1])) throw new Error("そのマスには移せません");
       const kings: [KingState, KingState] = [state.kings[0], state.kings[1]];
-      kings[p] = { cell: [to[0], to[1]], auto: false, revealed: false };
+      // 副将はそのまま（移せるマスに副将のマスは入らない）
+      kings[p] = { cell: [to[0], to[1]], auto: false, revealed: false, ...(kings[p].vice ? { vice: kings[p].vice } : {}) };
       note.cands = [];
       for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) if (state.board[r][c]?.owner === p) note.cands.push([r, c]);
       next.kings = kings;
       break;
     }
     default:
-      // 強打・全方向は置く手で効く
+      // 強打・全方向・連続行動は置く手で効く
       break;
   }
-  next = { ...next, skills: { ...sk, sides, armed: note, shielded } };
-  return next;
+  const skills: SkillsState = { ...sk, sides, armed: note, shielded };
+  return { ...next, skills };
 }
 
-/** 打った手の後のスキルの状態（ゲージを足し、この手番で使ったスキル・この手に掛かった鉄壁を消す） */
-function skillsAfterMove(sk: SkillsState, move: MoveEvent, lost: number): SkillsState {
+/**
+ * 巻き戻し: 手番の人 p の前の手番の頭の局面に戻す（自分の直前の手と、それに続く相手の応手をまとめて戻す）。
+ * 相手の王の指定は戻さない: 戻した応手で相手が王を指定していたら、相手が次に置く駒がそのまま王になる（kept）。
+ * 戻した後のゲージは戻した局面のもの（p は 0）。note は使ったスキル（運命の輪で出たときは id が wheel）
+ */
+function takeBack(state: GameState, p: Player, note: SkillNote = { id: "judge" }): GameState {
+  const q = other(p);
+  const sk = state.skills!;
+  const snap = sk.undo?.[p];
+  if (!snap?.skills) throw new Error("戻す手がありません");
+  const kings: [KingState, KingState] = [snap.kings[0], snap.kings[1]];
+  const cur = state.kings[q];
+  if (!snap.kings[q].cell && cur.cell && !cur.revealed) kings[q] = { cell: null, auto: cur.auto, revealed: false, kept: true };
+  // 相手の副将の指定も戻さない（王と同じ）: 副将は置いた駒で出すので、出した手を戻したら相手が次に置く駒がそのまま副将になる
+  const sv = snap.kings[q].vice;
+  const cv = cur.vice;
+  if (sv && cv && cv.since === sv.since && cv.list.length > sv.list.length) kings[q] = { ...kings[q], vice: { ...sv, kept: true } };
+  const undone = state.history.slice(snap.history.length).filter((e): e is MoveEvent => e.type === "move");
+  const mine = undone.find((e) => e.player === p);
+  note.back = undone.length;
+  if (mine) note.redo = { r: mine.r, c: mine.c, kind: mine.kind };
+  const sides: [SkillSide, SkillSide] = [snap.skills.sides[0], snap.skills.sides[1]];
+  sides[p] = { ...sides[p], gauge: 0 };
+  // 戻した局面からは、どちらも次に自分が打つまで巻き戻しできない（局面を重ねて持たない）
+  const { undo: _undo, ...base } = snap.skills;
+  return { ...snap, kings, skills: { ...base, sides, armed: note, undo: [null, null] } };
+}
+
+/** 運命の輪の指定を rng で選ぶ（制限時間切れ）。補充は戻せる駒から、王の移し替えは移せるマスから一様に */
+function randomAim(state: GameState, rng: () => number): SkillUse {
+  const effect = state.skills!.armed!.effect;
+  const pick = <T>(xs: T[]) => xs[Math.min(xs.length - 1, Math.floor(rng() * xs.length))];
+  if (effect === "refill") return { id: "wheel", kind: pick(refillKinds(state)) };
+  return { id: "wheel", to: pick(kingMoveCells(viewFor(state, state.turn))) };
+}
+
+/** 巻き戻しで戻す局面を覚えるカード（巻き戻しと、巻き戻しが出うる運命の輪） */
+const keepsUndo = (card: SkillId | null) => card === "judge" || card === "wheel";
+
+/**
+ * 打った手の後のスキルの状態（ゲージを足し、この手番で使ったスキル・この手に掛かった鉄壁・連続行動の 2 手目を消す）。
+ * 巻き戻し・運命の輪のカードを持つ人が打ったら、打つ前の局面（手番の頭）を覚える
+ */
+function skillsAfterMove(before: GameState, move: MoveEvent, lost: number): SkillsState {
+  const sk = before.skills!;
   const p = move.player;
   const q = other(p);
   const sides: [SkillSide, SkillSide] = [sk.sides[0], sk.sides[1]];
@@ -850,5 +1275,16 @@ function skillsAfterMove(sk: SkillsState, move: MoveEvent, lost: number): Skills
   add(q, victimGain(lost));
   const shielded: [boolean, boolean] = [sk.shielded[0], sk.shielded[1]];
   shielded[p] = false;
-  return { ...sk, sides, armed: null, shielded };
+  const { second: _second, undo, ...rest } = sk;
+  const out: SkillsState = { ...rest, sides, armed: null, shielded };
+  if (undo || keepsUndo(card)) {
+    const u: [GameState | null, GameState | null] = undo ? [undo[0], undo[1]] : [null, null];
+    // 連続行動の 2 手目は手番の頭ではない（運命の輪で連続行動が出た 2 手目は 1 手目の前の局面のまま）
+    if (keepsUndo(card) && !sk.second) {
+      const { undo: _u, undoable: _ua, ...plain } = sk;
+      u[p] = { ...before, skills: { ...plain, armed: null } };
+    }
+    out.undo = u;
+  }
+  return out;
 }

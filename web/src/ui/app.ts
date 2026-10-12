@@ -9,7 +9,7 @@ import {
   isLegal,
   kingInfo,
   kingMoveCells,
-  kingRevealed,
+  knownPenalties,
   lastMoveOf,
   legalCells,
   movesBy,
@@ -19,16 +19,22 @@ import {
   pickSkill,
   previewMove,
   refillKinds,
+  rerollBlock,
+  rerollSkills,
   skillBlock,
   targetsAt,
   threatenedPieces,
   useSkill,
+  viceInfo,
+  vicesOn,
   viewFor,
   type GameEvent,
   type GameResult,
   type GameState,
   type KingInfo,
   type MoveEvent,
+  type OppVice,
+  type ViceInfo,
   type PlayerView,
   type Preview,
   type Target,
@@ -47,8 +53,8 @@ import {
   type Player,
   type RuleSet,
 } from "../engine/rules";
-import { chooseSkillUse } from "../engine/skillcpu";
-import { gaugeMax, GAUGE_UNIT, isZone, SKILLS, type SkillBlock, type SkillId, type SkillUse } from "../engine/skills";
+import { chooseSkillPick, chooseSkillUse, viceWith, wantsReroll } from "../engine/skillcpu";
+import { gaugeMax, GAUGE_UNIT, isZone, SKILLS, VICE_PENALTY, type SkillBlock, type SkillId, type SkillNote, type SkillUse } from "../engine/skills";
 import {
   browserDeps,
   checkHealth,
@@ -79,17 +85,21 @@ import { dirMark, endDetails, handText, hpText, kingPenaltyText, pieceLabel, rul
 import { gaugeLeft, gaugeRatio, SkillPick, tarotCard } from "./skillui";
 import { Coach } from "./coach";
 import {
-  FINISHED_TEXT,
+  CHAPTER_IDS,
+  CHAPTERS,
+  finishedText,
   illegalHint,
   judgeMove,
-  LESSONS,
   loadProgress,
   nextNeed,
+  PICK_HINT,
   progressAt,
   progressLabel,
   resumeStep,
   saveProgress,
+  type ChapterId,
   type Lesson,
+  type Need,
   type Progress,
 } from "./lessons";
 import { Menu } from "./menu";
@@ -119,6 +129,8 @@ interface ImpactPlan extends FxTiming {
 
 /** 遊び方（チュートリアル）で開いているステップ。solved は正解を打った後（「次へ」を待つ間は盤を操作させない） */
 interface LessonRun {
+  /** 章（標準ルール・スキルあり） */
+  chapter: ChapterId;
   index: number;
   lesson: Lesson;
   solved: boolean;
@@ -157,6 +169,8 @@ export class App {
   private animatePly = -1;
   /** 隠し王: 手番の人が「この駒を王にする」を選んでいる */
   private kingOn = false;
+  /** 「この駒を副将にする」を選んでいる（副将を出す期間の手番の人） */
+  private viceOn = false;
   /** 隠し王（2 人対戦）: 「自分の王を確認」を押している間 true */
   private peek = false;
   /** タッチで「同じマスをもう一度タップで置く」を覚えたか（吹き出しの案内は覚えるまで） */
@@ -230,8 +244,8 @@ export class App {
   // ---- 遊び方（チュートリアル） ----
   /** 開いているステップ（チュートリアル中でなければ null） */
   private lesson: LessonRun | null = null;
-  /** 進み具合（localStorage。読めなければ null = はじめて） */
-  private progress: Progress | null;
+  /** 章ごとの進み具合（localStorage。読めなければ null = はじめて） */
+  private progress: Record<ChapterId, Progress | null>;
   private readonly coach: Coach;
 
   private readonly cells: HTMLButtonElement[][] = [];
@@ -267,7 +281,7 @@ export class App {
       cpu: (level) => this.start(this.setup.playSettings("cpu", level)),
       pvp: () => this.start(this.setup.playSettings("pvp")),
       online: () => this.start(this.setup.playSettings("online")),
-      learn: () => this.openLesson(resumeStep(this.progress)),
+      learn: (chapter) => this.openLesson(chapter, resumeStep(this.progress[chapter])),
       settings: () => this.setup.open(),
       rules: () => this.showRules(this.setup.current.rules),
       resume: () => this.resume(),
@@ -287,11 +301,16 @@ export class App {
     this.menu.setRuleName(ruleName(this.setup.current.rules));
     this.showLevelTimes();
     this.coach = new Coach({
-      next: () => this.openLesson((this.lesson?.index ?? 0) + 1),
-      again: () => this.openLesson(this.lesson?.index ?? 0),
-      jump: (i) => this.openLesson(i),
+      // 標準の章の実戦を終えたら「次へ」はスキルありの章へ
+      next: () => {
+        const run = this.lesson;
+        if (run && run.index + 1 >= CHAPTERS[run.chapter].length) this.openLesson("skill", 0);
+        else this.openLesson(run?.chapter ?? "std", (run?.index ?? 0) + 1);
+      },
+      again: () => this.openLesson(this.lesson?.chapter ?? "std", this.lesson?.index ?? 0),
+      jump: (i) => this.openLesson(this.lesson?.chapter ?? "std", i),
     });
-    this.progress = loadProgress(this.local);
+    this.progress = { std: loadProgress(this.local, "std"), skill: loadProgress(this.local, "skill") };
     this.showLearnState();
     this.bindControls();
     // 招待リンク（?room=）から開いたら部屋へ、それ以外はメニューから
@@ -395,9 +414,9 @@ export class App {
   private bindControls() {
     const { result, rules } = this.el;
     this.bindTabs();
-    // 遊び方のステップ中は、習っている標準ルール（実戦のルール）の詳細を見せる
+    // 遊び方のステップ中は、章で習っているルール（章の実戦のルール）の詳細を見せる
     byId("btn-rules").addEventListener("click", () =>
-      this.inStep() ? this.showRules(LESSONS[LESSONS.length - 1].rules) : this.showRules(this.settings?.rules ?? null, this.settings ?? undefined),
+      this.inStep() ? this.showRules(this.lessonRules()) : this.showRules(this.settings?.rules ?? null, this.settings ?? undefined),
     );
     byId("btn-menu").addEventListener("click", () => this.showMenu());
     byId("btn-threat").addEventListener("click", () => this.setThreat(!this.threatOn));
@@ -486,7 +505,8 @@ export class App {
     // 遊び方のステップは常にオン（「予測を読む」で使う）。最後の実戦はふつうの対局と同じく保存した設定
     this.initThreat(lesson && !lesson.lesson.match ? true : settings.threat);
     this.game = lesson ? lesson.lesson.start() : createGame(settings.rules);
-    if (this.game.skills) this.game = this.dealCards(this.game, settings);
+    // 遊び方のステップはカード（配られた 3 枚・選んだカード・ゲージ）まで局面が決めてある。実戦はふつうに配る
+    if (this.game.skills && !this.inStep()) this.game = this.dealCards(this.game, settings);
     this.el.game.hidden = false;
     this.renderRuleCard(settings.rules);
     this.renderLegend(settings.rules);
@@ -497,15 +517,16 @@ export class App {
   }
 
   /**
-   * スキルのカードを配る（乱数は crypto。Math.random は CPU の乱数と共有）。CPU 対戦は CPU が配られた 3 枚から 1 枚を引く。
+   * スキルのカードを配る（乱数は crypto。Math.random は CPU の乱数と共有）。CPU 対戦は CPU が配られた 3 枚から 1 枚を引く
+   * （3 枚とも弱いカードなら先に 1 回配り直す。wantsReroll）。
    * 人間（2 人対戦は先手から順に）はカードを選ぶダイアログで選ぶ（syncPick）
    */
   private dealCards(g: GameState, settings: PlaySettings): GameState {
     let next = dealSkills(g, cryptoRandom);
     if (settings.mode === "cpu") {
       const cpu = other(settings.human);
-      const offer = next.skills!.sides[cpu].offer;
-      next = pickSkill(next, cpu, offer[Math.min(offer.length - 1, Math.floor(cryptoRandom() * offer.length))]);
+      if (wantsReroll(next.skills!.sides[cpu].offer)) next = rerollSkills(next, cpu, cryptoRandom);
+      next = pickSkill(next, cpu, chooseSkillPick(next.skills!.sides[cpu].offer, cryptoRandom));
     }
     return next;
   }
@@ -530,6 +551,7 @@ export class App {
     this.focus = null;
     this.pinned = false;
     this.kingOn = false;
+    this.viceOn = false;
     this.peek = false;
     this.aim = null;
     this.pick.close();
@@ -575,15 +597,26 @@ export class App {
     if (p === v.viewer) return v.myKing;
     const on = g.rules.king.on;
     const status = !on ? "off" : v.oppKing.revealed ? "revealed" : "hidden";
-    return { status, cell: null, auto: false, nextMove: movesBy(g, p) + 1, canDesignate: false, forcedNow: false, seen: v.oppKing.scouted };
+    return { status, kept: false, cell: null, auto: false, nextMove: movesBy(g, p) + 1, canDesignate: false, forcedNow: false, seen: v.oppKing.scouted };
   }
 
-  private place(r: number, c: number, kind: PieceKind, king = false) {
+  /**
+   * p の副将の情報（kingOf と同じ扱い）。オンライン対戦の相手の分は view の公開してよい範囲（決めているか）だけ
+   */
+  private viceOf(g: GameState, p: Player): ViceInfo {
+    if (!this.online) return viceInfo(g, p);
+    const v = g as unknown as PlayerView;
+    if (p === v.viewer) return v.myVice;
+    const status = !vicesOn(g.rules) ? "off" : v.oppVice.set ? "set" : "unset";
+    return { status, cell: null, auto: false, left: 0, forcedNow: false, kept: false, seen: v.oppVice.scouted, replaced: null };
+  }
+
+  private place(r: number, c: number, kind: PieceKind, king = false, vice = false) {
     if (!this.game) return;
     if (this.online) {
       // 手を送るだけ。盤はサーバーから state が届いたときに描き直す（拒否されたら error が届く）。
       // 考えた局面の棋譜の長さを添え、時間切れの自動の手と入れ違ったらサーバーに拒否させる
-      if (!this.net?.sendMove(r, c, kind, king, this.game.history.length)) {
+      if (!this.net?.sendMove(r, c, kind, king, this.game.history.length, vice)) {
         this.showToast("接続が切れています。つながったら打ち直してください");
         return;
       }
@@ -593,7 +626,7 @@ export class App {
       this.render();
       return;
     }
-    this.advance(playMove(this.game, r, c, kind, { king }));
+    this.advance(playMove(this.game, r, c, kind, { king, vice }));
   }
 
   /** 画面で打った手（人間・CPU・時間切れの自動の手）を反映する */
@@ -605,6 +638,7 @@ export class App {
     this.focus = null;
     this.pinned = false;
     this.kingOn = false;
+    this.viceOn = false;
     this.peek = false;
     this.aim = null;
     this.afterChange();
@@ -635,6 +669,7 @@ export class App {
     this.focus = null;
     this.pinned = false;
     this.kingOn = false;
+    this.viceOn = false;
     this.peek = false;
     this.aim = null;
     this.render();
@@ -771,9 +806,10 @@ export class App {
         this.applySkill(use);
         return;
       }
-      // CPU には自分の視点（相手の王の正体を含まない）だけを渡す
-      const ch = chooseMove(viewFor(g, g.turn), this.settings?.level ?? DEFAULT_CPU_LEVEL);
-      if (ch) this.place(ch.r, ch.c, ch.kind, ch.king);
+      // CPU には自分の視点（相手の王の正体を含まない）だけを渡す。副将は置く駒で出す（相手には見えないので演出しない）
+      const view = viewFor(g, g.turn);
+      const ch = chooseMove(view, this.settings?.level ?? DEFAULT_CPU_LEVEL);
+      if (ch) this.place(ch.r, ch.c, ch.kind, ch.king, viceWith(view, ch, Math.random));
     }, delay);
   }
 
@@ -812,6 +848,13 @@ export class App {
         const head = owner === this.me() ? `王を${v.hit}` : `王を${v.past}`;
         msgs.push(`${head}。${this.shortName(owner)}の王は ${cellName(k.r, k.c)} の${pieceLabel(g.rules, k.kind)}、${what}`);
       }
+      if (e.vice) {
+        const k = e.vice;
+        const v = verb(g.rules);
+        const owner = other(e.player);
+        const head = owner === this.me() ? `副将を${v.hit}` : `副将を${v.past}`;
+        msgs.push(`${head}。${this.shortName(owner)}の副将は ${cellName(k.r, k.c)} の${pieceLabel(g.rules, k.kind)}、体力−${k.penalty}`);
+      }
       // CPU 対戦・オンライン対戦では、自分の王が決まったことを本人に知らせる（2 人対戦は相手に見えるので出さない）
       if (e.player === this.me()) {
         const ki = this.kingOf(g, e.player);
@@ -821,6 +864,15 @@ export class App {
               ? `期限の ${g.rules.king.deadline} 手目なので、${cellName(e.r, e.c)} の${pieceLabel(g.rules, e.kind)}が自動で王になりました`
               : `${cellName(e.r, e.c)} の${pieceLabel(g.rules, e.kind)}を王にしました。${this.foe()}には見えません`,
           );
+        }
+        const vi = this.viceOf(g, e.player);
+        if (vi.cell && vi.cell[0] === e.r && vi.cell[1] === e.c) {
+          msgs.push(
+            vi.auto
+              ? `期限なので、${cellName(e.r, e.c)} の${pieceLabel(g.rules, e.kind)}が自動で副将になりました`
+              : `${cellName(e.r, e.c)} の${pieceLabel(g.rules, e.kind)}を副将にしました。${this.foe()}には見えません`,
+          );
+          if (vi.replaced) msgs.push(`前の副将 ${cellName(vi.replaced[0], vi.replaced[1])} はふつうの駒に戻りました`);
         }
       }
     }
@@ -856,13 +908,18 @@ export class App {
     }
     const p: Player = s.mode === "pvp" ? (sk.sides[0].card ? 1 : 0) : s.human;
     const side = sk.sides[p];
+    // 遊び方のカードを選ぶステップは、選ぶ画面に要点と課題を出す（コーチが画面の後ろに隠れるため）
+    const step = this.inStep()?.lesson;
     this.pick.show({
       who: s.mode === "pvp" ? PLAYER_NAME[p] : "あなた",
       stone: s.mode === "pvp" ? p : null,
       offer: side.offer,
       rules: g.rules,
       chosen: this.online ? side.card : null,
+      reroll: rerollBlock(sk, p) === null,
+      lesson: step?.pick ? { point: step.point, note: step.note, task: step.task } : undefined,
       onPick: (id) => this.onPick(p, id),
+      onReroll: () => this.onReroll(p),
       onMenu: () => this.showMenu(),
     });
   }
@@ -871,14 +928,39 @@ export class App {
   private onPick(p: Player, id: SkillId) {
     const g = this.game;
     if (!g?.skills || g.skills.ready) return;
+    const step = this.inStep();
+    if (step?.lesson.pick) {
+      // 遊び方: 配り直してから選ぶ。選んだら盤を止めて、選んだカードの 1 文と「次へ」
+      if (rerollBlock(g.skills, p) === null) {
+        this.pick.hint(PICK_HINT);
+        return;
+      }
+      step.solved = true;
+      this.game = pickSkill(g, p, id);
+      this.render();
+      this.coach.success(step.lesson.pick.done(id, this.game), "次へ");
+      return;
+    }
     if (this.online) {
       if (!this.net?.sendPick(id)) this.showToast("接続が切れています。つながったら選び直してください");
       return;
     }
     this.game = pickSkill(g, p, id);
-    if (this.game.skills!.ready) this.announceCards(this.game);
+    if (this.game.skills!.ready && !this.inStep()) this.announceCards(this.game);
     this.render();
     this.scheduleCpu(CPU_DELAY_MS);
+  }
+
+  /** p が配られた 3 枚を配り直す（1 局 1 回。オンラインはサーバーが引いて、新しい 3 枚が自分にだけ届く） */
+  private onReroll(p: Player) {
+    const g = this.game;
+    if (!g?.skills || rerollBlock(g.skills, p)) return;
+    if (this.online) {
+      if (!this.net?.sendReroll()) this.showToast("接続が切れています。つながったら配り直してください");
+      return;
+    }
+    this.game = rerollSkills(g, p, cryptoRandom);
+    this.render();
   }
 
   /** 両者のカードを知らせる（例: あなたは強打、CPUは鉄壁） */
@@ -900,13 +982,19 @@ export class App {
         return `満タンまであと ${gaugeLeft(side)}`;
       }
       case "used":
-        return "この手番で使った";
+        return g.skills?.second ? "連続行動の 2 手目" : "この手番で使った";
       case "fullHp":
         return "体力が満タン";
       case "noRefill":
         return "戻せる駒がない";
       case "noTarget":
-        return kingRevealed(g, other(g.turn)) ? "相手の王はもう分かっている" : `相手が最初の${g.rules.king.deadline}手を打ってから使える`;
+        return `相手が最初の${g.rules.king.deadline}手を打ってから使える`;
+      case "noVice":
+        return this.viceWait(g, g.turn) > 0 ? "相手が副将を出す期限の後に使える" : "相手の副将が決まっていない";
+      case "viceSeen":
+        return "相手の今の副将はもう分かっている。次の副将の期限の後にまた使える";
+      case "noUndo":
+        return "戻す手がない";
       case "noKing":
         return "自分の王が隠れていない";
       case "noRoom":
@@ -930,6 +1018,13 @@ export class App {
     return b;
   }
 
+  /** p から見て、相手の副将が必ずいると分かるまでの相手の手数（偵察で副将を特定できるまで）。分からなければ 0 */
+  private viceWait(g: GameState, p: Player): number {
+    if (!this.online) return viewFor(g, p).oppVice.wait;
+    const v = g as unknown as PlayerView;
+    return v.viewer === p ? v.oppVice.wait : 0;
+  }
+
   /** p のカードが満タンで、p の手番なら使える（名札の満タンの光・使えるようになった演出） */
   private cardReady(g: GameState, p: Player): boolean {
     return this.cardBlock(g, p) === null;
@@ -944,7 +1039,17 @@ export class App {
       case "noRefill":
         return "戻せる駒なし";
       case "noTarget":
-        return kingRevealed(g, q) ? "王は判明" : `偵察は${Math.max(1, g.rules.king.deadline - movesBy(g, q))}手後`;
+        return `偵察は${Math.max(1, g.rules.king.deadline - movesBy(g, q))}手後`;
+      case "noVice": {
+        const wait = this.viceWait(g, p);
+        return wait > 0 ? `偵察は${wait}手後` : "副将が未定";
+      }
+      case "viceSeen": {
+        const wait = this.viceWait(g, p);
+        return wait > 0 ? `偵察は${wait}手後` : "副将は特定済み";
+      }
+      case "noUndo":
+        return "戻す手なし";
       case "noKing":
         return this.kingOf(g, p).status === "revealed" ? "王は公開済み" : "王が未定";
       case "noRoom":
@@ -989,6 +1094,20 @@ export class App {
     this.applySkill({ id });
   }
 
+  /**
+   * いま選んでいる指定（補充の駒・王の移し替えの先）。運命の輪で補充・王の移し替えが出たら、手番の人間は選ぶまで外せない
+   */
+  private aimOf(g: GameState): App["aim"] {
+    const a = g.skills?.armed;
+    if (a?.aim && this.isHuman(g.turn) && (a.effect === "refill" || a.effect === "kingmove")) return a.effect;
+    return this.aim;
+  }
+
+  /** 指定を送るときのスキル（運命の輪で出た指定なら運命の輪） */
+  private aimSkill(g: GameState, effect: "refill" | "kingmove"): SkillId {
+    return g.skills?.armed?.aim ? "wheel" : effect;
+  }
+
   private setAim(aim: App["aim"]) {
     this.aim = aim;
     this.focus = null;
@@ -1001,6 +1120,8 @@ export class App {
     const g = this.game;
     if (!g) return;
     this.aim = null;
+    // 遊び方: 「先に名札の〜を押して使う」のヒントは使ったら消す
+    if (this.inStep()) this.coach.clearHint();
     if (this.online) {
       if (!this.net?.sendSkill(use, g.history.length)) {
         this.showToast("接続が切れています。つながったら使い直してください");
@@ -1010,12 +1131,24 @@ export class App {
       this.render();
       return;
     }
+    // 運命の輪で出た補充・王の移し替えの指定: 演出はもう見せたので、描き直すだけ
+    if (g.skills?.armed?.aim) {
+      this.game = useSkill(g, use);
+      this.focus = null;
+      this.pinned = false;
+      this.render();
+      this.scheduleCpu(CPU_DELAY_MS / 2);
+      return;
+    }
     // 待った: スキルを使う前の局面を覚える（使ったスキルごと戻す）
     if (this.undo && this.settings) this.undo.record(g, this.settings.human);
-    this.game = useSkill(g, use);
+    // 運命の輪の引く効果は crypto（Math.random は CPU の乱数と共有）
+    this.game = useSkill(g, use, cryptoRandom);
+    // スキルの巻き戻しで棋譜が短くなった（戻した手は演出しない）
+    this.seenEvents = Math.min(this.seenEvents, this.game.history.length);
     this.focus = null;
     this.pinned = false;
-    this.playSkillCast(g.turn, use.id);
+    this.playSkillCast(g.turn, this.game.skills!.armed!);
   }
 
   /**
@@ -1052,14 +1185,18 @@ export class App {
     }
   }
 
-  /** スキルを使った演出（カードを表に返して名前を見せる）。終わるまで入力・CPU・時計を待たせる */
-  private playSkillCast(p: Player, id: SkillId) {
+  /**
+   * スキルを使った演出（カードを表に返して名前を見せる）。運命の輪は引いた効果（不発）、巻き戻しは戻した手数、
+   * 偵察で副将を特定したことを、名前の下に添える。終わるまで入力・CPU・時計を待たせる
+   */
+  private playSkillCast(p: Player, note: SkillNote) {
     const g = this.game!;
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const ms = skillCastMs(reduce);
+    const result = castResult(note);
+    const ms = skillCastMs(reduce, result !== null);
     this.placeSeats();
     const fromTop = this.el.seats[1].contains(this.el.players[p]);
-    this.fx.skillCast({ card: tarotCard(id, g.rules, { cls: "cast" }), who: this.shortName(p), owner: p, fromTop, reduce });
+    this.fx.skillCast({ card: tarotCard(note.id, g.rules, { cls: "cast" }), who: this.shortName(p), owner: p, fromTop, reduce, result });
     this.sound.skill();
     window.clearTimeout(this.fxTimer);
     this.fxLock = true;
@@ -1068,6 +1205,9 @@ export class App {
     this.fxTimer = window.setTimeout(() => {
       this.fxLock = false;
       if (this.game !== g) return;
+      // 相手の巻き戻しで、王を決めた手を戻された（指定は残る）
+      const me = this.me();
+      if ((note.effect ?? note.id) === "judge" && !note.fizzle && me !== null && me !== p && this.kingOf(g, me).kept) this.showToast("巻き戻された手で王を決めたので、次に置く駒が王になります");
       this.render();
       const q = this.queued;
       this.queued = null;
@@ -1093,15 +1233,31 @@ export class App {
     const side = sk.sides[p];
     const spec = SKILLS[card];
     const full = side.gauge >= gaugeMax(card);
-    const armed = sk.armed && g.turn === p && !g.result ? sk.armed.id : null;
+    const armed = sk.armed && g.turn === p && !g.result ? sk.armed : null;
+    // 連続行動の 2 手目
+    const second = !!sk.second && g.turn === p && !g.result;
     // 自分の鉄壁が相手の次の手に掛かっている
     const guard = sk.shielded[other(p)];
     const mine = this.canAct() && g.turn === p;
     const block = mine ? skillBlock(this.viewOf(g)) : null;
     const usable = mine && block === null;
     // 満タンでも使えない（戻せる駒がない・体力が満タン・偵察の期限前など）なら、「満タン」の代わりに理由を出して光を控える
-    const held = full && !armed && !g.result ? this.cardBlock(g, p) : null;
-    const state = armed ? "発動" : guard ? "鉄壁中" : !full ? `あと${gaugeLeft(side)}` : held ? this.blockShort(g, p, held) : "満タン";
+    const held = full && !armed && !second && !g.result ? this.cardBlock(g, p) : null;
+    const state = armed
+      ? armed.fizzle
+        ? "不発"
+        : armed.aim
+          ? "選ぶ"
+          : "発動"
+      : second
+        ? "2手目"
+        : guard
+          ? "鉄壁中"
+          : !full
+            ? `あと${gaugeLeft(side)}`
+            : held
+              ? this.blockShort(g, p, held)
+              : "満タン";
     const t = skillText(card, g.rules);
     // 溜まった演出の途中なら、伸び始めの時刻からの経過で続きを描く（名札は描き直すたびに作り直す）
     const anim = this.gaugeAnims[p];
@@ -1116,7 +1272,7 @@ export class App {
       ]),
       h("span", { class: "ps-state", text: state }),
     ];
-    const cls = `plate-skill t-${card}${full ? " full" : ""}${held ? " held" : ""}${armed ? " armed" : ""}${usable ? " ready" : ""}${this.aim ? " aiming" : ""}${grow ? ` grow${grow.full ? " just-full" : ""}` : ""}`;
+    const cls = `plate-skill t-${card}${full ? " full" : ""}${held ? " held" : ""}${armed || second ? " armed" : ""}${usable ? " ready" : ""}${this.aimOf(g) ? " aiming" : ""}${grow ? ` grow${grow.full ? " just-full" : ""}` : ""}`;
     const style = grow ? `--grow-at:${grow.start - now}ms` : "";
     const label = `${spec.name}（${t.point}）ゲージ ${Math.floor(side.gauge / GAUGE_UNIT)} / ${spec.length}`;
     const why = mine && block ? `。${this.blockText(g, block)}` : held ? `。${this.blockText(g, held)}` : "";
@@ -1127,6 +1283,11 @@ export class App {
     const chip = h("span", { class: cls, attrs: { style } }, children);
     if (usable) {
       const b = h("button", { class: "skill-hit ready", attrs: { type: "button", id: "skill-use", "aria-label": `${spec.name}を使う。${t.point}`, title: `押して使う。${t.point}` } }, [chip]);
+      // 遊び方: 置く前に使うステップは、名札のカードを光らせる
+      if (this.lessonNeed(g).skill) {
+        b.classList.add("guide");
+        b.append(...guideMarks(true));
+      }
       b.addEventListener("click", () => this.onSkillClick());
       return b;
     }
@@ -1138,16 +1299,20 @@ export class App {
 
   /** 補充の駒選び・王の移し替えの移す先選び（駒台の上の行）。選んでいなければ null */
   private aimBar(g: GameState): HTMLElement | null {
-    if (!this.aim || !this.canAct()) return null;
-    const cancel = h("button", { class: "btn ghost", text: "やめる", attrs: { type: "button", id: "skill-cancel" } });
-    cancel.addEventListener("click", () => this.setAim(null));
-    if (this.aim === "kingmove") {
+    const aim = this.aimOf(g);
+    if (!aim || !this.canAct()) return null;
+    // 運命の輪で出た指定はやめられない（選ぶまで置けない）
+    const forced = !!g.skills?.armed?.aim;
+    const cancel = forced ? null : h("button", { class: "btn ghost", text: "やめる", attrs: { type: "button", id: "skill-cancel" } });
+    cancel?.addEventListener("click", () => this.setAim(null));
+    if (aim === "kingmove") {
       return h("div", { class: "skill-aim", attrs: { role: "group", "aria-label": "王の移し替え" } }, [h("span", { class: "skill-aim-text", text: "王を移す駒を選ぶ" }), cancel]);
     }
     const p = g.turn;
+    const id = this.aimSkill(g, "refill");
     const kinds = refillKinds(this.viewOf(g)).map((k) => {
       const b = h("button", { class: "piece-btn refill-btn", attrs: { type: "button", "data-refill": k, "aria-label": `${PIECES[k].name}を戻す`, title: `${pieceLabel(g.rules, k)}を 1 つ戻す` } }, [this.stone(p, k)]);
-      b.addEventListener("click", () => this.applySkill({ id: "refill", kind: k }));
+      b.addEventListener("click", () => this.applySkill({ id, kind: k }));
       return b;
     });
     return h("div", { class: "skill-aim", attrs: { role: "group", "aria-label": "補充" } }, [h("span", { class: "skill-aim-text", text: "戻す駒" }), ...kinds, cancel]);
@@ -1160,17 +1325,24 @@ export class App {
     return this.lesson && !this.lesson.lesson.match ? this.lesson : null;
   }
 
-  /** i 番目のステップを始める（前回の位置として覚える） */
-  private openLesson(i: number) {
-    const lesson = LESSONS[Math.max(0, Math.min(LESSONS.length - 1, i))];
-    const index = LESSONS.indexOf(lesson);
-    this.progress = progressAt(this.progress, index);
-    saveProgress(this.local, this.progress);
+  /** 章の i 番目のステップを始める（前回の位置として覚える） */
+  private openLesson(chapter: ChapterId, i: number) {
+    const list = CHAPTERS[chapter];
+    const lesson = list[Math.max(0, Math.min(list.length - 1, i))];
+    const index = list.indexOf(lesson);
+    this.progress[chapter] = progressAt(this.progress[chapter], index);
+    saveProgress(this.local, this.progress[chapter]!, chapter);
     this.showLearnState();
     const { hands } = lesson.start();
     const kinds = kindsByValue(lesson.rules, KIND_ORDER.filter((k) => hands[0][k] + hands[1][k] > 0));
     // 人間が先手・CPU はイージー・制限時間なし（ステップでは CPU も時計も動かない）
-    this.start({ mode: "cpu", human: 0, rules: lesson.rules, level: "easy", turnSeconds: 0 }, { index, lesson, solved: false, kinds });
+    this.start({ mode: "cpu", human: 0, rules: lesson.rules, level: "easy", turnSeconds: 0 }, { chapter, index, lesson, solved: false, kinds });
+  }
+
+  /** 開いている章で習っているルール（章の実戦のルール） */
+  private lessonRules(): RuleSet {
+    const list = CHAPTERS[this.lesson?.chapter ?? "std"];
+    return list[list.length - 1].rules;
   }
 
   private showCoach() {
@@ -1180,35 +1352,41 @@ export class App {
       return;
     }
     // 一度でも開いたステップと、終えた後は全部へ移れる
-    const open = this.progress?.done ? LESSONS.length - 1 : (this.progress?.reached ?? run.index);
-    this.coach.show(run.index, LESSONS.map((l) => l.title), open, run.lesson.point, run.lesson.note, run.lesson.task);
+    const list = CHAPTERS[run.chapter];
+    const p = this.progress[run.chapter];
+    const open = p?.done ? list.length - 1 : (p?.reached ?? run.index);
+    this.coach.show(run.index, list.map((l) => l.title), open, run.lesson.point, run.lesson.note, run.lesson.task);
   }
 
   /** 正解を打った: 何が起きたかの 1 文と「次へ」 */
   private lessonSolved(run: LessonRun, before: GameState) {
     const m = lastMoveOf(this.game!);
     if (!m) return;
-    const nextIsMatch = !!LESSONS[run.index + 1]?.match;
-    this.coach.success(run.lesson.done(m, before), nextIsMatch ? "実戦へ" : "次へ");
+    const nextIsMatch = !!CHAPTERS[run.chapter][run.index + 1]?.match;
+    this.coach.success(run.lesson.done(m, before, this.game!), nextIsMatch ? "実戦へ" : "次へ");
   }
 
-  /** 実戦が終わった: 遊び方を終えたことを覚える（勝ち負けは問わない） */
+  /** 実戦が終わった: 章を終えたことを覚える（勝ち負けは問わない）。標準の章を終えたら、スキルありの章へ進める */
   private finishTutorial() {
-    this.progress = { ...progressAt(this.progress, LESSONS.length - 1), done: true };
-    saveProgress(this.local, this.progress);
+    const chapter = this.lesson?.chapter ?? "std";
+    const list = CHAPTERS[chapter];
+    this.progress[chapter] = { ...progressAt(this.progress[chapter], list.length - 1), done: true };
+    saveProgress(this.local, this.progress[chapter]!, chapter);
     this.showLearnState();
-    this.coach.success(FINISHED_TEXT, null);
+    this.coach.success(finishedText(chapter), chapter === "std" ? "スキルありへ" : null);
   }
 
   private showLearnState() {
-    this.menu.setLearnState(progressLabel(this.progress), this.progress === null);
+    const std = this.progress.std;
+    this.menu.setLearnState(progressLabel(std), std === null);
+    for (const c of CHAPTER_IDS) this.menu.setChapterState(c, progressLabel(this.progress[c], c), c === "std" && std === null);
   }
 
-  /** 遊び方で、盤より先に駒台で選ぶもの（正解の駒・王）。操作できないとき・正解を打った後は何もない */
-  private lessonNeed(g: GameState): { kind?: PieceKind; king?: true } {
+  /** 遊び方で、盤より先にすること（名札のスキル・正解の駒・王・副）。操作できないとき・正解を打った後は何もない */
+  private lessonNeed(g: GameState): Need {
     const step = this.inStep();
     if (!step || step.solved || !this.canAct()) return {};
-    return nextNeed(step.lesson, this.kindFor(g), this.kingOn);
+    return nextNeed(step.lesson, this.kindFor(g), this.kingOn, { viceOn: this.viceOn, skill: !!g.skills?.armed });
   }
 
   // ---- オンライン対戦 ----
@@ -1429,11 +1607,15 @@ export class App {
         if (before.sides[m.you].card) this.sound.opponentReady();
         this.announceCards(this.game);
       }
+      // 巻き戻しで棋譜が短くなった（戻した手は演出しない）
+      this.seenEvents = Math.min(this.seenEvents, m.view.history.length);
+      // 運命の輪の指定（補充の駒・王の移し替えの先）が通った。演出はないので、ここで次の操作を受ける
+      if (before?.armed?.aim && !after?.armed?.aim) this.sending = false;
       if (after?.armed && !before?.armed && !m.view.result) {
         // スキルを使った（自分の送った分の返事か、相手）。演出の後に打てる
         this.sending = false;
         this.syncLobby();
-        this.playSkillCast(m.view.turn, after.armed.id);
+        this.playSkillCast(m.view.turn, after.armed);
         return;
       }
       if (!this.finale) this.render();
@@ -1446,6 +1628,7 @@ export class App {
     this.game = m.view as unknown as GameState;
     this.sending = false;
     this.kingOn = false;
+    this.viceOn = false;
     this.notifyRoom(prevRoom, first, toss);
     if (first) {
       // 接続・再読み込み直後: 過去の手は演出しない。終局済みなら結果をそのまま出す
@@ -1653,17 +1836,18 @@ export class App {
     const g = this.game;
     if (!g || !this.canAct()) return;
     // 王の移し替え: 移す先の駒を選ぶ（移せないマスは何もしない）
-    if (this.aim === "kingmove") {
-      if (kingMoveCells(this.viewOf(g)).some(([y, x]) => y === r && x === c)) this.applySkill({ id: "kingmove", to: [r, c] });
+    const aim = this.aimOf(g);
+    if (aim === "kingmove") {
+      if (kingMoveCells(this.viewOf(g)).some(([y, x]) => y === r && x === c)) this.applySkill({ id: this.aimSkill(g, "kingmove"), to: [r, c] });
       return;
     }
-    if (this.aim) return;
+    if (aim) return;
     const kind = this.kindFor(g);
     if (!isLegal(g, r, c, kind)) {
       const step = this.inStep();
       if (step) {
         // 遊び方: 理由とヒントはコーチに出す
-        const hint = illegalHint(step.lesson, g, { r, c, kind, king: this.kingOn });
+        const hint = illegalHint(step.lesson, g, { r, c, kind, king: this.kingOn, vice: this.viceOn, skill: !!g.skills?.armed });
         if (hint) this.coach.hint(hint);
       } else if (g.board[r][c] === null && g.rules.action === "flip") {
         // 裏返すルールで挟めない空きマスを押したときは理由を出す
@@ -1684,12 +1868,13 @@ export class App {
     // マウス・キーボードは 1 回で確定。タッチは 1 回目で予測、同じマスの 2 回目で確定
     if (!touch || samePinned) {
       if (touch) this.tapLearned = true;
-      // 自分で選んだときだけ king を渡す（期限の手の自動指定はエンジンが行う）
+      // 自分で選んだときだけ king・vice を渡す（期限の手の自動指定はエンジンが行う）
       const king = this.kingOn && this.kingOf(g, g.turn).canDesignate;
+      const vice = !king && this.viceArmed(g);
       const step = this.inStep();
       if (step) {
         // 遊び方: 正解でなければ打たずにヒント。正解なら盤を止めてから打つ（描き直しで操作できない表示にする）
-        const hint = judgeMove(step.lesson, g, { r, c, kind, king });
+        const hint = judgeMove(step.lesson, g, { r, c, kind, king, vice, skill: !!g.skills?.armed });
         if (hint) {
           this.coach.hint(hint);
           this.clearFocus();
@@ -1697,7 +1882,7 @@ export class App {
         }
         step.solved = true;
       }
-      this.place(r, c, kind, king);
+      this.place(r, c, kind, king, vice);
       if (step && this.game !== g) this.lessonSolved(step, g);
       return;
     }
@@ -1706,7 +1891,7 @@ export class App {
 
   private setFocus(r: number, c: number, pin: boolean) {
     const g = this.game;
-    if (!g || !this.canAct() || this.aim) return;
+    if (!g || !this.canAct() || this.aimOf(g)) return;
     if (!isLegal(g, r, c, this.kindFor(g))) {
       if (!this.pinned) this.clearFocus();
       return;
@@ -1751,6 +1936,18 @@ export class App {
     if (!this.canAct()) return false;
     const ki = this.kingOf(g, g.turn);
     return ki.canDesignate && (this.kingOn || ki.forcedNow);
+  }
+
+  /** 手番の人がこの手で置く駒を副将にするか（「この駒を副将にする」を選んだ。期限の手の自動はエンジンが行うので含めない） */
+  private viceArmed(g: GameState): boolean {
+    return this.viceOn && this.canAct() && this.viceOf(g, g.turn).status === "unset";
+  }
+
+  /** 置く駒が副将になるか（選んだ・期限の手・巻き戻しで戻された指定）。予測の吹き出しと「予測」の文に出す */
+  private viceNow(g: GameState): boolean {
+    if (!this.canAct()) return false;
+    const vi = this.viceOf(g, g.turn);
+    return vi.status === "unset" && (this.viceOn || vi.forcedNow);
   }
 
   /**
@@ -1950,18 +2147,29 @@ export class App {
     const kings = this.shownKingCells(g);
     const cands = this.oppCandidates(g);
     const designating = this.designating(g);
+    const viceNow = this.viceNow(g);
     const last = lastMoveOf(g);
     // 遊び方: 打つマスを光らせ、駒台で選ぶもの（駒・王）がなければ矢印も出す。1 マスだけのときだけ矢印（候補から選ぶステップは光だけ）
     const step = this.inStep();
-    const guides = new Set(act && step && !step.solved ? step.lesson.guide.map(idx) : []);
     const need = this.lessonNeed(g);
-    const arrow = guides.size === 1 && !need.kind && !need.king;
+    // スキルを使ってから置くステップは、使うまでマスを光らせない（偵察で見える王を先に教えない）
+    const guides = new Set(act && step && !step.solved && !need.skill ? step.lesson.guide.map(idx) : []);
+    const arrow = guides.size === 1 && !need.kind && !need.king && !need.vice;
     const marks = new Map((step && !step.solved ? (step.lesson.marks ?? []) : []).map((m) => [idx(m.at), m]));
     // スキル: 溜めマス・王の移し替えで移せる駒・偵察で分かった相手の王
     const zones = !!g.skills;
-    const kingTargets = new Set(act && this.aim === "kingmove" ? kingMoveCells(this.viewOf(g)).map(idx) : []);
+    const aimNow = act ? this.aimOf(g) : null;
+    const kingTargets = new Set(aimNow === "kingmove" ? kingMoveCells(this.viewOf(g)).map(idx) : []);
     const scouted = this.scoutedKing(g);
     const scoutAt = scouted ? idx(scouted) : -1;
+    // 副将: 見せてよい人の副将と、偵察で分かった相手の副将
+    const vices = new Map<number, Player>();
+    for (const p of vicesOn(g.rules) ? this.kingsShown(g) : []) {
+      const cell = this.viceOf(g, p).cell;
+      if (cell) vices.set(idx(cell), p);
+    }
+    const scoutedVice = this.scoutedVice(g);
+    const viceAt = scoutedVice ? idx(scoutedVice) : -1;
     this.el.board.classList.toggle("aiming", kingTargets.size > 0);
     this.el.board.classList.toggle("over", !!g.result);
     this.el.board.classList.toggle("acting", act);
@@ -1998,12 +2206,20 @@ export class App {
           const ghost = this.stone(g.turn, kind, designating);
           ghost.classList.add("ghost");
           cell.append(ghost);
+          if (!designating && viceNow) cell.append(h("span", { class: "vice-mark ghost", text: "副", attrs: { "aria-hidden": "true" } }));
           if (pv && pv.damage > 0) cell.append(h("span", { class: "dmg-badge", text: `${pv.damage}` }));
           if (pv && pv.heal > 0) cell.append(h("span", { class: "heal-badge", text: `+${pv.heal}` }));
           const bubble = pv && this.bubble(g, pv, r, c);
           if (bubble) cell.append(bubble);
         }
-        if (i === scoutAt && s) {
+        if (s && vices.get(i) === s.owner) {
+          cell.append(h("span", { class: "vice-mark", text: "副", attrs: { "aria-hidden": "true" } }));
+          label += "（副将）";
+        }
+        if (i === viceAt && s) {
+          cell.append(h("span", { class: "vice-cand scouted", text: "副", attrs: { "aria-hidden": "true" } }));
+          label += " 偵察で分かった相手の副将";
+        } else if (i === scoutAt && s) {
           cell.append(h("span", { class: "king-cand scouted", text: "王", attrs: { "aria-hidden": "true" } }));
           label += " 偵察で分かった相手の王";
         } else if (s && s.owner !== viewer && cands.has(i)) {
@@ -2072,6 +2288,11 @@ export class App {
     const warn = (cls: string, text: string) => h("span", { class: `bb-line bb-warn${cls}` }, [h("span", { class: "bb-mark", text: "!" }), text]);
     const lines: HTMLElement[] = [];
     if (designating) lines.push(h("span", { class: "bb-line bb-king", text: "王にして置く" }));
+    else if (this.viceNow(g)) lines.push(h("span", { class: "bb-line bb-king bb-vice", text: "副将にして置く" }));
+    // 偵察で分かった相手の王・副将を返す手は、その罰（例: 王 −30・副将 −15）
+    const known = knownPenalties(this.viewOf(g), pv.targets);
+    if (known.king !== null) lines.push(h("span", { class: "bb-line bb-king bb-pen", text: known.king === "lose" ? "王 即負け" : `王 −${known.king}` }));
+    if (known.vice !== null) lines.push(h("span", { class: "bb-line bb-king bb-vice bb-pen", text: `副将 −${known.vice}` }));
     if (pv.anchors.length > 0) {
       lines.push(
         // 「＋ 反対側5」を 1 つの塊にし、狭い吹き出しでは塊の間で折り返す（先頭の空白は文の読み取り用で、間は flex の gap）
@@ -2129,7 +2350,7 @@ export class App {
       const pct = Math.min(100, (hp / max) * 100);
       // 直前の手で減った・増えた量（新しい手の直後だけアニメーションさせる）
       let delta: HTMLElement | null = null;
-      const lost = last && last.player !== p ? last.damage + (last.king?.penalty ?? 0) : 0;
+      const lost = last && last.player !== p ? last.damage + (last.king?.penalty ?? 0) + (last.vice?.penalty ?? 0) : 0;
       if (lost > 0) delta = h("span", { class: `delta${fresh ? " fresh" : ""}`, text: `−${lost}` });
       // 回復はその手の回復とスキルの回復の合計
       const healed = last && last.player === p ? last.heal + (last.skill?.heal ?? 0) : 0;
@@ -2153,6 +2374,7 @@ export class App {
             h("span", { class: "player-name", text: this.shortName(p), attrs: { title: this.name(p) } }),
             this.plateRecord(p),
             this.kingTag(g, p),
+            this.viceTag(g, p),
             p === onTray ? null : this.handMini(g, p, kinds),
           ]),
           h(
@@ -2282,6 +2504,50 @@ export class App {
     return tag(" ？", "王の場所は本人にしか見えない", " unknown");
   }
 
+  /** 見ている人（CPU 対戦は人間、2 人対戦は手番の人、オンラインは自分）から見た、p の副将について分かること。p が見ている人なら null */
+  private oppViceFor(g: GameState, p: Player): OppVice | null {
+    if (!g.skills || !this.settings) return null;
+    const viewer = this.online ? this.settings.human : this.settings.mode === "pvp" ? g.turn : this.settings.human;
+    if (viewer === p) return null;
+    return (this.online ? (g as unknown as PlayerView) : viewFor(g, viewer)).oppVice;
+  }
+
+  /** 名札の副将の状態（「副」の駒の形とマス名。自分は見せてよいときだけマス、相手は「?」・偵察で分かったマス、返された副将は取り消し線） */
+  private viceTag(g: GameState, p: Player): HTMLElement | null {
+    if (!vicesOn(g.rules)) return null;
+    const tag = (text: string, title: string, cls = "") =>
+      h("span", { class: `vice-tag${cls}`, attrs: { title } }, [h("span", { class: "vice-icon", text: "副" }), text]);
+    const lost = lastViceHit(g, p);
+    const lostTag = () => (lost ? tag(` ${cellName(lost.r, lost.c)}`, "副将は返された", " lost") : null);
+    if (this.kingsShown(g).includes(p)) {
+      const vi = this.viceOf(g, p);
+      if (vi.cell) {
+        const where = cellName(vi.cell[0], vi.cell[1]);
+        const title = vi.seen ? `副将は ${where}。相手に知られている` : `副将は ${where}。相手には見えない`;
+        // 今の窓でまだ置き直していなければ、期限までの手数を添える
+        if (vi.status === "unset" && !g.result) {
+          const t = tag(` ${where}`, `${title}。あと ${vi.left} 手のうちに置き直す`, `${vi.seen ? " seen" : ""} unset`);
+          t.append(h("span", { class: "vice-due", text: `あと${vi.left}` }));
+          return t;
+        }
+        return tag(` ${where}`, title, vi.seen ? " seen" : "");
+      }
+      if (vi.status === "unset" && !g.result) return lostTag() ?? tag(" 未定", `副将はまだ決めていない。あと ${vi.left} 手`, " unset");
+    }
+    const ov = this.oppViceFor(g, p);
+    if (ov?.scouted && ov.cell) return tag(` ${cellName(ov.cell[0], ov.cell[1])}`, `偵察で分かった相手の副将 ${cellName(ov.cell[0], ov.cell[1])}`, " scouted");
+    if (ov?.set) return tag(" ？", "副将の場所は本人にしか見えない", " unknown");
+    return lostTag();
+  }
+
+  /** 見ている人が偵察で知っている相手の副将のマス。なければ null */
+  private scoutedVice(g: GameState): Cell | null {
+    if (!g.skills || g.result || !this.settings) return null;
+    const viewer = this.online ? this.settings.human : this.settings.mode === "pvp" ? g.turn : this.settings.human;
+    const ov = this.oppViceFor(g, other(viewer));
+    return ov?.scouted ? ov.cell : null;
+  }
+
   private renderStatus(g: GameState) {
     let text: string;
     const away = this.online && this.room?.opponent.online === false;
@@ -2301,11 +2567,17 @@ export class App {
       text = "送信中…";
     } else if (g.skills && !g.skills.ready) {
       text = "カードを選んでいます";
-    } else if (this.aim && this.canAct()) {
-      text = this.aim === "kingmove" ? "王を移す駒を選ぶ" : "戻す駒を選ぶ";
+    } else if (this.aimOf(g) && this.canAct()) {
+      const aim = this.aimOf(g);
+      text = aim === "kingmove" ? "王を移す駒を選ぶ" : "戻す駒を選ぶ";
     } else if (this.fxLock && g.skills?.armed) {
       // スキルの演出中（#fx は読み上げない）
-      text = `${this.shortName(g.turn)}は${SKILLS[g.skills.armed.id].name}`;
+      const result = castResult(g.skills.armed);
+      text = `${this.shortName(g.turn)}は${SKILLS[g.skills.armed.id].name}${result ? `　${result.text}` : ""}`;
+    } else if (g.skills?.second) {
+      // 連続行動の 2 手目
+      if (!this.isHuman(g.turn)) text = this.online ? "相手の 2 手目" : "CPU 2 手目を思考中…";
+      else text = this.settings?.mode === "pvp" ? `${PLAYER_NAME[g.turn]}はもう 1 手` : "もう 1 手";
     } else if (!this.isHuman(g.turn)) {
       text = this.online ? (away ? "相手の接続が切れています" : "相手の番") : "CPU 思考中…";
     } else {
@@ -2348,7 +2620,7 @@ export class App {
     box.classList.add("on");
     const kind = this.kindFor(g);
     const designating = this.designating(g);
-    const asKing = designating ? "王にして" : "";
+    const asKing = designating ? "王にして" : this.viceNow(g) ? "副将にして" : "";
     box.append(h("h2", { class: "label", text: `${cellName(f.r, f.c)} に${pieceLabel(g.rules, kind)}${dirMark(g.rules, kind)}を${asKing}置くと` }));
     if (pv.targets.length === 0) {
       box.append(h("p", { class: "preview-main none", text: `${v.can}駒なし` }));
@@ -2368,7 +2640,7 @@ export class App {
         box.append(h("p", { class: "breakdown" }, [`内訳: ${v.past}駒 ${pv.base}`, ...parts, ` ＝ ${pv.plain ?? pv.damage}`]));
       }
       if (pv.mods && pv.plain !== undefined) {
-        const why = pv.mods.map((m) => (m === "strong" ? "強打で 1.5 倍" : "相手の鉄壁で半分")).join("、");
+        const why = pv.mods.map((m) => (m === "strong" ? "強打で 1.5 倍" : m === "shield" ? "相手の鉄壁で半分" : "2 手目で半分")).join("、");
         box.append(h("p", { class: "breakdown" }, [`${why}: ${pv.plain} → ${pv.damage}`]));
       }
     }
@@ -2482,14 +2754,26 @@ export class App {
     const ki = this.kingOf(g, p);
     const { deadline } = g.rules.king;
     const pen = kingPenaltyText(g.rules);
-    if (ki.status === "revealed" || !act) return;
-    const piece = (cap: string) => [h("span", { class: "king-piece", text: "王", attrs: { "aria-hidden": "true" } }), h("span", { class: "king-cap", text: cap, attrs: { "aria-hidden": "true" } })];
+    if (!act) return;
+    const piece = (cap: string, name = "王") => [
+      h("span", { class: "king-piece", text: name, attrs: { "aria-hidden": "true" } }),
+      h("span", { class: "king-cap", text: cap, attrs: { "aria-hidden": "true" } }),
+    ];
+    // 副将を出す期間: 鍵を押してから置く駒が副将になる
+    const vb = this.viceButton(g, p, piece);
+    if (vb) {
+      box.append(vb);
+      box.hidden = false;
+    }
+    if (ki.status === "revealed") return;
     if (ki.canDesignate) {
       const forced = ki.forcedNow;
       const on = forced || this.kingOn;
       const left = deadline - ki.nextMove + 1;
-      const note = forced
-        ? `期限の ${deadline} 手目です。この手で置く駒が自動で王になります。王を${v.hitIf}${pen}`
+      const note = ki.kept
+        ? `巻き戻された手で王を決めたので、この手で置く駒が王になります。王を${v.hitIf}${pen}`
+        : forced
+          ? `期限の ${deadline} 手目です。この手で置く駒が自動で王になります。王を${v.hitIf}${pen}`
         : `王を決めてから置く（あと ${left} 手のうち 1 手。${deadline} 手目に置いた駒は自動で王）。王を${v.hitIf}${pen}`;
       const btn = h(
         "button",
@@ -2521,7 +2805,7 @@ export class App {
       return;
     }
     if (!pvp || ki.status === "unset") return;
-    // 2 人対戦: 押している間だけ、手番の人の王を表示する
+    // 2 人対戦: 押している間だけ、手番の人の王（と副将）を表示する
     const peek = h(
       "button",
       {
@@ -2547,6 +2831,50 @@ export class App {
     peek.addEventListener("contextmenu", (e) => e.preventDefault());
     box.append(peek);
     box.hidden = false;
+  }
+
+  /**
+   * 副将を出す鍵（駒台の右端。王の指定と同じ形の「副」の駒）。出す期間の手番の人だけ。押してから置くと、置いた駒が副将になる。
+   * 期限の手・巻き戻しで戻された指定は、押さなくても置く駒が副将になる（鍵は押せない）
+   */
+  private viceButton(g: GameState, p: Player, piece: (cap: string, name?: string) => HTMLElement[]): HTMLElement | null {
+    const vi = this.viceOf(g, p);
+    if (vi.status !== "unset" || g.turn !== p) return null;
+    const forced = vi.forcedNow;
+    const on = forced || this.viceOn;
+    const pen = `副将を${verb(g.rules).hitIf}体力−${VICE_PENALTY}`;
+    // 前の副将が残っていれば、置き直すとふつうの駒に戻る
+    const back = vi.cell ? `今の副将 ${cellName(vi.cell[0], vi.cell[1])} はふつうの駒に戻ります。` : "";
+    const note = vi.kept
+      ? `巻き戻された手で副将を出したので、この手で置く駒が副将になります。${back}${pen}`
+      : forced
+        ? `期限の手です。この手で置く駒が自動で副将になります。${back}${pen}`
+        : `副将にしてから置く。あと ${vi.left} 手のうち 1 手で、期限の手に置いた駒は自動で副将になります。${back}${pen}`;
+    const btn = h(
+      "button",
+      {
+        class: `king-toggle vice-toggle${on ? " on" : ""}`,
+        attrs: {
+          type: "button",
+          id: "vice-toggle",
+          "aria-pressed": String(on),
+          "aria-label": forced ? "この手で置く駒が副将になる" : "この駒を副将にする",
+          "aria-describedby": "vice-note",
+          title: note,
+        },
+      },
+      piece(forced ? "この手で副将" : `あと${vi.left}手`, "副"),
+    );
+    btn.disabled = forced;
+    if (this.lessonNeed(g).vice) {
+      btn.classList.add("guide");
+      btn.append(...guideMarks(true));
+    }
+    btn.addEventListener("click", () => {
+      this.viceOn = !this.viceOn;
+      this.render();
+    });
+    return h("span", { class: "vice-box" }, [btn, h("p", { class: "king-note sr-only", text: note, attrs: { id: "vice-note" } })]);
   }
 
   /** 待ったの鍵（盤の枠の下の縁の左。残りの回数を添える）。待ったのない対局・終局後は出さない */
@@ -2577,7 +2905,8 @@ export class App {
     const v = verb(r);
     const heal = e.heal > 0 ? ` +${e.heal}回復` : "";
     const king = e.king ? ` 王を${v.past}・${e.king.lose ? "即負け" : `体力−${e.king.penalty}`}` : "";
-    return `${head} ${e.targets.map((x) => pieceLabel(r, x.kind)).join("・")}を${v.past} ${e.damage}ダメージ${anchorText(r, e)}${heal}${king}`;
+    const vice = e.vice ? ` 副将を${v.past}・体力−${e.vice.penalty}` : "";
+    return `${head} ${e.targets.map((x) => pieceLabel(r, x.kind)).join("・")}を${v.past} ${e.damage}ダメージ${anchorText(r, e)}${heal}${king}${vice}`;
   }
 
   private renderLog(g: GameState) {
@@ -2646,6 +2975,12 @@ export class App {
       const kingPop = delayed(h("span", { class: "king-pop", text }));
       this.cells[m.king.r][m.king.c].append(kingPop);
       this.fitPop(kingPop, m.king.r, m.king.c, 1.25);
+    }
+    // 副将を返した: 副将だった駒に「副将」と罰を出す
+    if (m.vice) {
+      const vicePop = delayed(h("span", { class: "king-pop vice-pop", text: `副将 −${m.vice.penalty}` }));
+      this.cells[m.vice.r][m.vice.c].append(vicePop);
+      this.fitPop(vicePop, m.vice.r, m.vice.c, 1.25);
     }
     // 置いたマスに近い順（特大は 1 つずつめくる）
     const order = [...m.targets].sort((x, y) => Math.max(Math.abs(x.r - m.r), Math.abs(x.c - m.c)) - Math.max(Math.abs(y.r - m.r), Math.abs(y.c - m.c)));
@@ -3064,6 +3399,13 @@ export class App {
   }
 }
 
+/** owner の副将が最後に返された手の記録（棋譜の公開情報）。返されていなければ undefined */
+function lastViceHit(g: GameState, owner: Player) {
+  let hit: MoveEvent["vice"];
+  for (const e of g.history) if (e.type === "move" && e.player !== owner && e.vice) hit = e.vice;
+  return hit;
+}
+
 /** owner の王が返された手の記録（棋譜の公開情報） */
 function lastKingHit(g: GameState, owner: Player) {
   for (const e of g.history) if (e.type === "move" && e.player !== owner && e.king) return e.king;
@@ -3072,12 +3414,23 @@ function lastKingHit(g: GameState, owner: Player) {
 
 
 /** 棋譜のダメージの内訳（上乗せがあるときだけ。例: 「（返した駒2＋反対側の金5）」） */
-/** 棋譜の手と一緒に使ったスキル（例: 「強打・」「補充 飛・」「応急手当 +2・」）。使っていなければ空 */
+/** 棋譜の手と一緒に使ったスキル（例: 「強打・」「補充 飛・」「応急手当 +4・」）。使っていなければ空 */
 function skillLogText(e: MoveEvent): string {
   const sk = e.skill;
   if (!sk) return "";
-  const extra = sk.heal !== undefined ? ` +${sk.heal}` : sk.kind ? ` ${PIECES[sk.kind].name}` : "";
-  return `${SKILLS[sk.id].name}${extra}・`;
+  const extra = sk.heal !== undefined ? ` +${sk.heal}` : sk.kind ? ` ${PIECES[sk.kind].name}` : sk.scout === "vice" ? " 副将" : "";
+  // 運命の輪は引いた効果（不発）を名前の後に
+  const effect = sk.effect ? ` ${SKILLS[sk.effect].name}${sk.fizzle ? " 不発" : ""}` : "";
+  return `${SKILLS[sk.id].name}${effect}${extra}・`;
+}
+
+/** スキルの演出で名前の下に添える結果（運命の輪の引いた効果・不発、巻き戻しの戻した手数（運命の輪で出たときも）、偵察で副将を特定）。なければ null */
+function castResult(note: SkillNote): { text: string; miss: boolean } | null {
+  if (note.effect === "judge" && !note.fizzle) return { text: `${SKILLS.judge.name}で${note.back ?? 0}手戻す`, miss: false };
+  if (note.effect) return { text: note.fizzle ? `${SKILLS[note.effect].name}は不発` : SKILLS[note.effect].name, miss: !!note.fizzle };
+  if (note.id === "judge") return { text: `${note.back ?? 0}手戻す`, miss: false };
+  if (note.scout === "vice") return { text: "副将を特定", miss: false };
+  return null;
 }
 
 /** 棋譜のダメージの内訳（反対側の駒・スキル）。どちらもなければ空 */
@@ -3089,7 +3442,8 @@ function anchorText(r: RuleSet, e: MoveEvent): string {
     parts.push(`${verb(r).past}駒${(e.plain ?? e.damage) - bonus}${anchors.map((a) => `＋反対側の${pieceLabel(r, a.kind)}`).join("")}`);
   }
   if (e.plain !== undefined) {
-    const mods = [e.skill?.id === "strong" ? "強打で1.5倍" : null, e.shielded ? "鉄壁で半分" : null].filter(Boolean);
+    const strong = !e.skill?.fizzle && (e.skill?.effect ?? e.skill?.id) === "strong";
+    const mods = [strong ? "強打で1.5倍" : null, e.shielded ? "鉄壁で半分" : null, e.second ? "2手目で半分" : null].filter(Boolean);
     parts.push(`${e.plain}を${mods.join("・")}`);
   }
   return parts.length > 0 ? `（${parts.join("、")}）` : "";

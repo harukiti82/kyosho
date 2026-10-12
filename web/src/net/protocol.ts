@@ -125,6 +125,11 @@ export interface MoveMessage {
   /** 置いた駒を自分の王にする（隠し王）。省略は false */
   king?: boolean;
   /**
+   * 置いた駒を自分の副将にする（スキルありで隠し王ありのルールの、副将を出す期間だけ。king と同時は不可）。省略は false。
+   * 副将は隠し情報なので、サーバーは相手に送る view に出さない（viewFor）
+   */
+  vice?: boolean;
+  /**
    * 手を考えた局面の棋譜の長さ（view.history.length）。サーバーの局面と違えば stale_move で拒否する
    * （制限時間切れの自動の手と入れ違いになった手を、次の局面に打たない）。省略すると調べない
    */
@@ -151,8 +156,17 @@ export interface PickMessage {
 }
 
 /**
+ * 配られた 3 枚を配り直す（選ぶ前に 1 局 1 回）。新しい 3 枚はサーバーの乱数で、配られていた 3 枚を除いた残りから引く。
+ * 新しい view は送り主にだけ届く（配り直したことを相手に知らせない）。2 回目・選んだ後は illegal_skill
+ */
+export interface RerollMessage {
+  type: "reroll";
+}
+
+/**
  * 手番の人がスキルを使う（置く前。ゲージが満タンのとき 1 手番に 1 回）。kind は補充で戻す駒、to は王の移し替えで移す先のマス [行, 列]。
- * サーバーは engine の useSkill で検証して適用する。seq は move と同じ（考えた局面の棋譜の長さ）
+ * 運命の輪で補充・王の移し替えが出たら（view.skills.armed.aim）、id は wheel のまま kind / to を付けてもう一度送る。
+ * サーバーは engine の useSkill で検証して適用する（運命の輪の引く効果はサーバーの乱数）。seq は move と同じ（考えた局面の棋譜の長さ）
  */
 export interface SkillMessage {
   type: "skill";
@@ -167,7 +181,7 @@ export interface LeaveMessage {
   type: "leave";
 }
 
-export type ClientMessage = JoinMessage | MoveMessage | PickMessage | SkillMessage | RematchMessage | LeaveMessage;
+export type ClientMessage = JoinMessage | MoveMessage | PickMessage | RerollMessage | SkillMessage | RematchMessage | LeaveMessage;
 
 // ---- WebSocket: サーバー → クライアント ----
 
@@ -247,8 +261,8 @@ export type WsErrorCode =
   | "invalid_token" // トークンがこの部屋の席と合わない（接続を閉じる）
   | "waiting_opponent" // 相手の参加前に手を送った
   | "not_your_turn"
-  | "illegal_move" // engine が拒否した手（置けない・持ち駒がない・王を指定できない など）
-  | "illegal_skill" // engine が拒否したスキルの選択・使用（配られていないカード・選び直し・満タンでない・指定が違う など）
+  | "illegal_move" // engine が拒否した手（置けない・持ち駒がない・王を指定できない・副将を出せない など）
+  | "illegal_skill" // engine が拒否したスキルの選択・配り直し・使用（配られていないカード・選び直し・2 回目の配り直し・満タンでない・指定が違う など）
   | "game_over" // 終局後に手を送った
   | "stale_move" // 手を考えた局面がもう進んでいる（制限時間切れの自動の手と入れ違い）
   | "stale_rematch" // 終局していない・gameNo が今の対局と違う（再戦が成立した後に届いた二重押しなど）

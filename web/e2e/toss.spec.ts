@@ -179,6 +179,7 @@ test("出さない: 手番を先手・後手に選んだとき、2 人対戦、�
   await expect(toss(page)).toHaveCount(0);
   await page.locator("#btn-menu").click();
   await page.locator("#menu-learn").click();
+  await page.locator("#menu-learn-std").click();
   await expect(page.locator("#coach")).toBeVisible();
   await expect(toss(page)).toHaveCount(0);
   // 抽選は CPU 対戦の「ランダム」以外では引かない

@@ -3,11 +3,14 @@
 // 乱数は種付き（mulberry32）。局 i は種 i で、結果は毎回同じになる。
 // 第 1 引数が vs なら CPU の強さ同士を対戦させる（vs 局数 プリセット 強さA 強さB。先手・後手は 1 局ごとに入れ替える）。
 // 第 1 引数が skill なら、片側だけスキルを持つ 2 手読み同士でスキル側の勝率を測る（skill 局数 [カード...]。スキル側は 1 局ごとに入れ替える）。
+// カードを「wheel:40」と書くと、そのカードのゲージの長さを 40 にして測る（同じカードの長さを並べて比べる）。
+// 第 1 引数が skillmix なら、両者に 11 枚から 1 枚ずつ引かせた 2 手読み同士で、先手勝率・カードごとの勝率・運命の輪の不発などを測る（skillmix 局数）。
+// skill / skillmix は「hp=139,140」を足すと、プリセット「スキルあり」の体力を変えて測る。
 
 import { chooseLookahead, chooseMove, CPU_LEVEL_NAME, CPU_LEVELS, type CpuLevel } from "../src/engine/cpu";
 import { SIZE } from "../src/engine/board";
-import { createGame, kingInfo, playMove, setSkills, useSkill, viewFor, type EndReason } from "../src/engine/game";
-import { chooseSkillUse } from "../src/engine/skillcpu";
+import { createGame, kingInfo, playMove, setSkills, skillPool, useSkill, viewFor, type EndReason, type GameState } from "../src/engine/game";
+import { chooseSkillUse, viceWith } from "../src/engine/skillcpu";
 import { SKILL_ORDER, SKILLS, type SkillId } from "../src/engine/skills";
 import { cloneRules, kindsInRules, PIECES, presetById, type PieceKind, type Player, type PresetId } from "../src/engine/rules";
 
@@ -62,39 +65,67 @@ function versus(args: string[]) {
   console.log(`| ${res.win} | ${res.lose} | ${res.draw} | ${pct(res.win, games)} | ${avg(plies)} | ${CPU_LEVEL_NAME[a]} ${t(a)} / ${CPU_LEVEL_NAME[b]} ${t(b)} |`);
 }
 
-/** シミュレーター（kyosho-skillsim の r7.txt の solo、大回復は長さ 80 の行）のスキル側の勝率 */
+/**
+ * シミュレーター（kyosho-skillsim）のスキル側の勝率。r24.txt（final14b.json の推奨値・副将の罰 15・新しい偵察）の
+ * 「各カード対スキルなし」（SIM_RATE）と「各カード対ほかの 10 枚」（SIM_MIX）。11 枚混在の先手勝率は 47.2%
+ */
 const SIM_RATE: Record<SkillId, number> = {
-  firstaid: 54.7, bigheal: 52.4, strong: 55.5, omni: 55.9, refill: 56.0, wall: 54.1, scout: 54.7, kingmove: 53.8,
+  firstaid: 54.0, bigheal: 51.5, strong: 55.5, omni: 54.6, refill: 55.4, wall: 54.5, scout: 55.2, kingmove: 53.5,
+  fool: 53.1, wheel: 54.6, judge: 50.4,
+};
+const SIM_MIX: Record<SkillId, number> = {
+  firstaid: 51.4, bigheal: 48.1, strong: 52.8, omni: 52.1, refill: 53.1, wall: 50.1, scout: 52.3, kingmove: 49.6,
+  fool: 50.3, wheel: 51.0, judge: 46.1,
 };
 
+/** CPU（ノーマル）の 1 手: 手番の頭にスキルを使うか決め（運命の輪の指定も続けて）、打つ（置く駒を副将にするかも決める）。使ったら used を 1 足す */
+function cpuStep(s: GameState, rand: () => number, used: { n: number }): GameState {
+  const p = s.turn;
+  for (let k = 0; k < 2 && !s.result; k++) {
+    const use = chooseSkillUse(viewFor(s, p), rand);
+    if (!use) break;
+    if (!s.skills?.armed?.aim) used.n++;
+    s = useSkill(s, use, rand);
+  }
+  const view = viewFor(s, p);
+  const ch = chooseMove(view, "normal", rand)!;
+  return playMove(s, ch.r, ch.c, ch.kind, { king: ch.king, vice: viceWith(view, ch, rand) });
+}
+
+/** 引数から「hp=先手,後手」を取り出す（skill / skillmix の体力を変えて測る） */
+function hpArg(args: string[]): [string[], [number, number] | null] {
+  const i = args.findIndex((a) => a.startsWith("hp="));
+  if (i < 0) return [args, null];
+  const hp = args[i].slice(3).split(",").map(Number) as [number, number];
+  if (hp.length !== 2 || hp.some((n) => !(n > 0))) throw new Error("体力は hp=先手,後手（例 hp=139,140）");
+  return [args.filter((_, j) => j !== i), hp];
+}
+
 /** 片側だけスキルを持つ 2 手読み同士（プリセット「スキルあり」）で、カードごとのスキル側の勝率・使った回数 */
-function skills(args: string[]) {
+function skills(all: string[]) {
+  const [args, hp] = hpArg(all);
   const games = Number(args[0] ?? 400);
-  const list = (args.length > 1 ? args.slice(1) : SKILL_ORDER) as SkillId[];
+  const list = args.length > 1 ? args.slice(1) : [...SKILL_ORDER];
   const rules = cloneRules(presetById("skill").rules);
+  if (hp) rules.hp = hp;
+  console.log(`体力 ${rules.hp[0]}・${rules.hp[1]}`);
   console.log(`## スキル側の勝率: スキルあり・2 手読み同士・${games} 局（スキル側を 1 局ごとに先手・後手入れ替え）`);
   console.log("| スキル | 長さ | 勝率（スキル側） | ±SE | シミュレーター | 使った回数/局 | 平均手数 | 先手勝率 |");
   console.log("|---|---|---|---|---|---|---|---|");
-  for (const id of list) {
-    if (!SKILLS[id]) throw new Error(`カードは ${SKILL_ORDER.join(" / ")}`);
+  const lengths = Object.fromEntries(SKILL_ORDER.map((id) => [id, SKILLS[id].length]));
+  for (const arg of list) {
+    const [id, len] = arg.split(":") as [SkillId, string | undefined];
+    if (!SKILLS[id]) throw new Error(`カードは ${SKILL_ORDER.join(" / ")}（長さを変えるなら wheel:40）`);
+    SKILLS[id].length = len ? Number(len) : lengths[id];
     let won = 0;
     let first = 0;
-    let uses = 0;
+    const uses = { n: 0 };
     const plies: number[] = [];
     for (let i = 0; i < games; i++) {
       const rand = rng(i + 1);
       const side: Player = i % 2 === 0 ? 0 : 1;
       let s = setSkills(createGame(rules), side === 0 ? [id, null] : [null, id]);
-      while (!s.result) {
-        const p = s.turn;
-        const use = chooseSkillUse(viewFor(s, p), rand);
-        if (use) {
-          s = useSkill(s, use);
-          uses++;
-        }
-        const ch = chooseMove(viewFor(s, p), "normal", rand)!;
-        s = playMove(s, ch.r, ch.c, ch.kind, { king: ch.king });
-      }
+      while (!s.result) s = cpuStep(s, rand, uses);
       const w = s.result.winner;
       if (w === side) won++;
       else if (w === null) won += 0.5;
@@ -105,14 +136,101 @@ function skills(args: string[]) {
     const p = won / games;
     const se = Math.sqrt((p * (1 - p)) / games);
     console.log(
-      `| ${SKILLS[id].name} | ${SKILLS[id].length} | ${(p * 100).toFixed(1)}% | ${(se * 100).toFixed(1)} | ${SIM_RATE[id]}% | ${(uses / games).toFixed(2)} | ${avg(plies)} | ${pct(first, games)} |`,
+      `| ${SKILLS[id].name} | ${SKILLS[id].length} | ${(p * 100).toFixed(1)}% | ${(se * 100).toFixed(1)} | ${SIM_RATE[id]}% | ${(uses.n / games).toFixed(2)} | ${avg(plies)} | ${pct(first, games)} |`,
     );
   }
+}
+
+/** 両者が 11 枚から 1 枚ずつ引いた 2 手読み同士（プリセット「スキルあり」）。先手勝率・カードごとの勝率・新しい 3 枚の様子 */
+function skillMix(all: string[]) {
+  const [args, hp] = hpArg(all);
+  const games = Number(args[0] ?? 400);
+  const rules = cloneRules(presetById("skill").rules);
+  if (hp) rules.hp = hp;
+  console.log(`体力 ${rules.hp[0]}・${rules.hp[1]}`);
+  const pool = skillPool(rules);
+  const card: Record<string, { n: number; won: number }> = {};
+  let first = 0;
+  const plies: number[] = [];
+  const drawn: Record<string, { n: number; fizzle: number }> = {};
+  const x = { wheel: 0, fizzle: 0, fool: 0, foolSecond: 0, foolEnd2: 0, judge: 0, judgeBack: 0, scoutFind: 0, scoutVice: 0, viceHit: 0, viceScouted: 0, viceAuto: 0, vicePlaced: 0 };
+  for (let i = 0; i < games; i++) {
+    const rand = rng(i + 1);
+    const cards = [pool[Math.floor(rand() * pool.length)], pool[Math.floor(rand() * pool.length)]] as [SkillId, SkillId];
+    let s = setSkills(createGame(rules), cards);
+    while (!s.result) s = cpuStep(s, rand, { n: 0 });
+    for (const e of s.history) {
+      if (e.type !== "move") continue;
+      if (e.second) {
+        x.foolSecond++;
+        if (e.ply === s.ply) x.foolEnd2++;
+      }
+      const n = e.skill;
+      if (!n) continue;
+      if (n.id === "wheel") {
+        x.wheel++;
+        if (n.fizzle) x.fizzle++;
+        const d = (drawn[n.effect!] ??= { n: 0, fizzle: 0 });
+        d.n++;
+        if (n.fizzle) d.fizzle++;
+      }
+      // 運命の輪で出た連続行動・巻き戻しも数える
+      const eff = n.effect ?? n.id;
+      if (eff === "fool" && !n.fizzle) x.fool++;
+      if (eff === "judge" && !n.fizzle) {
+        x.judge++;
+        x.judgeBack += n.back ?? 0;
+      }
+      if (n.scout === "find") x.scoutFind++;
+      if (n.scout === "vice") x.scoutVice++;
+    }
+    for (const e of s.history) {
+      if (e.type !== "move" || !e.vice) continue;
+      x.viceHit++;
+      if (e.vice.scouted) x.viceScouted++;
+    }
+    for (const p of [0, 1] as Player[]) {
+      const list = s.kings[p].vice?.list ?? [];
+      x.vicePlaced += list.length;
+      x.viceAuto += list.filter((v) => v.auto).length;
+    }
+    const w = s.result.winner;
+    if (w === 0) first++;
+    else if (w === null) first += 0.5;
+    for (const p of [0, 1] as Player[]) {
+      const c = (card[cards[p]] ??= { n: 0, won: 0 });
+      c.n++;
+      c.won += w === p ? 1 : w === null ? 0.5 : 0;
+    }
+    plies.push(s.ply);
+  }
+  console.log(`## 11 枚混在: スキルあり・2 手読み同士・${games} 局（カードは両者とも ${pool.length} 枚から 1 枚）`);
+  console.log(`先手勝率 ${pct(first, games)}・平均手数 ${avg(plies)}`);
+  console.log("| カード | 局数 | 勝率（持った側） | シミュレーター（対ほかの 10 枚） |");
+  console.log("|---|---|---|---|");
+  for (const id of pool) {
+    const c = card[id];
+    if (c) console.log(`| ${SKILLS[id].name} | ${c.n} | ${pct(c.won, c.n)} | ${SIM_MIX[id]}% |`);
+  }
+  console.log(
+    `運命の輪 ${x.wheel} 回（不発 ${pct(x.fizzle, x.wheel)}）・連続行動 ${x.fool} 回（2 手目 ${x.foolSecond}、2 手目で決着 ${x.foolEnd2}）・` +
+      `巻き戻し ${x.judge} 回（戻した手 平均 ${x.judge ? (x.judgeBack / x.judge).toFixed(1) : "—"}）・偵察 王 ${x.scoutFind} 回 / 副将 ${x.scoutVice} 回`,
+  );
+  console.log(
+    `運命の輪で出た効果（不発）: ${Object.entries(drawn)
+      .sort((a, b) => b[1].n - a[1].n)
+      .map(([id, d]) => `${SKILLS[id as SkillId].name} ${d.n}（${d.fizzle}）`)
+      .join("・")}`,
+  );
+  console.log(
+    `副将を置いた ${(x.vicePlaced / games / 2).toFixed(2)} 回/人・局（うち期限の自動 ${(x.viceAuto / games / 2).toFixed(2)}）・副将を返した ${(x.viceHit / games).toFixed(2)} 回/局（うち特定済み ${(x.viceScouted / games).toFixed(2)}）`,
+  );
 }
 
 export function main(args: string[]) {
   if (args[0] === "vs") return versus(args.slice(1));
   if (args[0] === "skill") return skills(args.slice(1));
+  if (args[0] === "skillmix") return skillMix(args.slice(1));
   const games = Number(args[0] ?? 400);
   const preset = (args[1] ?? "king") as PresetId;
   const rules = cloneRules(presetById(preset).rules);

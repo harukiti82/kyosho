@@ -1,7 +1,7 @@
 // URL クエリ（設定の共有）とルールカードの文言のテスト
 
 import { describe, expect, it } from "vitest";
-import { defaultRules, matchPreset, NO_KING, PRESETS, presetById, sameRules, type PresetId } from "../src/engine/rules";
+import { defaultRules, matchPreset, NO_KING, PRESETS, presetById, sameRules, type PresetId, type RuleSet } from "../src/engine/rules";
 import { decodeRules, encodeRules, QUERY_BASE } from "../src/ui/query";
 import compat from "./fixtures/query-compat.json";
 import { endDetails, ruleDetails, ruleLines, sentenceText } from "../src/ui/ruletext";
@@ -124,11 +124,11 @@ describe("既定（標準）と共有済みの URL の互換", () => {
 
 describe("ルールカードの文言", () => {
   const card = (id: string) => ruleLines(PRESETS.find((p) => p.id === id)!.rules).map(sentenceText);
-  it("プリセットは 3〜5 行（方向駒は方向の 1 行が増えて 6 行、拠点・標準は端の駒の 1 行が増えて 7 行、スキルありはさらに 1 行で 8 行）", () => {
+  it("プリセットは 3〜5 行（方向駒は方向の 1 行が増えて 6 行、拠点・標準は端の駒の 1 行が増えて 7 行、スキルありはスキルと副将の 2 行で 9 行）", () => {
     expect(ruleLines(rulesOf("dir"))).toHaveLength(6);
     expect(ruleLines(rulesOf("anchor"))).toHaveLength(7);
     expect(ruleLines(rulesOf("std"))).toHaveLength(7);
-    expect(ruleLines(rulesOf("skill"))).toHaveLength(8);
+    expect(ruleLines(rulesOf("skill"))).toHaveLength(9);
     for (const p of PRESETS.filter((p) => !["dir", "anchor", "std", "skill"].includes(p.id))) {
       const n = ruleLines(p.rules).length;
       expect(n).toBeGreaterThanOrEqual(3);
@@ -175,15 +175,34 @@ describe("ルールカードの文言", () => {
       "体力が 0 で負け 先手 129・後手 130 から",
     ]);
   });
-  it("スキルあり: 標準の行の後にスキルの 1 行。詳細にゲージと 8 枚の効果", () => {
-    expect(card("skill")).toEqual([...card("std").slice(0, 6), "ゲージが満タンでスキルを使う 配られた3枚から1枚を選ぶ。返した枚数と受けたダメージで溜まる", card("std")[6]]);
+  it("スキルあり: 標準の行の後にスキルと副将の 1 行ずつ。詳細にゲージ・副将と 11 枚の効果", () => {
+    expect(card("skill")).toEqual([
+      ...card("std").slice(0, 6),
+      "ゲージが満タンでスキルを使う 配られた3枚から1枚を選ぶ。返した枚数と受けたダメージで溜まる",
+      "副将を返されたら体力−15 王を決めた後、7手ごとに置く駒を1つ副将にする。前の副将はふつうの駒に戻る。相手に見えない",
+      "体力が 0 で負け 先手 136・後手 134 から",
+    ]);
     const details = ruleDetails(rulesOf("skill")).map(sentenceText).join("\n");
     expect(details).toContain("1 手で 1 枚 +1・2 枚 +2・3 枚 +4・4 枚以上 +7。受けたダメージ 1 点ごとに +0.15");
-    expect(details).toContain("偵察: 相手の王の場所が自分にだけ分かる 相手が最初の7手を打ち終えてから使える。その手で王を返すと罰が 2 倍の体力−60");
+    expect(details).toContain(
+      "偵察: 相手の王の場所が自分にだけ分かる 相手が最初の7手を打ち終えてから使える。王が分かった後は、相手が副将を置く期限の後に、使った時点の今の副将の場所が分かる。次の期限の後にまた使える。罰は変わらない。タロットの隠者。ゲージ 24・溜めマス 4",
+    );
+    expect(details).toContain("副将: 王を決めた後、自分の手で 7 手ごとに置く駒を 1 つ副将にする 王を決めた次の手から 7 手ずつ区切り、区切りごとに置き直す。前の副将はふつうの駒に戻り、副将はいつも 1 つまで。区切りの最後の手まで置かなければ、その手で置いた駒が副将になる。相手には見えない");
+    expect(details).toContain("副将を返されたら体力 −15 通常のダメージに加えて減る。王と同じ手なら両方。返されたら副将はふつうの駒になり、次の区切りで新しい副将を置くまで副将はない。区切りはずれない");
+    expect(details).toContain("補充: 減った駒を 1 つ駒台に戻す 始めの数より減った駒ならどれでも。タロットの節制。ゲージ 66・溜めマス 4");
+    expect(details).toContain("連続行動: この手番に 2 手続けて打てる 2 手目のダメージは半分。小数は切り捨て。タロットの愚者。ゲージ 42・溜めマス 4");
+    expect(details).toContain(
+      "運命の輪: ほかの 10 枚のどれかの効果が出る 運命の輪以外の10枚から同じ確率。その場で使えない効果は不発。タロットの運命の輪。ゲージ 36・溜めマス 4",
+    );
+    expect(details).toContain("巻き戻し: 自分の直前の手と相手の応手を戻す 戻した局面から打ち直す。相手の王の指定は残る。タロットの審判。ゲージ 30・溜めマス 4");
     expect(details).toContain("鉄壁: 相手の次の手のダメージが半分 駒は返る。小数は切り捨て");
-    expect(details).toContain("大回復: 体力を 10 回復 始めの体力は超えない。タロットの女帝。ゲージ 80・溜めマス 12");
-    // 隠し王なしなら偵察・王の移し替えは出さない
-    expect(ruleDetails(rulesOf("skill", { king: { on: false, penalty: "hp", amount: 20, deadline: 5 } })).map(sentenceText).join("")).not.toContain("偵察");
+    expect(details).toContain("大回復: 体力を 20 回復 始めの体力は超えない。タロットの女帝。ゲージ 180・溜めマス 20");
+    // 隠し王なしなら偵察・王の移し替え・副将は出さない
+    const noKing = rulesOf("skill", { king: { on: false, penalty: "hp", amount: 20, deadline: 5 } });
+    expect(ruleDetails(noKing).map(sentenceText).join("")).not.toContain("偵察");
+    expect([...ruleLines(noKing), ...ruleDetails(noKing)].map(sentenceText).join("")).not.toContain("副将");
+    // スキルなしのルールにも副将は出さない
+    expect([...ruleLines(rulesOf("std")), ...ruleDetails(rulesOf("std"))].map(sentenceText).join("")).not.toContain("副将");
   });
   it("取る＋強さ制限は「取れない」", () => {
     expect(ruleLines(rulesOf("v10", { gate: true })).map(sentenceText)).toContain("強い駒を含む列は取れない 置いた駒より数字が大きい駒を含む列");
@@ -326,6 +345,48 @@ describe("設定メニューの保存（localStorage）", () => {
     const saved = loadSaved(memory({ [SETTINGS_KEY]: JSON.stringify({ rules: old, side: "0", host: "random" }) }));
     expect([saved.rules.heal, saved.rules.hp, saved.rules.king.deadline]).toEqual(["avg", [110, 130], 5]);
     expect(matchPreset(saved.rules)).toBeNull();
+  });
+  it("スキルありの体力を変える前に共有した URL（体力 129・130）は、その値のまま読む", () => {
+    const before = encodeRules({ ...presetById("skill").rules, hp: [129, 130] });
+    expect(before).toContain("hp1=129&hp2=130");
+    expect(before).toContain("skill=1");
+    expect(decodeRules(`?${before}`).rules.hp).toEqual([129, 130]);
+    expect(matchPreset(decodeRules(`?${before}`).rules)).toBeNull();
+    // 今のスキルありは 136・134
+    expect(matchPreset(decodeRules(`?${encodeRules(presetById("skill").rules)}`).rules)?.id).toBe("skill");
+  });
+  // PR #42 で公開したスキルあり（体力 129・130）を設定メニューで保存した文字列
+  const OLD_SKILL =
+    "take=flip&gate=0&dmg=sum&heal=low&hp1=129&hp2=130&fu=10&gin=0&kin=2&hi=3&limit=0&king=1&kpen=hp&kdmg=30&kdue=7&dir=piece&yoko=10&kaku=4&vkin=5&vhi=3&anc=atk&skill=1";
+  const savedOf = (rules: string) => loadSaved(memory({ [SETTINGS_KEY]: JSON.stringify({ rules, side: "1", host: "first", threat: true }) }));
+  it("体力を変える前のスキルありとまったく同じ保存は、今のスキルあり（136・134）として読む", () => {
+    const saved = savedOf(OLD_SKILL);
+    expect(saved.rules).toEqual(presetById("skill").rules);
+    expect(matchPreset(saved.rules)?.id).toBe("skill");
+    // ルール以外の保存はそのまま
+    expect([saved.side, saved.host, saved.threat]).toEqual(["1", "first", true]);
+    // 読み替えた値はプリセットの写し（あとで書き換えてもプリセットは変わらない）
+    saved.rules.hp[0] = 1;
+    expect(presetById("skill").rules.hp).toEqual([136, 134]);
+  });
+  it("前のスキルありと 1 項目でも違う保存（ユーザーが調整した設定）は、そのまま読む", () => {
+    const base = decodeRules(`?${OLD_SKILL}`).rules;
+    const tweaked: RuleSet[] = [
+      { ...base, hp: [129, 131] },
+      { ...base, hp: [136, 130] },
+      { ...base, king: { ...base.king, amount: 25 } },
+      { ...base, hand: { ...base.hand, hi: 2 } },
+      { ...base, values: { ...base.values, kin: 4 } },
+      { ...base, anchor: "none" },
+      // 体力だけ前の値で、スキルなし（＝標準）
+      { ...base, skills: false },
+    ];
+    for (const r of tweaked) expect(savedOf(encodeRules(r)).rules).toEqual(r);
+    expect(matchPreset(savedOf(encodeRules({ ...base, skills: false })).rules)?.id).toBe("std");
+    // 今のスキルありの保存はそのまま
+    expect(savedOf(encodeRules(presetById("skill").rules)).rules).toEqual(presetById("skill").rules);
+    // 壊れた保存は今までどおり標準
+    expect(savedOf(OLD_SKILL.replace("hp1=129", "hp1=zz")).rules).toEqual(defaultSaved().rules);
   });
   it("ストレージが例外を投げても標準（safeStore 越し）", async () => {
     const { safeStore } = await import("../src/net/online");
