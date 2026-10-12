@@ -77,7 +77,11 @@ test("遊び方: 各ステップで要点が大きく、補足・ヒント・で
     } else {
       const a = l.answers[0];
       const tap = (sel: string) => (narrow(page) ? page.locator(sel).tap() : page.locator(sel).click());
-      if (a.skill) await tap("#skill-use");
+      if (a.skill) {
+        await tap("#skill-use");
+        // 使う演出の間は盤を押せない。光るマスが戻るまで待つ
+        await expect(page.locator(".cell.guide")).toHaveCount(l.guide.length);
+      }
       if (a.king) await tap("#king-toggle");
       if (a.vice) await tap("#vice-toggle");
       await play(page, a.at[0], a.at[1], a.kind, narrow(page));
