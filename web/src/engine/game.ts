@@ -843,15 +843,15 @@ export function viceInfo(state: GameState, p: Player): ViceInfo {
 }
 
 /**
- * 相手に見せている窓の副将（持ち主の手数が due を過ぎた最後の窓の副将）。その窓より後に返された副将があれば
- * （返されたのは公開情報）null。置き直してふつうの駒に戻っていても、次の窓を見せるまではこれを「いる」として見せる
+ * 相手に見せている窓の副将（持ち主の手数が due を過ぎた最後の窓の副将）の list の添字。その窓より後に返された副将があれば
+ * （返されたのは公開情報）−1。置き直してふつうの駒に戻っていても、次の窓を見せるまではこれを「いる」として見せる
  */
-function shownVice(v: ViceState | undefined, ownerMoves: number): Vice | null {
-  if (!v) return null;
+function shownIndex(v: ViceState | undefined, ownerMoves: number): number {
+  if (!v) return -1;
   let i = v.list.length - 1;
   while (i >= 0 && v.list[i].due > ownerMoves) i--;
-  if (i < 0 || v.list.slice(i).some((x) => x.hit)) return null;
-  return v.list[i];
+  if (i < 0 || v.list.slice(i).some((x) => x.hit)) return -1;
+  return i;
 }
 
 /**
@@ -859,8 +859,8 @@ function shownVice(v: ViceState | undefined, ownerMoves: number): Vice | null {
  * 副将は置く駒で置き直すので、置いた時点で見せると置いた駒が副将だと分かってしまう。そこで各窓の副将は、その窓の期限の手
  * （必ず副将が決まる手）を相手が打ち終えてから「いる」と見せる。王を決めた手は隠し情報なので、対局では窓 k の分を相手の
  * 「王の期限 ＋ VICE_DEADLINE × k 手目」の後から見せる（ViceState.base）。返されたら次の窓を見せるまで「いない」。
- * wait は次の窓を見せる時期までの相手の手数。偵察で今見せている窓の副将を知っているときは scouted が true で cell がそのマス
- * （置き直してふつうの駒に戻っていることもある。次の窓を見せると消える）
+ * wait は次の窓を見せる時期までの相手の手数。偵察で知った副将（偵察した時点の今の副将）があれば scouted が true で cell がそのマス。
+ * 印はその時点の写しで、その副将の窓より後の窓を見せるまで残る（置き直されてふつうの駒に戻っていることもある）
  */
 export interface OppVice {
   set: boolean;
@@ -877,9 +877,11 @@ function oppViceOf(state: GameState, owner: Player): OppVice {
   const base = v?.base ?? state.rules.king.deadline;
   const k = Math.max(1, Math.floor((m - base) / VICE_DEADLINE) + 1);
   const wait = base + VICE_DEADLINE * k - m;
-  const shown = shownVice(v, m);
-  if (!shown) return { ...none, wait };
-  return shown.seen ? { set: true, wait, scouted: true, cell: [shown.cell[0], shown.cell[1]] } : { ...none, set: true, wait };
+  const i = shownIndex(v, m);
+  if (i < 0) return { ...none, wait };
+  // 偵察の印: 見せている窓かそれより後の窓の副将で、偵察で知ったもの（偵察は印が見えている間は使えないので、あっても 1 つ）
+  const known = v!.list.slice(i).filter((x) => x.seen && !x.hit).at(-1);
+  return known ? { set: true, wait, scouted: true, cell: [known.cell[0], known.cell[1]] } : { ...none, set: true, wait };
 }
 
 /** viewer から見える局面。相手の王・副将の真の場所は含まない（CPU はこれだけを見て打つ） */
@@ -1038,7 +1040,7 @@ export function kingMoveCells(view: Pick<PlayerView, "board" | "turn" | "myKing"
 
 /**
  * 偵察の効果（公開情報だけで決める）。find: 相手の王を特定する（相手の王が隠れていて、まだ知らず、候補が 2 つ以上）/
- * vice: 相手の今見せている副将を特定する（王が分かっている・返した後）
+ * vice: 使った時点の相手の今の副将を特定する（王が分かっている・返した後）
  */
 export function scoutMode(view: Pick<PlayerView, "oppKing">): "find" | "vice" {
   const ok = view.oppKing;
@@ -1048,7 +1050,7 @@ export function scoutMode(view: Pick<PlayerView, "oppKing">): "find" | "vice" {
 /**
  * 偵察を使えない理由。相手が期限の手まで打ち終えるまでは使えない（相手が期限より前に王を決めたかは隠し情報なので、期限まで待つ。
  * 先に王を返していれば使える）。副将を特定する効果は、相手の副将が「いる」と見えていない間（noVice）・
- * 見せている副将を特定済みの間（viceSeen。次の窓を見せるとまた使える）は使えない
+ * 偵察の印が見えている間（viceSeen。印の副将の窓より後の窓を見せるとまた使える）は使えない
  */
 function scoutBlock(view: PlayerView): EffectBlock | null {
   const opp = other(view.turn);
@@ -1184,12 +1186,13 @@ function applyEffect(state: GameState, effect: Exclude<WheelEffect, "judge">, us
         next.kings = kings;
         note.scout = "find";
       } else {
-        // 相手に見せている窓の副将（公開情報だけで決まる。置き直されていても、その駒の場所が分かる）
+        // 使った時点の相手の今の副将（置き直していれば新しい副将。置き直したかは偵察した人に分かる）。
+        // 使えるのは相手の副将を「いる」と見せている間（scoutBlock）で、そのときは見せている窓から後に返された副将がないので、今の副将は必ずある
         const kings: [KingState, KingState] = [state.kings[0], state.kings[1]];
         const v = kings[q].vice;
-        const shown = shownVice(v, movesBy(state, q));
-        if (!v || !shown) throw new Error("相手の副将が見えていません");
-        kings[q] = { ...kings[q], vice: { ...v, list: v.list.map((x) => (x === shown ? { ...x, seen: true as const } : x)) } };
+        const live = liveVice(v);
+        if (!v || !live) throw new Error("相手の今の副将がありません");
+        kings[q] = { ...kings[q], vice: { ...v, list: v.list.map((x) => (x === live ? { ...x, seen: true as const } : x)) } };
         next.kings = kings;
         note.scout = "vice";
       }

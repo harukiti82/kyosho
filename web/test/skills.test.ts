@@ -931,7 +931,7 @@ describe("副将", () => {
     expect(viewFor(s, 0).oppVice).toMatchObject({ scouted: false, cell: null });
   });
 
-  it("偵察で特定した副将を相手が置き直したら、印は次の窓を見せるまで残り、その駒を返しても罰はない。次の窓の後はまた偵察できる", () => {
+  it("偵察で特定した副将を相手が後で置き直したら、印は次の窓を見せるまで残り、その駒を返しても罰はない。次の窓の後はまた偵察できる", () => {
     // 後手の窓 1 の副将 b1（見せる 14 手目を過ぎた・先手が特定済み）。後手は窓 2 で h4 に置き直した（見せるのは 21 手目の後）
     const s0 = withVices(movesOf(start(["scout", null]), 1, 15), 1, [{ cell: "b1", due: 14, seen: true }, { cell: "h4", due: 21 }], { since: 3, base: 7 });
     const s = full({ ...s0, turn: 0 });
@@ -948,6 +948,27 @@ describe("副将", () => {
     expect(skillBlock(viewFor(later, 0))).toBeNull();
     const found = useSkill(later, { id: "scout" });
     expect(viewFor(found, 0).oppVice).toMatchObject({ scouted: true, cell: at("h4") });
+  });
+
+  it("偵察は使った時点の今の副将を見せる（置き直していれば新しい副将）。同じ手番で返せば罰 15。印はその副将の窓より後の窓を見せるまで残る", () => {
+    // 後手の窓 1 の副将 b1 は見せる 14 手目を過ぎた。後手は窓 2 で h4 に置き直している（見せるのは 21 手目の後）
+    const s0 = withVices(movesOf(start(["scout", null]), 1, 15), 1, [{ cell: "b1", due: 14 }, { cell: "h4", due: 21 }], { since: 3, base: 7 });
+    const s = full({ ...s0, turn: 0 });
+    expect(viewFor(s, 0).oppVice).toMatchObject({ set: true, scouted: false });
+    const found = useSkill(s, { id: "scout" });
+    // 見せている窓の b1 ではなく、今の副将 h4（後手が置き直したことが偵察した人に分かる）
+    expect(viewFor(found, 0).oppVice).toMatchObject({ set: true, scouted: true, cell: at("h4") });
+    expect(found.kings[1].vice!.list.map((v) => v.seen === true)).toEqual([false, true]);
+    expect(knownPenalties(viewFor(found, 0), [at("h4")])).toEqual({ king: null, vice: 15 });
+    // 同じ手番で h4 を返すと罰 15（先手 h3 で後手 h4 を挟む）
+    const hit = play(found, "h3");
+    expect(last(hit).vice).toEqual({ r: 3, c: 7, kind: "fu", penalty: 15, scouted: true });
+    // 返さなければ、窓 2 を見せた後（21 手目）も印は残り、偵察は使えない。窓 3 を見せる（28 手目）と消える
+    const marked = withVices(movesOf(start(["scout", null]), 1, 21), 1, [{ cell: "b1", due: 14 }, { cell: "h4", due: 21, seen: true }], { since: 3, base: 7 });
+    expect(viewFor(marked, 0).oppVice).toMatchObject({ set: true, scouted: true, cell: at("h4") });
+    expect(skillBlock(viewFor(full({ ...marked, turn: 0 }), 0))).toBe("viceSeen");
+    const next = withVices(movesOf(start(["scout", null]), 1, 28), 1, [{ cell: "b1", due: 14 }, { cell: "h4", due: 21, seen: true }, { cell: "a1", due: 28 }], { since: 3, base: 7 });
+    expect(viewFor(next, 0).oppVice).toMatchObject({ set: true, scouted: false, cell: null });
   });
 
   it("王と副将を同じ手で返すと両方の罰", () => {

@@ -358,7 +358,7 @@ export function chooseSkillUse(view: PlayerView, rng: () => number): SkillUse | 
     case "wall":
       return better({ shield: true }, THRESHOLD.wall) ? { id } : null;
     case "scout":
-      // 王を特定できるなら王、王が分かった・返した後は相手の今の副将（使えるならいつも）
+      // 王を特定できるなら王、王が分かった・返した後は相手の今の副将（使えるならいつも。特定した副将は同じ手番の読みで罰 15 として狙う）
       return { id };
     case "kingmove": {
       // 今の王が次の手で返されうるときだけ、返されない駒へ（盤の端・隅を優先）

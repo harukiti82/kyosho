@@ -84,7 +84,7 @@ export function skillText(id: SkillId, r: RuleSet): { short: string; point: stri
       return {
         short: "相手の王・副将が見える",
         point: "相手の王の場所が自分にだけ分かる",
-        note: `相手が最初の${r.king.deadline}手を打ち終えてから使える。王が分かった後は、相手が副将を置く期限の後に副将の場所が分かる。相手が置き直したら、次の期限の後にまた使える。罰は変わらない`,
+        note: `相手が最初の${r.king.deadline}手を打ち終えてから使える。王が分かった後は、相手が副将を置く期限の後に、使った時点の今の副将の場所が分かる。次の期限の後にまた使える。罰は変わらない`,
       };
     case "kingmove":
       return { short: `王を ${KINGMOVE_RANGE} マス内へ`, point: "自分の王を近くの自分の駒へ移す", note: `今の王から ${KINGMOVE_RANGE} マス以内。どこへ移したかは相手に見えない` };

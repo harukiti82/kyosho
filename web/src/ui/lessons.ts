@@ -572,7 +572,7 @@ export const SKILL_LESSONS: readonly Lesson[] = [
     id: "scout",
     title: "偵察",
     point: "偵察で、相手の王の場所が分かる",
-    note: "王が分かった後に使うと、次は相手の副将の場所が分かる。",
+    note: "王が分かった後に使うと、相手の今の副将の場所が分かる。",
     task: "名札の偵察を押してから、見えた相手の王を飛で挟む",
     rules: skillRules(),
     start() {
