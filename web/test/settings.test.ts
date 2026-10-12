@@ -1,7 +1,7 @@
 // URL クエリ（設定の共有）とルールカードの文言のテスト
 
 import { describe, expect, it } from "vitest";
-import { defaultRules, matchPreset, NO_KING, PRESETS, presetById, sameRules, type PresetId } from "../src/engine/rules";
+import { defaultRules, matchPreset, NO_KING, PRESETS, presetById, sameRules, type PresetId, type RuleSet } from "../src/engine/rules";
 import { decodeRules, encodeRules, QUERY_BASE } from "../src/ui/query";
 import compat from "./fixtures/query-compat.json";
 import { endDetails, ruleDetails, ruleLines, sentenceText } from "../src/ui/ruletext";
@@ -346,16 +346,47 @@ describe("設定メニューの保存（localStorage）", () => {
     expect([saved.rules.heal, saved.rules.hp, saved.rules.king.deadline]).toEqual(["avg", [110, 130], 5]);
     expect(matchPreset(saved.rules)).toBeNull();
   });
-  it("スキルありの体力を変える前に保存した・共有した設定（体力 129・130）は、その値のまま読む", () => {
+  it("スキルありの体力を変える前に共有した URL（体力 129・130）は、その値のまま読む", () => {
     const before = encodeRules({ ...presetById("skill").rules, hp: [129, 130] });
     expect(before).toContain("hp1=129&hp2=130");
     expect(before).toContain("skill=1");
-    const saved = loadSaved(memory({ [SETTINGS_KEY]: JSON.stringify({ rules: before, side: "0", host: "random" }) }));
-    expect(saved.rules).toEqual({ ...presetById("skill").rules, hp: [129, 130] });
-    expect(matchPreset(saved.rules)).toBeNull();
     expect(decodeRules(`?${before}`).rules.hp).toEqual([129, 130]);
+    expect(matchPreset(decodeRules(`?${before}`).rules)).toBeNull();
     // 今のスキルありは 136・134
     expect(matchPreset(decodeRules(`?${encodeRules(presetById("skill").rules)}`).rules)?.id).toBe("skill");
+  });
+  // PR #42 で公開したスキルあり（体力 129・130）を設定メニューで保存した文字列
+  const OLD_SKILL =
+    "take=flip&gate=0&dmg=sum&heal=low&hp1=129&hp2=130&fu=10&gin=0&kin=2&hi=3&limit=0&king=1&kpen=hp&kdmg=30&kdue=7&dir=piece&yoko=10&kaku=4&vkin=5&vhi=3&anc=atk&skill=1";
+  const savedOf = (rules: string) => loadSaved(memory({ [SETTINGS_KEY]: JSON.stringify({ rules, side: "1", host: "first", threat: true }) }));
+  it("体力を変える前のスキルありとまったく同じ保存は、今のスキルあり（136・134）として読む", () => {
+    const saved = savedOf(OLD_SKILL);
+    expect(saved.rules).toEqual(presetById("skill").rules);
+    expect(matchPreset(saved.rules)?.id).toBe("skill");
+    // ルール以外の保存はそのまま
+    expect([saved.side, saved.host, saved.threat]).toEqual(["1", "first", true]);
+    // 読み替えた値はプリセットの写し（あとで書き換えてもプリセットは変わらない）
+    saved.rules.hp[0] = 1;
+    expect(presetById("skill").rules.hp).toEqual([136, 134]);
+  });
+  it("前のスキルありと 1 項目でも違う保存（ユーザーが調整した設定）は、そのまま読む", () => {
+    const base = decodeRules(`?${OLD_SKILL}`).rules;
+    const tweaked: RuleSet[] = [
+      { ...base, hp: [129, 131] },
+      { ...base, hp: [136, 130] },
+      { ...base, king: { ...base.king, amount: 25 } },
+      { ...base, hand: { ...base.hand, hi: 2 } },
+      { ...base, values: { ...base.values, kin: 4 } },
+      { ...base, anchor: "none" },
+      // 体力だけ前の値で、スキルなし（＝標準）
+      { ...base, skills: false },
+    ];
+    for (const r of tweaked) expect(savedOf(encodeRules(r)).rules).toEqual(r);
+    expect(matchPreset(savedOf(encodeRules({ ...base, skills: false })).rules)?.id).toBe("std");
+    // 今のスキルありの保存はそのまま
+    expect(savedOf(encodeRules(presetById("skill").rules)).rules).toEqual(presetById("skill").rules);
+    // 壊れた保存は今までどおり標準
+    expect(savedOf(OLD_SKILL.replace("hp1=129", "hp1=zz")).rules).toEqual(defaultSaved().rules);
   });
   it("ストレージが例外を投げても標準（safeStore 越し）", async () => {
     const { safeStore } = await import("../src/net/online");

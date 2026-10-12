@@ -182,6 +182,35 @@ test("保存した設定が壊れている・ストレージが使えないと�
   }
 });
 
+test("体力を変える前のスキルあり（129・130）の保存は今のスキルあり（136・134）で始まり、1 項目でも違う保存はそのまま", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(String(e)));
+  const skill = presetById("skill").rules;
+  const cases: { rules: string; name: string; preset: string | null; hp: [number, number] }[] = [
+    { rules: encodeRules({ ...skill, hp: [129, 130] }), name: "スキルあり", preset: "skill", hp: [136, 134] },
+    // ユーザーが体力を調整した保存は読み替えない
+    { rules: encodeRules({ ...skill, hp: [129, 131] }), name: "カスタム", preset: null, hp: [129, 131] },
+    // 体力 129・130 でスキルなし（＝標準）の保存も読み替えない
+    { rules: encodeRules({ ...skill, hp: [129, 130], skills: false }), name: "標準", preset: "std", hp: [129, 130] },
+  ];
+  for (const c of cases) {
+    await page.goto("/");
+    await page.evaluate((v) => localStorage.setItem("kyosho:settings", JSON.stringify({ rules: v, side: "0", host: "random" })), c.rules);
+    await page.reload();
+    await expect(page.locator("#menu-rule-name")).toHaveText(c.name);
+    await openSettings(page);
+    if (c.preset) await expect(page.locator(".preset[aria-pressed=true]")).toHaveAttribute("data-preset", c.preset);
+    else await expect(page.locator(".preset[aria-pressed=true]")).toHaveCount(0);
+    await expect(page.locator("input[name=hp0]")).toHaveValue(String(c.hp[0]));
+    await expect(page.locator("input[name=hp1]")).toHaveValue(String(c.hp[1]));
+    await saveSettings(page);
+    await startGame(page, { mode: "pvp" });
+    await expect(page.locator("#player-0 .hp-num")).toHaveText(String(c.hp[0]));
+    await expect(page.locator("#player-1 .hp-num")).toHaveText(String(c.hp[1]));
+  }
+  expect(errors).toEqual([]);
+});
+
 test("対局中にメニューへ出て「対局に戻る」で続けられる。終局後はメニューから新しい対局", async ({ page }) => {
   await seedPage(page, 3);
   await page.goto(`/?${encodeRules({ ...presetById("v10").rules, hp: [5, 5] })}`);

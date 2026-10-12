@@ -6,6 +6,7 @@ import { DEFAULT_CPU_LEVEL, type CpuLevel } from "../engine/cpu";
 import {
   cloneRules,
   DEFAULT_PRESET,
+  DEFAULT_VALUES,
   defaultRules,
   KIND_ORDER,
   LIMITS,
@@ -14,7 +15,9 @@ import {
   PRESETS,
   presetById,
   REACH_MARK,
+  sameRules,
   type Player,
+  type PresetId,
   type RuleSet,
 } from "../engine/rules";
 import type { KeyValueStore } from "../net/online";
@@ -76,12 +79,41 @@ export const defaultSaved = (): Saved => ({
   threat: false,
 });
 
+/**
+ * 前のプリセットの値のまま保存された設定と、読み替える先のプリセット。保存はルールの値をまるごと持つので、
+ * プリセットの値を変えると前に保存した人は前の値のまま遊び、プリセットの選択もどれとも一致しなくなる。
+ * プリセットの値はユーザーが選んだものではないので、全項目が一致する保存だけ今のプリセットに追従させる
+ * （1 項目でも違えばユーザーが調整した設定としてそのまま読む）。共有された URL（decodeRules）は読み替えない
+ */
+const LEGACY_PRESETS: readonly { rules: RuleSet; to: PresetId }[] = [
+  {
+    // スキルあり（PR #42 で公開）。2026-10-12 に体力を 129・130 → 136・134 に
+    rules: {
+      action: "flip", gate: false, dirs: "piece", damage: "sum", anchor: "attack", heal: "lowMinus1",
+      hp: [129, 130],
+      hand: { fu: 10, yoko: 10, gin: 0, kaku: 4, kin: 2, hi: 3 },
+      values: { ...DEFAULT_VALUES, hi: 3, kin: 5 },
+      maxPlies: 0,
+      king: { on: true, penalty: "hp", amount: 30, deadline: 7 },
+      skills: true,
+    },
+    to: "skill",
+  },
+];
+
+/** 保存したルールが前のプリセットと全項目一致すれば、今のプリセットの値に読み替える */
+function followPreset(r: RuleSet): RuleSet {
+  const old = LEGACY_PRESETS.find((l) => sameRules(l.rules, r));
+  return old ? cloneRules(presetById(old.to).rules) : r;
+}
+
 const isSide = (v: unknown): v is Side => v === "0" || v === "1" || v === "random";
 const isHost = (v: unknown): v is HostSeat => v === "random" || v === "first" || v === "second";
 
 /**
  * 保存した設定を読む。保存がない・壊れている・読めない値がある（ストレージが使えない場合を含む）ときは、
- * その部分を既定（標準・CPU 対戦の手番はランダム・オンラインの席はランダム・強さに合わせる・45 秒・警告なし）にする。ルールは一部でも読めなければ全体を標準にする
+ * その部分を既定（標準・CPU 対戦の手番はランダム・オンラインの席はランダム・強さに合わせる・45 秒・警告なし）にする。ルールは一部でも読めなければ全体を標準にする。
+ * 前のプリセットの値のままの保存は今のプリセットに読み替える（followPreset）
  */
 export function loadSaved(store: KeyValueStore): Saved {
   const out = defaultSaved();
@@ -95,7 +127,7 @@ export function loadSaved(store: KeyValueStore): Saved {
   const o = raw as Record<string, unknown>;
   if (typeof o.rules === "string") {
     const d = decodeRules(`?${o.rules}`);
-    if (d.present && d.invalid.length === 0) out.rules = d.rules;
+    if (d.present && d.invalid.length === 0) out.rules = followPreset(d.rules);
   }
   if (isSide(o.side)) out.side = o.side;
   if (isHost(o.host)) out.host = o.host;
