@@ -56,9 +56,9 @@ export class Coach {
 
   /**
    * ステップ i（0 始まり）を出す。titles は全ステップの見出し、open は押して移れる最も先のステップ
-   * （それより先の石は押せない）
+   * （それより先の石は押せない）。done は終えたステップの印（省くと i より前を終えたものとして描く。スキル練習は終えたカード）
    */
-  show(i: number, titles: readonly string[], open: number, point: string, note: string | undefined, task: string) {
+  show(i: number, titles: readonly string[], open: number, point: string, note: string | undefined, task: string, done?: readonly boolean[]) {
     const { el } = this;
     el.root.hidden = false;
     el.num.textContent = `${i + 1}/${titles.length}`;
@@ -70,7 +70,7 @@ export class Coach {
     el.steps.replaceChildren(
       ...titles.map((t, j) => {
         const b = h("button", {
-          class: `coach-dot${j < i ? " done" : ""}${j === i ? " current" : ""}`,
+          class: `coach-dot${(done ? done[j] : j < i) ? " done" : ""}${j === i ? " current" : ""}`,
           attrs: { type: "button", "aria-label": `${j + 1}. ${t}`, title: `${j + 1}. ${t}`, ...(j === i ? { "aria-current": "step" } : {}) },
         });
         b.disabled = j > open || j === i;
@@ -89,6 +89,17 @@ export class Coach {
   /** 出ているヒントを消す（ヒントに従って操作したとき。できたの文は残す） */
   clearHint() {
     if (this.el.msg.classList.contains("hint")) this.clearMessage();
+  }
+
+  /** ステップの石の「終えた」印だけを描き直す */
+  markDone(done: readonly boolean[]) {
+    this.el.steps.querySelectorAll(".coach-dot").forEach((b, j) => b.classList.toggle("done", !!done[j]));
+  }
+
+  /** 課題だけを差し替える（連続行動の 2 手目など、同じステップの続き） */
+  setTask(task: string) {
+    this.el.task.textContent = task;
+    this.clearMessage();
   }
 
   /** できた: 何が起きたかの 1 文と「次へ」（next が null なら最後。「もう一度」も出さない） */

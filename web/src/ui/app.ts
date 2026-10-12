@@ -38,6 +38,7 @@ import {
   type PlayerView,
   type Preview,
   type Target,
+  wheelPool,
 } from "../engine/game";
 import {
   defaultRules,
@@ -88,6 +89,7 @@ import {
   FINISHED_TEXT,
   illegalHint,
   judgeMove,
+  judgeUse,
   LESSONS,
   loadProgress,
   nextNeed,
@@ -100,7 +102,8 @@ import {
   type Need,
   type Progress,
 } from "./lessons";
-import { Menu } from "./menu";
+import { Menu, type Panel } from "./menu";
+import { loadSkillDone, saveSkillDone, SKILL_LESSONS, skillLessonIndex, skillProgressLabel, wheelRng } from "./skilllessons";
 import { gamesOf, recordFor, RecordBook, recordViewer, type RecordKey } from "./record";
 import { cryptoRandom, drawSeat, fillSentences, SetupDialog, type PlaySettings } from "./setup";
 import { Sound } from "./sound";
@@ -127,7 +130,11 @@ interface ImpactPlan extends FxTiming {
 
 /** 遊び方（チュートリアル）で開いているステップ。solved は正解を打った後（「次へ」を待つ間は盤を操作させない） */
 interface LessonRun {
+  /** main = 遊び方（LESSONS）、skill = スキル練習（SKILL_LESSONS） */
+  track: "main" | "skill";
+  /** その流れの中の位置 */
   index: number;
+  /** 打っているステップ（連続行動の 2 手目では then を差し込んだもの） */
   lesson: Lesson;
   solved: boolean;
   /** 駒台・名札に出す駒（始めの局面の持ち駒にある駒。数字の小さい順） */
@@ -242,6 +249,8 @@ export class App {
   private lesson: LessonRun | null = null;
   /** 進み具合（localStorage。読めなければ null = はじめて） */
   private progress: Progress | null;
+  /** スキル練習で終えたカード（localStorage。読めなければ空） */
+  private skillDone: SkillId[];
   private readonly coach: Coach;
 
   private readonly cells: HTMLButtonElement[][] = [];
@@ -278,6 +287,7 @@ export class App {
       pvp: () => this.start(this.setup.playSettings("pvp")),
       online: () => this.start(this.setup.playSettings("online")),
       learn: () => this.openLesson(resumeStep(this.progress)),
+      skillLesson: (id) => this.openSkillLesson(skillLessonIndex(id)),
       settings: () => this.setup.open(),
       rules: () => this.showRules(this.setup.current.rules),
       resume: () => this.resume(),
@@ -297,11 +307,12 @@ export class App {
     this.menu.setRuleName(ruleName(this.setup.current.rules));
     this.showLevelTimes();
     this.coach = new Coach({
-      next: () => this.openLesson((this.lesson?.index ?? 0) + 1),
-      again: () => this.openLesson(this.lesson?.index ?? 0),
-      jump: (i) => this.openLesson(i),
+      next: () => this.nextLesson(),
+      again: () => this.openRun(this.lesson?.track ?? "main", this.lesson?.index ?? 0),
+      jump: (i) => this.openRun(this.lesson?.track ?? "main", i),
     });
     this.progress = loadProgress(this.local);
+    this.skillDone = loadSkillDone(this.local);
     this.showLearnState();
     this.bindControls();
     // 招待リンク（?room=）から開いたら部屋へ、それ以外はメニューから
@@ -1110,9 +1121,16 @@ export class App {
   private applySkill(use: SkillUse) {
     const g = this.game;
     if (!g) return;
+    // スキル練習: 指定（戻す駒・王を移す先）が練習の答えと違えば、使わずにヒント
+    const step = this.inStep();
+    const wrong = step ? judgeUse(step.lesson, use) : null;
+    if (wrong) {
+      this.coach.hint(wrong);
+      return;
+    }
     this.aim = null;
     // 遊び方: 「先に名札の〜を押して使う」のヒントは使ったら消す
-    if (this.inStep()) this.coach.clearHint();
+    if (step) this.coach.clearHint();
     if (this.online) {
       if (!this.net?.sendSkill(use, g.history.length)) {
         this.showToast("接続が切れています。つながったら使い直してください");
@@ -1133,8 +1151,9 @@ export class App {
     }
     // 待った: スキルを使う前の局面を覚える（使ったスキルごと戻す）
     if (this.undo && this.settings) this.undo.record(g, this.settings.human);
-    // 運命の輪の引く効果は crypto（Math.random は CPU の乱数と共有）
-    this.game = useSkill(g, use, cryptoRandom);
+    // 運命の輪の引く効果は crypto（Math.random は CPU の乱数と共有）。スキル練習は練習で決めた効果を出す
+    const wheel = step?.lesson.wheel;
+    this.game = useSkill(g, use, wheel ? wheelRng(wheelPool(g.rules), wheel) : cryptoRandom);
     // スキルの巻き戻しで棋譜が短くなった（戻した手は演出しない）
     this.seenEvents = Math.min(this.seenEvents, this.game.history.length);
     this.focus = null;
@@ -1275,7 +1294,7 @@ export class App {
     if (usable) {
       const b = h("button", { class: "skill-hit ready", attrs: { type: "button", id: "skill-use", "aria-label": `${spec.name}を使う。${t.point}`, title: `押して使う。${t.point}` } }, [chip]);
       // 遊び方: 置く前に使うステップは、名札のカードを光らせる
-      if (this.lessonNeed(g).skill) {
+      if (this.lessonNeed(g).skill && !this.aimOf(g)) {
         b.classList.add("guide");
         b.append(...guideMarks(true));
       }
@@ -1303,6 +1322,11 @@ export class App {
     const id = this.aimSkill(g, "refill");
     const kinds = refillKinds(this.viewOf(g)).map((k) => {
       const b = h("button", { class: "piece-btn refill-btn", attrs: { type: "button", "data-refill": k, "aria-label": `${PIECES[k].name}を戻す`, title: `${pieceLabel(g.rules, k)}を 1 つ戻す` } }, [this.stone(p, k)]);
+      // スキル練習: 戻す駒を光らせる
+      if (this.inStep()?.lesson.aim?.kind === k) {
+        b.classList.add("guide");
+        b.append(...guideMarks(true));
+      }
       b.addEventListener("click", () => this.applySkill({ id, kind: k }));
       return b;
     });
@@ -1319,14 +1343,39 @@ export class App {
   /** i 番目のステップを始める（前回の位置として覚える） */
   private openLesson(i: number) {
     const index = Math.max(0, Math.min(LESSONS.length - 1, i));
-    const lesson = LESSONS[index];
     this.progress = progressAt(this.progress, index);
     saveProgress(this.local, this.progress);
     this.showLearnState();
+    this.startLesson("main", index, LESSONS[index]);
+  }
+
+  /** スキル練習の i 番目（SKILL_ORDER の順）のカードの練習を始める（終えたかは正解を打ったときに覚える） */
+  private openSkillLesson(i: number) {
+    const index = Math.max(0, Math.min(SKILL_LESSONS.length - 1, i));
+    this.startLesson("skill", index, SKILL_LESSONS[index]);
+  }
+
+  private openRun(track: LessonRun["track"], i: number) {
+    if (track === "skill") this.openSkillLesson(i);
+    else this.openLesson(i);
+  }
+
+  private startLesson(track: LessonRun["track"], index: number, lesson: Lesson) {
     const { hands } = lesson.start();
     const kinds = kindsByValue(lesson.rules, KIND_ORDER.filter((k) => hands[0][k] + hands[1][k] > 0));
     // 人間が先手・CPU はイージー・制限時間なし（ステップでは CPU も時計も動かない）
-    this.start({ mode: "cpu", human: 0, rules: lesson.rules, level: "easy", turnSeconds: 0 }, { index, lesson, solved: false, kinds });
+    this.start({ mode: "cpu", human: 0, rules: lesson.rules, level: "easy", turnSeconds: 0 }, { track, index, lesson, solved: false, kinds });
+  }
+
+  /** コーチの「次へ」: 遊び方は次のステップ、スキル練習は次のカード（最後のカードの後は一覧へ） */
+  private nextLesson() {
+    const run = this.lesson;
+    if (run?.track === "skill") {
+      if (run.index + 1 < SKILL_LESSONS.length) this.openSkillLesson(run.index + 1);
+      else this.showMenu("skills");
+      return;
+    }
+    this.openLesson((run?.index ?? 0) + 1);
   }
 
   /** 遊び方で習っているルール（実戦のルール） */
@@ -1340,18 +1389,80 @@ export class App {
       this.coach.hide();
       return;
     }
+    // スキル練習はどのカードへも移れる。石の印は終えたカード
+    if (run.track === "skill") {
+      const done = new Set(this.skillDone);
+      const l = run.lesson;
+      this.coach.show(run.index, SKILL_LESSONS.map((x) => x.title), SKILL_LESSONS.length - 1, l.point, l.note, l.task, SKILL_LESSONS.map((x) => done.has(x.id as SkillId)));
+      return;
+    }
     // 一度でも開いたステップと、終えた後は全部へ移れる
     const p = this.progress;
     const open = p?.done ? LESSONS.length - 1 : (p?.reached ?? run.index);
     this.coach.show(run.index, LESSONS.map((l) => l.title), open, run.lesson.point, run.lesson.note, run.lesson.task);
   }
 
-  /** 正解を打った: 何が起きたかの 1 文と「次へ」 */
+  /**
+   * 正解を打った: 何が起きたかの 1 文と「次へ」。連続行動は 2 手目の課題に進め、鉄壁は相手の決めた応手を見せてから
+   */
   private lessonSolved(run: LessonRun, before: GameState) {
     const m = lastMoveOf(this.game!);
     if (!m) return;
+    const then = run.lesson.then;
+    if (then) {
+      // 同じステップの続き（もう 1 手）。done は元のステップのもの
+      run.lesson = { ...run.lesson, ...then, then: undefined };
+      run.solved = false;
+      this.coach.setTask(then.task);
+      this.render();
+      return;
+    }
+    // 応手は打ち終えるまでステップに残す（待つ間にメニューを開いたら、「対局に戻る」で続ける）
+    const reply = run.lesson.reply;
+    if (reply && m.player === this.settings?.human) {
+      this.playReply(run);
+      return;
+    }
+    if (run.track === "skill") {
+      this.markSkillDone(run.lesson.id as SkillId);
+      this.coach.success(run.lesson.done(m, before, this.game!), run.index + 1 < SKILL_LESSONS.length ? "次のカード" : "一覧へ");
+      return;
+    }
     const nextIsMatch = !!LESSONS[run.index + 1]?.match;
     this.coach.success(run.lesson.done(m, before, this.game!), nextIsMatch ? "実戦へ" : "次へ");
+  }
+
+  /** スキル練習: 正解の後に相手の決めた応手を打つ（自分の手の演出が終わってから。CPU の読みは使わない） */
+  private playReply(run: LessonRun) {
+    window.clearTimeout(this.cpuTimer);
+    this.cpuTimer = window.setTimeout(() => {
+      const reply = run.lesson.reply;
+      if (this.lesson !== run || !this.game || !reply || this.menu.visible) return;
+      if (this.fxLock) {
+        this.playReply(run);
+        return;
+      }
+      const before = this.game;
+      run.lesson = { ...run.lesson, reply: undefined };
+      this.place(reply.at[0], reply.at[1], reply.kind);
+      if (this.game !== before) this.lessonSolved(run, before);
+    }, CPU_DELAY_MS);
+  }
+
+  /** スキル練習で id のカードを終えたことを覚える */
+  private markSkillDone(id: SkillId) {
+    if (!this.skillDone.includes(id)) this.skillDone = [...this.skillDone, id];
+    saveSkillDone(this.local, this.skillDone);
+    this.showLearnState();
+    this.showCoachDots();
+  }
+
+  /** コーチの石の印だけを描き直す（できたの文は残す） */
+  private showCoachDots() {
+    const run = this.lesson;
+    if (!run || run.track !== "skill") return;
+    const done = new Set(this.skillDone);
+    this.coach.markDone(SKILL_LESSONS.map((x) => done.has(x.id as SkillId)));
   }
 
   /** 実戦が終わった: 遊び方を終えたことを覚える（勝ち負けは問わない） */
@@ -1364,6 +1475,7 @@ export class App {
 
   private showLearnState() {
     this.menu.setLearnState(progressLabel(this.progress), this.progress === null);
+    this.menu.setSkillLessons(this.skillDone, skillProgressLabel(this.skillDone), this.lessonRules());
   }
 
   /** 遊び方で、盤より先にすること（名札のスキル・正解の駒・王・副）。操作できないとき・正解を打った後は何もない */
@@ -1381,7 +1493,7 @@ export class App {
   }
 
   /** メニューを出す。対局は止めて残し、「対局に戻る」で続ける（新しい対局を始めたら捨てる） */
-  private showMenu() {
+  private showMenu(panel: Panel = "main") {
     // 抽選の演出は飛ばして結果のままにする（メニューの上に残さない）
     this.endToss();
     window.clearTimeout(this.cpuTimer);
@@ -1390,7 +1502,7 @@ export class App {
     this.lobby.close();
     this.el.game.hidden = true;
     byId("btn-menu").hidden = true;
-    this.menu.show(this.canResume());
+    this.menu.show(this.canResume(), panel);
     // メニューを開いている間は時計を止める（オンラインはサーバーが計るので止まらない）
     this.syncClock();
   }
@@ -1403,6 +1515,9 @@ export class App {
       this.el.game.hidden = false;
       this.render();
       this.scheduleCpu(CPU_DELAY_MS);
+      // スキル練習: 正解の後に待っていた相手の応手を続ける
+      const run = this.inStep();
+      if (run?.solved && run.lesson.reply && this.game.turn !== this.settings?.human) this.playReply(run);
     } else if (this.room) {
       // 相手を待っている部屋（局面がまだない）は案内のダイアログに戻る
       this.syncLobby();
@@ -2021,7 +2136,8 @@ export class App {
 
   private renderRuleCard(r: RuleSet) {
     // 遊び方のステップは習った分だけのルール（プリセットにない組み合わせ）なので「遊び方」と呼ぶ
-    const name = this.inStep() ? "遊び方" : ruleName(r);
+    const step = this.inStep();
+    const name = step ? (step.track === "skill" ? "スキル練習" : "遊び方") : ruleName(r);
     // 見出しは「ルール」と名前を字の太さで分ける（区切りの記号は使わない）
     this.el.rulesName.replaceChildren("ルール ", h("span", { class: "tab-sub", text: name }));
     byId("tab-rules4").title = `${name}のルール`;
@@ -2137,12 +2253,15 @@ export class App {
     const step = this.inStep();
     const need = this.lessonNeed(g);
     // スキルを使ってから置くステップは、使うまでマスを光らせない（偵察で見える王を先に教えない）
-    const guides = new Set(act && step && !step.solved && !need.skill ? step.lesson.guide.map(idx) : []);
-    const arrow = guides.size === 1 && !need.kind && !need.king && !need.vice;
-    const marks = new Map((step && !step.solved ? (step.lesson.marks ?? []) : []).map((m) => [idx(m.at), m]));
     // スキル: 溜めマス・王の移し替えで移せる駒・偵察で分かった相手の王
     const zones = !!g.skills;
     const aimNow = act ? this.aimOf(g) : null;
+    // 指定（補充の駒・王を移す先）を選んでいる間は、置くマスでなく指定の答え（王を移す先）を光らせる
+    const aimTo = step?.lesson.aim?.to;
+    const guideCells = aimNow ? (aimNow === "kingmove" && aimTo ? [aimTo] : []) : !need.skill ? step?.lesson.guide ?? [] : [];
+    const guides = new Set(act && step && !step.solved ? guideCells.map(idx) : []);
+    const arrow = guides.size === 1 && (!!aimNow || (!need.kind && !need.king && !need.vice));
+    const marks = new Map((step && !step.solved ? (step.lesson.marks ?? []) : []).map((m) => [idx(m.at), m]));
     const kingTargets = new Set(aimNow === "kingmove" ? kingMoveCells(this.viewOf(g)).map(idx) : []);
     const scouted = this.scoutedKing(g);
     const scoutAt = scouted ? idx(scouted) : -1;
