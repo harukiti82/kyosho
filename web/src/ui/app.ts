@@ -85,11 +85,10 @@ import { dirMark, endDetails, handText, hpText, kingPenaltyText, pieceLabel, rul
 import { gaugeLeft, gaugeRatio, SkillPick, tarotCard } from "./skillui";
 import { Coach } from "./coach";
 import {
-  CHAPTER_IDS,
-  CHAPTERS,
-  finishedText,
+  FINISHED_TEXT,
   illegalHint,
   judgeMove,
+  LESSONS,
   loadProgress,
   nextNeed,
   PICK_HINT,
@@ -97,7 +96,6 @@ import {
   progressLabel,
   resumeStep,
   saveProgress,
-  type ChapterId,
   type Lesson,
   type Need,
   type Progress,
@@ -129,8 +127,6 @@ interface ImpactPlan extends FxTiming {
 
 /** 遊び方（チュートリアル）で開いているステップ。solved は正解を打った後（「次へ」を待つ間は盤を操作させない） */
 interface LessonRun {
-  /** 章（標準ルール・スキルあり） */
-  chapter: ChapterId;
   index: number;
   lesson: Lesson;
   solved: boolean;
@@ -244,8 +240,8 @@ export class App {
   // ---- 遊び方（チュートリアル） ----
   /** 開いているステップ（チュートリアル中でなければ null） */
   private lesson: LessonRun | null = null;
-  /** 章ごとの進み具合（localStorage。読めなければ null = はじめて） */
-  private progress: Record<ChapterId, Progress | null>;
+  /** 進み具合（localStorage。読めなければ null = はじめて） */
+  private progress: Progress | null;
   private readonly coach: Coach;
 
   private readonly cells: HTMLButtonElement[][] = [];
@@ -281,7 +277,7 @@ export class App {
       cpu: (level) => this.start(this.setup.playSettings("cpu", level)),
       pvp: () => this.start(this.setup.playSettings("pvp")),
       online: () => this.start(this.setup.playSettings("online")),
-      learn: (chapter) => this.openLesson(chapter, resumeStep(this.progress[chapter])),
+      learn: () => this.openLesson(resumeStep(this.progress)),
       settings: () => this.setup.open(),
       rules: () => this.showRules(this.setup.current.rules),
       resume: () => this.resume(),
@@ -301,16 +297,11 @@ export class App {
     this.menu.setRuleName(ruleName(this.setup.current.rules));
     this.showLevelTimes();
     this.coach = new Coach({
-      // 標準の章の実戦を終えたら「次へ」はスキルありの章へ
-      next: () => {
-        const run = this.lesson;
-        if (run && run.index + 1 >= CHAPTERS[run.chapter].length) this.openLesson("skill", 0);
-        else this.openLesson(run?.chapter ?? "std", (run?.index ?? 0) + 1);
-      },
-      again: () => this.openLesson(this.lesson?.chapter ?? "std", this.lesson?.index ?? 0),
-      jump: (i) => this.openLesson(this.lesson?.chapter ?? "std", i),
+      next: () => this.openLesson((this.lesson?.index ?? 0) + 1),
+      again: () => this.openLesson(this.lesson?.index ?? 0),
+      jump: (i) => this.openLesson(i),
     });
-    this.progress = { std: loadProgress(this.local, "std"), skill: loadProgress(this.local, "skill") };
+    this.progress = loadProgress(this.local);
     this.showLearnState();
     this.bindControls();
     // 招待リンク（?room=）から開いたら部屋へ、それ以外はメニューから
@@ -1325,24 +1316,22 @@ export class App {
     return this.lesson && !this.lesson.lesson.match ? this.lesson : null;
   }
 
-  /** 章の i 番目のステップを始める（前回の位置として覚える） */
-  private openLesson(chapter: ChapterId, i: number) {
-    const list = CHAPTERS[chapter];
-    const lesson = list[Math.max(0, Math.min(list.length - 1, i))];
-    const index = list.indexOf(lesson);
-    this.progress[chapter] = progressAt(this.progress[chapter], index);
-    saveProgress(this.local, this.progress[chapter]!, chapter);
+  /** i 番目のステップを始める（前回の位置として覚える） */
+  private openLesson(i: number) {
+    const index = Math.max(0, Math.min(LESSONS.length - 1, i));
+    const lesson = LESSONS[index];
+    this.progress = progressAt(this.progress, index);
+    saveProgress(this.local, this.progress);
     this.showLearnState();
     const { hands } = lesson.start();
     const kinds = kindsByValue(lesson.rules, KIND_ORDER.filter((k) => hands[0][k] + hands[1][k] > 0));
     // 人間が先手・CPU はイージー・制限時間なし（ステップでは CPU も時計も動かない）
-    this.start({ mode: "cpu", human: 0, rules: lesson.rules, level: "easy", turnSeconds: 0 }, { chapter, index, lesson, solved: false, kinds });
+    this.start({ mode: "cpu", human: 0, rules: lesson.rules, level: "easy", turnSeconds: 0 }, { index, lesson, solved: false, kinds });
   }
 
-  /** 開いている章で習っているルール（章の実戦のルール） */
+  /** 遊び方で習っているルール（実戦のルール） */
   private lessonRules(): RuleSet {
-    const list = CHAPTERS[this.lesson?.chapter ?? "std"];
-    return list[list.length - 1].rules;
+    return LESSONS[LESSONS.length - 1].rules;
   }
 
   private showCoach() {
@@ -1352,34 +1341,29 @@ export class App {
       return;
     }
     // 一度でも開いたステップと、終えた後は全部へ移れる
-    const list = CHAPTERS[run.chapter];
-    const p = this.progress[run.chapter];
-    const open = p?.done ? list.length - 1 : (p?.reached ?? run.index);
-    this.coach.show(run.index, list.map((l) => l.title), open, run.lesson.point, run.lesson.note, run.lesson.task);
+    const p = this.progress;
+    const open = p?.done ? LESSONS.length - 1 : (p?.reached ?? run.index);
+    this.coach.show(run.index, LESSONS.map((l) => l.title), open, run.lesson.point, run.lesson.note, run.lesson.task);
   }
 
   /** 正解を打った: 何が起きたかの 1 文と「次へ」 */
   private lessonSolved(run: LessonRun, before: GameState) {
     const m = lastMoveOf(this.game!);
     if (!m) return;
-    const nextIsMatch = !!CHAPTERS[run.chapter][run.index + 1]?.match;
+    const nextIsMatch = !!LESSONS[run.index + 1]?.match;
     this.coach.success(run.lesson.done(m, before, this.game!), nextIsMatch ? "実戦へ" : "次へ");
   }
 
-  /** 実戦が終わった: 章を終えたことを覚える（勝ち負けは問わない）。標準の章を終えたら、スキルありの章へ進める */
+  /** 実戦が終わった: 遊び方を終えたことを覚える（勝ち負けは問わない） */
   private finishTutorial() {
-    const chapter = this.lesson?.chapter ?? "std";
-    const list = CHAPTERS[chapter];
-    this.progress[chapter] = { ...progressAt(this.progress[chapter], list.length - 1), done: true };
-    saveProgress(this.local, this.progress[chapter]!, chapter);
+    this.progress = { ...progressAt(this.progress, LESSONS.length - 1), done: true };
+    saveProgress(this.local, this.progress);
     this.showLearnState();
-    this.coach.success(finishedText(chapter), chapter === "std" ? "スキルありへ" : null);
+    this.coach.success(FINISHED_TEXT, null);
   }
 
   private showLearnState() {
-    const std = this.progress.std;
-    this.menu.setLearnState(progressLabel(std), std === null);
-    for (const c of CHAPTER_IDS) this.menu.setChapterState(c, progressLabel(this.progress[c], c), c === "std" && std === null);
+    this.menu.setLearnState(progressLabel(this.progress), this.progress === null);
   }
 
   /** 遊び方で、盤より先にすること（名札のスキル・正解の駒・王・副）。操作できないとき・正解を打った後は何もない */

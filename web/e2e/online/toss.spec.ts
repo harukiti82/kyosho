@@ -27,7 +27,7 @@ test("席が抽選の部屋: 両者に演出が出て、上を向いた色が自
   const pre = prefix(info);
   const host = await newPlayer(browser, info, "host");
   const guest = await newPlayer(browser, info, "guest");
-  const url = await createRoomFromSetup(host, null, "random");
+  const url = await createRoomFromSetup(host, "std", "random");
   await expect.poll(() => host.last?.phase).toBe("waiting");
   // 先手（席 0）と後手。後手の画面の時計を止め、演出が遅れて終わる側にする
   const hostSeat = host.last!.you;

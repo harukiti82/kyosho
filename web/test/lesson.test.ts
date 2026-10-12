@@ -1,5 +1,5 @@
-// チュートリアルの局面と判定: 各ステップの正解がエンジンで打てて、教えたい結果（ダメージ・勝ち・上乗せ・回復・王）になること、
-// 違う手ではヒントが出ること、誘導の印が局面と合うこと、進み具合の保存が壊れていても始められること。
+// チュートリアルの局面と判定: 各ステップの正解がエンジンで打てて、教えたい結果（ダメージ・勝ち・上乗せ・回復・王・ゲージ・副将）になること、
+// 違う手ではヒントが出ること、誘導の印が局面と合うこと、進み具合の保存が壊れていても・2 つの章の頃の保存でも始められること。
 
 import { describe, expect, it } from "vitest";
 import { cellName, othelloCells, parseCell } from "../src/engine/board";
@@ -26,7 +26,6 @@ import { kindsByValue, presetById, sameRules, type PieceKind } from "../src/engi
 import type { KeyValueStore } from "../src/net/online";
 import { keyParts } from "../src/ui/coach";
 import {
-  CHAPTERS,
   FINISHED_TEXT,
   illegalHint,
   judgeMove,
@@ -40,20 +39,20 @@ import {
   progressLabel,
   resumeStep,
   saveProgress,
-  SKILL_FINISHED_TEXT,
-  SKILL_LESSONS,
+  SCOUT_LESSON,
   TUTORIAL_KEY,
   VICE_HINT,
   type Lesson,
   type LessonId,
 } from "../src/ui/lessons";
 
-const ALL = [...LESSONS, ...SKILL_LESSONS];
+/** 遊び方のステップと、流れに入れていないカードごとのステップ（偵察） */
+const ALL = [...LESSONS, SCOUT_LESSON];
 const lesson = (id: LessonId) => ALL.find((l) => l.id === id)!;
 /** 文の数（「。」で区切る） */
 const sentences = (s: string) => s.split("。").filter((x) => x.trim()).length;
 const steps = LESSONS.filter((l) => !l.match);
-/** 盤に打つステップ（両方の章。カードを選ぶステップ・実戦を除く） */
+/** 盤に打つステップ（偵察を含む。カードを選ぶステップ・実戦を除く） */
 const boardSteps = ALL.filter((l) => !l.match && !l.pick);
 
 /** 正解の手を打った後の局面と棋譜の手（スキルを使うステップは使ってから打つ。g は打つ直前の局面） */
@@ -118,11 +117,19 @@ describe("gameFrom（指定した局面から始める）", () => {
 });
 
 describe("チュートリアルの各ステップ", () => {
-  it("標準ルールの要素を易しい順に足し、最後は標準の実戦", () => {
-    expect(LESSONS.map((l) => l.id)).toEqual(["flank", "damage", "dirs", "hand", "anchor", "heal", "king", "kingAuto", "kingHit", "read", "match"]);
-    const std = presetById("std").rules;
+  it("標準（id skill）の要素を易しい順に足し、最後は標準の実戦", () => {
+    expect(LESSONS.map((l) => l.id)).toEqual([
+      "flank", "damage", "dirs", "hand", "anchor", "heal", "king", "kingAuto", "kingHit", "read",
+      "skillPick", "skillGauge", "skillUse", "vice", "viceHit", "match",
+    ]);
+    const std = presetById("skill").rules;
     expect(sameRules(lesson("match").rules, std)).toBe(true);
-    expect(sameRules(lesson("read").rules, std)).toBe(true);
+    // スキルを習う前は、スキル（と副将）を外した標準。体力・駒は標準のまま
+    for (const id of ["flank", "damage", "dirs", "hand", "anchor", "heal", "king", "kingAuto", "kingHit", "read"] as const) {
+      expect(lesson(id).rules, id).toMatchObject({ skills: false, hp: std.hp, hand: std.hand, values: std.values });
+    }
+    expect(sameRules(lesson("read").rules, { ...std, skills: false })).toBe(true);
+    for (const id of ["skillPick", "vice", "viceHit"] as const) expect(sameRules(lesson(id).rules, std), id).toBe(true);
     expect(lesson("flank").rules).toMatchObject({ dirs: "all", anchor: "none", heal: "none", king: { on: false } });
     expect(lesson("dirs").rules.dirs).toBe("piece");
     expect(lesson("anchor").rules.anchor).toBe("attack");
@@ -143,7 +150,7 @@ describe("チュートリアルの各ステップ", () => {
   });
 
   it("初めての人に通じない内部の用語・式のような書き方を使わない（覚えるルール・課題・ヒント・できたの文）", () => {
-    const texts = [FINISHED_TEXT, SKILL_FINISHED_TEXT, KING_HINT, VICE_HINT, PICK_HINT];
+    const texts = [FINISHED_TEXT, KING_HINT, VICE_HINT, PICK_HINT];
     for (const l of boardSteps) {
       const { g, next, m } = solve(l);
       texts.push(l.title, l.point, l.note ?? "", l.task, l.done(m, g, next));
@@ -325,32 +332,27 @@ describe("チュートリアルの各ステップ", () => {
     expect(lesson("dirs").point).toBe("駒ごとに挟める向きが違う");
   });
 
-  it("実戦は標準の初期局面", () => {
+  it("実戦は標準の初期局面で、カードを選ぶ前", () => {
     const g = lesson("match").start();
     expect(g.ply).toBe(0);
-    expect(sameRules(g.rules, presetById("std").rules)).toBe(true);
+    expect(sameRules(g.rules, presetById("skill").rules)).toBe(true);
+    expect(g.skills?.ready).toBe(false);
   });
 });
 
-describe("遊び方の章: スキルあり", () => {
-  const skillPreset = presetById("skill").rules;
+describe("遊び方: スキルの仕組みと副将", () => {
+  const skillSteps = ALL.filter((l) => l.rules.skills && !l.match);
 
-  it("カードを選ぶ・溜める・使う・副将・副将を裏返す・偵察の後に、スキルありの実戦", () => {
-    expect(SKILL_LESSONS.map((l) => l.id)).toEqual(["skillPick", "skillGauge", "skillUse", "vice", "viceHit", "scout", "skillMatch"]);
-    expect(CHAPTERS.std).toBe(LESSONS);
-    expect(CHAPTERS.skill).toBe(SKILL_LESSONS);
-    for (const id of ["skillPick", "vice", "viceHit", "scout", "skillMatch"] as const) expect(sameRules(lesson(id).rules, skillPreset), id).toBe(true);
-    // ゲージと使うだけのステップは王（と副将）を外して、王・副の鍵を出さない
+  it("ゲージと使うだけのステップは王（と副将）を外して、王・副の鍵を出さない。偵察は標準", () => {
     for (const id of ["skillGauge", "skillUse"] as const) expect(lesson(id).rules).toMatchObject({ skills: true, king: { on: false } });
-    const g = lesson("skillMatch").start();
-    expect(g.ply).toBe(0);
-    expect(g.skills?.ready).toBe(false);
+    expect(sameRules(SCOUT_LESSON.rules, presetById("skill").rules)).toBe(true);
+    expect(LESSONS).not.toContain(SCOUT_LESSON);
   });
 
   it("隠し王のあるステップは、正解の後も終局しない（終局すると相手の王・副将が画面に出る）", () => {
-    for (const l of SKILL_LESSONS.filter((x) => !x.match && !x.pick && x.rules.king.on)) expect(solve(l).next.result, l.id).toBeNull();
+    for (const l of skillSteps.filter((x) => !x.pick && x.rules.king.on)) expect(solve(l).next.result, l.id).toBeNull();
     // 始めの局面で自分の駒に「!」が出ない（偵察はお互い 7 手打った局面なので除く）
-    for (const l of SKILL_LESSONS.filter((x) => !x.match && x.id !== "scout")) expect(threatenedPieces(l.start(), 0), l.id).toEqual([]);
+    for (const l of skillSteps.filter((x) => x.id !== "scout")) expect(threatenedPieces(l.start(), 0), l.id).toEqual([]);
   });
 
   it("カードを選ぶ: 自分は 3 枚を配られた選ぶ前で、相手は選び終えてある。配り直すとほかの 8 枚から 3 枚", () => {
@@ -495,34 +497,56 @@ describe("進み具合の保存", () => {
   it("保存して読み戻せる。reached は step より小さくならない", () => {
     const s = memStore();
     saveProgress(s, progressAt(null, 3));
+    expect(JSON.parse(s.data[TUTORIAL_KEY])).toEqual({ v: 2, step: 3, reached: 3, done: false });
     expect(loadProgress(s)).toEqual({ step: 3, reached: 3, done: false });
     saveProgress(s, progressAt(loadProgress(s), 1));
     expect(loadProgress(s)).toEqual({ step: 1, reached: 3, done: false });
-    s.data[TUTORIAL_KEY] = JSON.stringify({ step: 4, reached: 2, done: "yes" });
-    expect(loadProgress(s)).toEqual({ step: 4, reached: 4, done: false });
+    s.data[TUTORIAL_KEY] = JSON.stringify({ v: 2, step: 12, reached: 2, done: "yes" });
+    expect(loadProgress(s)).toEqual({ step: 12, reached: 12, done: false });
+    // 今の形の範囲外は はじめて
+    expect(loadProgress(memStore({ [TUTORIAL_KEY]: JSON.stringify({ v: 2, step: LESSONS.length }) }))).toBeNull();
   });
 
-  it("章ごとに保存し、もう一方の章の保存を消さない。skill キーのない古い保存はスキルありを はじめて として読む", () => {
-    const s = memStore({ [TUTORIAL_KEY]: JSON.stringify({ step: 4, reached: 6, done: false }) });
-    expect(loadProgress(s, "std")).toEqual({ step: 4, reached: 6, done: false });
-    expect(loadProgress(s, "skill")).toBeNull();
-    saveProgress(s, progressAt(loadProgress(s, "skill"), 2), "skill");
-    expect(loadProgress(s, "std")).toEqual({ step: 4, reached: 6, done: false });
-    expect(loadProgress(s, "skill")).toEqual({ step: 2, reached: 2, done: false });
-    saveProgress(s, progressAt(loadProgress(s, "std"), 5), "std");
-    expect(loadProgress(s, "skill")).toEqual({ step: 2, reached: 2, done: false });
-    expect(loadProgress(s, "std")).toEqual({ step: 5, reached: 6, done: false });
-    // スキルありだけ開いた保存（標準の章は はじめて）・壊れた skill キー・範囲外
-    const only = memStore();
-    saveProgress(only, progressAt(null, 1), "skill");
-    expect(loadProgress(only, "std")).toBeNull();
-    expect(loadProgress(only, "skill")).toEqual({ step: 1, reached: 1, done: false });
-    expect(loadProgress(memStore({ [TUTORIAL_KEY]: JSON.stringify({ step: 0, skill: "x" }) }), "skill")).toBeNull();
-    expect(loadProgress(memStore({ [TUTORIAL_KEY]: JSON.stringify({ step: 0, skill: { step: SKILL_LESSONS.length } }) }), "skill")).toBeNull();
-    // 標準の章の範囲外の step（スキルありの手数でも）は読まない
-    expect(loadProgress(memStore({ [TUTORIAL_KEY]: JSON.stringify({ step: LESSONS.length }) }), "std")).toBeNull();
-    expect(progressLabel(null, "skill")).toBe("");
-    expect(progressLabel({ step: 1, reached: 1, done: false }, "skill")).toBe(`つづき 2/${SKILL_LESSONS.length}`);
+  it("2 つの章の頃の保存は、ステップの id で今の位置に読み替える", () => {
+    const at = (id: LessonId) => LESSONS.findIndex((l) => l.id === id);
+    const legacy = (o: unknown) => loadProgress(memStore({ [TUTORIAL_KEY]: JSON.stringify(o) }));
+    // 基本のルールの途中（予測を読むまでは同じ位置）
+    expect(legacy({ step: 3, reached: 5, done: false })).toEqual({ step: 3, reached: 5, done: false });
+    expect(legacy({ step: 9, reached: 9, done: false })).toEqual({ step: at("read"), reached: at("read"), done: false });
+    // 基本のルールの実戦はカードを選ぶステップへ。終えていれば、その続きから（終えたことにはしない）
+    expect(legacy({ step: 10, reached: 10, done: false })).toEqual({ step: at("skillPick"), reached: at("skillPick"), done: false });
+    expect(legacy({ step: 10, reached: 10, done: true })).toEqual({ step: at("skillPick"), reached: at("skillPick"), done: false });
+    // スキルありの章の位置（基本のルールを終えていれば、そちらを続ける）
+    expect(legacy({ step: 10, reached: 10, done: true, skill: { step: 3, reached: 4, done: false } })).toEqual({
+      step: at("vice"),
+      reached: at("viceHit"),
+      done: false,
+    });
+    // 基本のルールの途中なら基本のルールを続ける。開いたことのある最も先は両方の章の先のほう
+    expect(legacy({ step: 2, reached: 2, done: false, skill: { step: 1, reached: 1, done: false } })).toEqual({
+      step: 2,
+      reached: at("skillGauge"),
+      done: false,
+    });
+    // スキルありの章だけ開いた保存
+    expect(legacy({ skill: { step: 2, reached: 2, done: false } })).toEqual({ step: at("skillUse"), reached: at("skillUse"), done: false });
+    // 偵察・スキルありの実戦は今の実戦へ
+    expect(legacy({ skill: { step: 5, reached: 6, done: false } })).toEqual({ step: at("match"), reached: at("match"), done: false });
+    // 両方の章を終えていれば終えたもの
+    expect(legacy({ step: 10, reached: 10, done: true, skill: { step: 6, reached: 6, done: true } })).toEqual({
+      step: LESSONS.length - 1,
+      reached: LESSONS.length - 1,
+      done: true,
+    });
+    // 壊れた skill キー・範囲外は、その章を開いていないものとして読む
+    expect(legacy({ step: 4, reached: 4, done: false, skill: "x" })).toEqual({ step: 4, reached: 4, done: false });
+    expect(legacy({ step: 0, skill: { step: 7 } })).toEqual({ step: 0, reached: 0, done: false });
+    expect(legacy({ skill: { step: 7 } })).toBeNull();
+    expect(legacy({ step: 11 })).toBeNull();
+    // 保存し直すと今の形になる（skill キーは残さない）
+    const s = memStore({ [TUTORIAL_KEY]: JSON.stringify({ step: 4, reached: 6, done: false, skill: { step: 1, reached: 1, done: false } }) });
+    saveProgress(s, progressAt(loadProgress(s), 4));
+    expect(JSON.parse(s.data[TUTORIAL_KEY])).toEqual({ v: 2, step: 4, reached: at("skillGauge"), done: false });
   });
 
   it("メニューの表示と再開の位置", () => {

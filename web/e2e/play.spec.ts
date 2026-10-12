@@ -10,9 +10,11 @@ import { ruleLines, sentenceText } from "../src/ui/ruletext";
 import { noHorizontalScroll, openRuleFields, openSettings, openTab, readSetup, rng, saveSettings, seedPage, startGame, waitHumanTurnOrEnd } from "./helpers";
 
 const SHOT = "screenshots";
-/** プリセット「標準」の URL のクエリ（ユーザーが既定に指定した URL から、回復を低い方−1・王の期限を 7 手に変え、先手の体力を測り直した） */
+/** プリセット「スキルなし」（id std。2026-10-12 までの「標準」）の URL のクエリ（ユーザーが既定に指定した URL から、回復を低い方−1・王の期限を 7 手に変え、先手の体力を測り直した） */
 const STD_QUERY =
   "take=flip&gate=0&dmg=sum&heal=low&hp1=129&hp2=130&fu=10&gin=0&kin=2&hi=3&limit=0&king=1&kpen=hp&kdmg=30&kdue=7&dir=piece&yoko=10&kaku=4&vkin=5&vhi=3&anc=atk";
+/** プリセット「標準」（id skill。既定）の URL のクエリ（スキルなしに体力 136・134 とスキル） */
+const SKILL_QUERY = `${STD_QUERY.replace("hp1=129&hp2=130", "hp1=136&hp2=134")}&skill=1`;
 
 /** 盤の 64 マスがすべて同じ大きさ（中身の印やバッジで行の高さが変わらない） */
 async function cellsUniform(page: Page) {
@@ -126,8 +128,8 @@ test.describe("PC 幅", () => {
     page.on("pageerror", (e) => errors.push(String(e)));
     await page.goto("/");
     await openSettings(page);
-    // 既定は標準
-    await expect(page.locator(".preset[aria-pressed=true]")).toHaveAttribute("data-preset", "std");
+    // 既定は標準（id skill）
+    await expect(page.locator(".preset[aria-pressed=true]")).toHaveAttribute("data-preset", "skill");
     expect(await readSetup(page)).toEqual(defaultRules());
     await expect(page.locator("#setup-rules4 li")).toHaveText(ruleLines(defaultRules()).map(sentenceText));
     await page.screenshot({ path: `${SHOT}/pc-setup.png` });
@@ -212,33 +214,40 @@ test.describe("PC 幅", () => {
     expect(errors).toEqual([]);
   });
 
-  test("既定（標準）: クエリなしで開いた画面と、指定の URL で開いた画面が同じ設定・ルール表示", async ({ page }) => {
+  test("既定（標準。id skill）: クエリなしで開いた画面と、指定の URL で開いた画面が同じ設定・ルール表示。前の標準の URL はスキルなし", async ({ page }) => {
     const errors: string[] = [];
     page.on("pageerror", (e) => errors.push(String(e)));
     const std = defaultRules();
-    expect(std).toEqual(presetById("std").rules);
-    // 指定の URL: 読めない値はなく、プリセット「標準」と一致する
+    expect(std).toEqual(presetById("skill").rules);
+    // 既定をスキルありに変える前の標準の URL は、スキルなし（id std）として開く
     await page.goto(`/?${STD_QUERY}`);
     await expect(page.locator("#menu-note")).toHaveText("URL の設定で遊びます");
-    expect(await readSetup(page)).toEqual(std);
+    await expect(page.locator("#menu-rule-name")).toHaveText("スキルなし");
+    expect(await readSetup(page)).toEqual(presetById("std").rules);
     await expect(page.locator(".preset[aria-pressed=true]")).toHaveAttribute("data-preset", "std");
+    await expect(page.locator("#custom-tag")).toHaveText("スキルなし");
+    // 指定の URL: 読めない値はなく、プリセット「標準」と一致する
+    await page.goto(`/?${SKILL_QUERY}`);
+    await expect(page.locator("#menu-note")).toHaveText("URL の設定で遊びます");
+    expect(await readSetup(page)).toEqual(std);
+    await expect(page.locator(".preset[aria-pressed=true]")).toHaveAttribute("data-preset", "skill");
 
     // クエリなし: 同じ設定で始まる
     await page.goto("/");
     await expect(page.locator("#menu-note")).toBeHidden();
     expect(await readSetup(page)).toEqual(std);
     await expect(page.locator("#custom-tag")).toHaveText("標準");
-    await startGame(page);
+    await startGame(page, { cards: true });
     await ruleCardIs(page, std);
     await expect(page.locator("#rules4-name")).toHaveText("ルール 標準");
-    await expect(page.locator("#player-0 .hp-num")).toHaveText("129");
-    await expect(page.locator("#player-0 .hp-max")).toHaveText("/ 129");
-    await expect(page.locator("#player-1 .hp-num")).toHaveText("130");
-    await expect(page.locator("#player-1 .hp-max")).toHaveText("/ 130");
+    await expect(page.locator("#player-0 .hp-num")).toHaveText("136");
+    await expect(page.locator("#player-0 .hp-max")).toHaveText("/ 136");
+    await expect(page.locator("#player-1 .hp-num")).toHaveText("134");
+    await expect(page.locator("#player-1 .hp-max")).toHaveText("/ 134");
     await expect(page.locator("#ply")).toHaveText("0 手");
     await handsMatch(page, createGame(std));
     // 始めた設定がアドレスバーに載り、指定の URL と同じ
-    expect(new URL(page.url()).search.slice(1)).toBe(STD_QUERY);
+    expect(new URL(page.url()).search.slice(1)).toBe(SKILL_QUERY);
     await page.screenshot({ path: `${SHOT}/pc-default.png` });
 
     // ルール詳細も新しい既定の文
@@ -419,17 +428,17 @@ test.describe("スマホ幅 375px", () => {
     await noHorizontalScroll(page, 375);
     await page.screenshot({ path: `${SHOT}/sp-setup-bottom.png` });
     await expect(page.locator("#setup-save")).toBeInViewport();
-    // クエリなしの既定（標準）で始めた対局画面
-    await startGame(page);
+    // クエリなしの既定（標準。スキルあり）で始めた対局画面
+    await startGame(page, { cards: true });
     await ruleCardIs(page, defaultRules());
-    await expect(page.locator("#player-1 .hp-max")).toHaveText("/ 130");
+    await expect(page.locator("#player-1 .hp-max")).toHaveText("/ 134");
     await expect(page.locator("#board")).toBeInViewport({ ratio: 1 });
     await noHorizontalScroll(page, 375);
     await page.screenshot({ path: `${SHOT}/sp-default.png` });
 
     for (const p of PRESETS) {
       await page.goto(`/?${encodeRules(p.rules)}`);
-      await startGame(page);
+      await startGame(page, { cards: true });
       await ruleCardIs(page, p.rules);
       await expect(page.locator("#board")).toBeInViewport({ ratio: 1 });
       await noHorizontalScroll(page, 375);

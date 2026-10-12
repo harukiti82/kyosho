@@ -41,7 +41,6 @@ test("遊び方: 各ステップで要点が大きく、補足・ヒント・で
   test.setTimeout(180_000);
   await page.goto("/");
   await page.locator("#menu-learn").click();
-  await page.locator("#menu-learn-std").click();
   await expect(page.locator("#coach")).toBeVisible();
   for (const [i, l] of LESSONS.entries()) {
     await expect(page.locator("#coach-title")).toHaveText(l.title);
@@ -64,9 +63,29 @@ test("遊び方: 各ステップで要点が大きく、補足・ヒント・で
       expect((await style(page.locator("#coach-msg"))).size).toBeLessThan(point.size);
       await shot(page, `tutorial-${i + 1}-${l.id}-hint`);
     }
-    const a = l.answers[0];
-    if (a.king) await page.locator("#king-toggle").click();
-    await play(page, a.at[0], a.at[1], a.kind, narrow(page));
+    if (l.pick) {
+      // カードを選ぶステップ: 選ぶ画面の要点も補足・課題より大きい。配り直してから先頭のカードを選ぶ
+      const pc = page.locator("#skill-pick .pick-coach");
+      await expectPointOver(pc.locator(".coach-point"), pc.locator(".coach-task"));
+      if (l.note) await expectPointOver(pc.locator(".coach-point"), pc.locator(".coach-note"));
+      const tap = (sel: string) => (narrow(page) ? page.locator(sel).first().tap() : page.locator(sel).first().click());
+      await tap("#skill-pick-reroll");
+      await expect(page.locator("#skill-pick-reroll")).toBeDisabled();
+      await tap("#skill-pick .tarot[data-skill]");
+      await tap("#skill-pick-ok");
+      await expect(page.locator("#skill-pick")).toBeHidden();
+    } else {
+      const a = l.answers[0];
+      const tap = (sel: string) => (narrow(page) ? page.locator(sel).tap() : page.locator(sel).click());
+      if (a.skill) {
+        await tap("#skill-use");
+        // 使う演出の間は盤を押せない。光るマスが戻るまで待つ
+        await expect(page.locator(".cell.guide")).toHaveCount(l.guide.length);
+      }
+      if (a.king) await tap("#king-toggle");
+      if (a.vice) await tap("#vice-toggle");
+      await play(page, a.at[0], a.at[1], a.kind, narrow(page));
+    }
     await expect(page.locator("#coach-msg.ok")).toBeVisible();
     // できたの文の数字・駒の名前は太字（文字の大きさは変えない）
     const keys = page.locator("#coach-msg .coach-key");
@@ -86,7 +105,8 @@ test("ルールカード・ルール詳細・設定のルール一覧で、各�
   await noHorizontalScroll(page, page.viewportSize()!.width);
   await shot(page, "setup");
   await page.locator("#setup-cancel").click();
-  await startGame(page, { side: 0 });
+  // 既定の標準（スキルあり）のルールカード: スキルと副将の行も含む
+  await startGame(page, { side: 0, cards: true });
   await openTab(page, "rules4");
   await expectRuleLines(page.locator("#rules4-list"));
   await expect(page.locator("#rules4-list .rule-point").nth(1)).toHaveText("駒ごとに挟める向きが違う");

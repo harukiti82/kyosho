@@ -22,7 +22,7 @@ test("制限時間: 両者の名札に時計が出て、時間切れはサーバ
   const host = await newPlayer(browser, info, "host");
   const guest = await newPlayer(browser, info, "guest");
   await shortenTurn(host);
-  const url = await createRoomFromSetup(host, null, "first");
+  const url = await createRoomFromSetup(host, "std", "first");
   // 作成者の案内は自分の設定（要求を差し替える前の 45 秒）。参加者の確認はサーバーの部屋の値
   await expect(host.page.locator("#room-time")).toHaveText("1 手 45 秒");
   await guest.page.goto(new URL(url).pathname + new URL(url).search);
@@ -74,7 +74,7 @@ test("制限時間なしの部屋（設定で「なし」）は時計を出さ�
   await host.page.locator("#menu-settings").click();
   await host.page.locator(`label:has(> input[name=timeMulti][value="0"])`).click();
   await host.page.locator("#setup-save").click();
-  const url = await createRoomFromSetup(host, null, "first");
+  const url = await createRoomFromSetup(host, "std", "first");
   await expect(host.page.locator("#room-time")).toHaveText("時間制限なし");
   await joinFromInvite(guest, url);
   await waitPlaying(host, guest);

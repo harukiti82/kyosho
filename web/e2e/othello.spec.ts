@@ -101,16 +101,16 @@ async function playCpuGame(page: Page, touch: boolean, shotAt?: (n: number, empt
 }
 
 test.describe("普通のオセロなら置けるマス", () => {
-  test("標準・CPU 対戦: 駒ごとの丸とオセロの枠が別々に出る・重なるマスは両方・CPU の手番は出ない・終局まで一致", async ({ page }, info) => {
+  test("スキルなし・CPU 対戦: 駒ごとの丸とオセロの枠が別々に出る・重なるマスは両方・CPU の手番は出ない・終局まで一致", async ({ page }, info) => {
     const errors: string[] = [];
     page.on("pageerror", (e) => errors.push(String(e)));
     const pre = info.project.name === "desktop" ? "pc" : "sp";
     const touch = !!info.project.use.hasTouch;
     const width = info.project.use.viewport!.width;
-    // 既定（標準）のまま始める。CPU の手は種付き乱数で毎回同じにする
+    // スキルなし（2026-10-12 までの標準）で始める。CPU の手は種付き乱数で毎回同じにする
     await seedPage(page, 1);
     await page.goto("/");
-    await startGame(page);
+    await startGame(page, { preset: "std" });
     await expect(page.locator("#rules4-name")).toHaveText(`ルール ${presetById("std").name}`);
     await watchIdleMarks(page);
 
@@ -182,7 +182,7 @@ test.describe("普通のオセロなら置けるマス", () => {
     const pre = info.project.name === "desktop" ? "pc" : "sp";
     const touch = !!info.project.use.hasTouch;
     await page.goto("/");
-    await startGame(page, { mode: "pvp" });
+    await startGame(page, { mode: "pvp", preset: "std" });
     await watchIdleMarks(page);
     for (let ply = 0; ply < 4; ply++) {
       const p: Player = ply % 2 === 0 ? 0 : 1;

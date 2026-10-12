@@ -1,4 +1,4 @@
-// メニュー: 起動時にメニューが出て、設定画面を経ずに標準ルールで始まること（CPU 対戦の手番は抽選）・CPU の強さ・マルチ・設定メニューの保存と反映・
+// メニュー: 起動時にメニューが出て、設定画面を経ずに標準ルール（スキルあり。id skill）で始まること（CPU 対戦の手番は抽選）・CPU の強さ・マルチ・設定メニューの保存と反映・
 // 保存が読めないときは標準・対局中にメニューへ出て戻れること。スクリーンショットは web/screenshots/ に保存する。
 
 import { expect, test, type Page } from "@playwright/test";
@@ -16,7 +16,7 @@ async function ruleCardIs(page: Page, r: RuleSet) {
   await expect(page.locator("#rules4 li")).toHaveText(ruleLines(r).map(sentenceText));
 }
 
-test("開くとメニュー。CPU対戦 → 強さを選ぶと、設定画面を経ずに標準ルールで始まる", async ({ page }) => {
+test("開くとメニュー。CPU対戦 → 強さを選ぶと、設定画面を経ずに標準ルール（スキルあり・体力 136・134）で始まる", async ({ page }) => {
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(String(e)));
   // 手番の抽選（既定はランダム）を先手にする
@@ -47,9 +47,16 @@ test("開くとメニュー。CPU対戦 → 強さを選ぶと、設定画面を
   await expect(page.locator("#setup")).toBeHidden();
   await expect(page.locator("#game")).toBeVisible();
   await ruleCardIs(page, defaultRules());
+  expect(defaultRules()).toEqual(presetById("skill").rules);
   await expect(page.locator("#rules4-name")).toHaveText("ルール 標準");
   await skipToss(page, 0);
-  expect(await draws(page)).toBe(1);
+  // 標準はスキルあり: 手番の抽選の後にカードを選ぶ
+  await expect(page.locator("#skill-pick .tarot")).toHaveCount(3);
+  await page.locator("#skill-pick .tarot[data-skill]").first().click();
+  await page.locator("#skill-pick-ok").click();
+  await expect(page.locator("#skill-pick")).toBeHidden();
+  await expect(page.locator("#player-0 .hp-num")).toHaveText("136");
+  await expect(page.locator("#player-1 .hp-num")).toHaveText("134");
   await expect(page.locator("#player-1")).toContainText("CPU");
   await expect(page.locator(".board.acting")).toBeVisible();
   await page.screenshot({ path: `${SHOT}/${prefix(page)}-menu-hard-game.png` });
@@ -62,7 +69,9 @@ test("設定を保存していなければ CPU 対戦の手番は対局ごとに
   await page.goto("/");
   await openSettings(page);
   await expect(page.locator("input[name=side][value=random]")).toBeChecked();
-  await page.locator("#setup-cancel").click();
+  // 手番だけを確かめる（カードを配る抽選が crypto を使わないよう、スキルなしにする）
+  await page.locator(".preset[data-preset=std]").click();
+  await saveSettings(page);
   await page.locator("#menu-cpu").click();
   await page.locator("#menu-levels [data-level=normal]").click();
   await skipToss(page, 1);
@@ -80,19 +89,19 @@ test("設定を保存していなければ CPU 対戦の手番は対局ごとに
 });
 
 test("強さごとに CPU の手が違う（種付き乱数で、エンジンの chooseMove と同じ手を打つ）", async ({ browser }) => {
-  // 種 8 では、標準の初手がイージー 金・ノーマル 金・ハード 横 と分かれる（人間が後手で CPU が先に打つ）。
+  // 種 8 では、スキルなしの初手がイージー 金・ノーマル 金・ハード 横 と分かれる（人間が後手で CPU が先に打つ）。
   // 回復が低い方−1 だと初手はどの手もダメージ 2・回復 0 の同点で、イージーとノーマルは同じ手になる
   const seed = 8;
   const expected = (["easy", "normal", "hard"] as CpuLevel[]).map((level) => ({
     level,
-    move: chooseMove(viewFor(createGame(defaultRules()), 0), level, rng(seed))!,
+    move: chooseMove(viewFor(createGame(presetById("std").rules), 0), level, rng(seed))!,
   }));
   expect(new Set(expected.map((e) => e.move.kind)).size).toBeGreaterThanOrEqual(2);
   for (const { level, move } of expected) {
     const page = await browser.newPage();
     await seedPage(page, seed);
     await page.goto("/");
-    await startGame(page, { side: 1, level });
+    await startGame(page, { side: 1, level, preset: "std" });
     const cell = cellAt(page, move.r, move.c);
     await expect(cell).toHaveClass(/\blast\b/, { timeout: 10_000 });
     await expect(cell.locator(".stone")).toHaveClass(new RegExp(`\\bk-${move.kind}\\b`));
@@ -125,7 +134,11 @@ test("設定で変えたルールは次の対局と再読み込み後に使わ�
   await expect(page.locator("#setup")).toBeHidden();
   await expect(page.locator("#menu-rule-name")).toHaveText("標準");
   await openSettings(page);
-  await expect(page.locator(".preset[aria-pressed=true]")).toHaveAttribute("data-preset", "std");
+  await expect(page.locator(".preset[aria-pressed=true]")).toHaveAttribute("data-preset", "skill");
+  // 既定の標準を大きな札で先頭に、その次にスキルなし
+  await expect(page.locator(".preset-main")).toHaveAttribute("data-preset", "skill");
+  await expect(page.locator(".preset .preset-name").nth(0)).toHaveText("標準");
+  await expect(page.locator(".preset .preset-name").nth(1)).toHaveText("スキルなし");
 
   // 保存: メニューのルール名が変わり、次の対局がそのルール
   await page.locator(".preset[data-preset=king]").click();
@@ -182,16 +195,16 @@ test("保存した設定が壊れている・ストレージが使えないと�
   }
 });
 
-test("体力を変える前のスキルあり（129・130）の保存は今のスキルあり（136・134）で始まり、1 項目でも違う保存はそのまま", async ({ page }) => {
+test("体力を変える前のスキルあり（129・130）の保存は今の標準（136・134）で始まり、1 項目でも違う保存・前の標準はそのまま（スキルなし）", async ({ page }) => {
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(String(e)));
   const skill = presetById("skill").rules;
   const cases: { rules: string; name: string; preset: string | null; hp: [number, number] }[] = [
-    { rules: encodeRules({ ...skill, hp: [129, 130] }), name: "スキルあり", preset: "skill", hp: [136, 134] },
+    { rules: encodeRules({ ...skill, hp: [129, 130] }), name: "標準", preset: "skill", hp: [136, 134] },
     // ユーザーが体力を調整した保存は読み替えない
     { rules: encodeRules({ ...skill, hp: [129, 131] }), name: "カスタム", preset: null, hp: [129, 131] },
-    // 体力 129・130 でスキルなし（＝標準）の保存も読み替えない
-    { rules: encodeRules({ ...skill, hp: [129, 130], skills: false }), name: "標準", preset: "std", hp: [129, 130] },
+    // 既定をスキルありに変える前の標準（体力 129・130 でスキルなし）の保存は、スキルなしとして読む
+    { rules: encodeRules({ ...skill, hp: [129, 130], skills: false }), name: "スキルなし", preset: "std", hp: [129, 130] },
   ];
   for (const c of cases) {
     await page.goto("/");
@@ -204,7 +217,7 @@ test("体力を変える前のスキルあり（129・130）の保存は今の�
     await expect(page.locator("input[name=hp0]")).toHaveValue(String(c.hp[0]));
     await expect(page.locator("input[name=hp1]")).toHaveValue(String(c.hp[1]));
     await saveSettings(page);
-    await startGame(page, { mode: "pvp" });
+    await startGame(page, { mode: "pvp", cards: true });
     await expect(page.locator("#player-0 .hp-num")).toHaveText(String(c.hp[0]));
     await expect(page.locator("#player-1 .hp-num")).toHaveText(String(c.hp[1]));
   }

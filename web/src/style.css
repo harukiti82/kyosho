@@ -623,8 +623,7 @@ button {
 /* 上から順に少しずつ遅らせて出す */
 #menu-multi,
 .menu-level:nth-of-type(2),
-#menu-online,
-#menu-learn-skill {
+#menu-online {
   animation-delay: 0.08s;
 }
 #menu-learn,

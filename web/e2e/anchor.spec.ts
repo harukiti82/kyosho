@@ -259,7 +259,7 @@ test.describe("スマホ幅 375px", () => {
 });
 
 /**
- * 反対側の駒が 3 つ以上になる手を、盤の左右の端の 2 列（吹き出しを内側に伸ばす列）で探す（標準・お互いランダムに打つ）。
+ * 反対側の駒が 3 つ以上になる手を、盤の左右の端の 2 列（吹き出しを内側に伸ばす列）で探す（スキルなし・お互いランダムに打つ）。
  * 見つかった局面までの手と、その手
  */
 function findLongSum() {
@@ -294,7 +294,7 @@ test("吹き出しの内訳: 反対側の駒が 3 つ・盤の端の列でも、
   const touch = width < 600;
   const { moves, target, pv } = findLongSum();
   await page.goto("/");
-  await startGame(page, { mode: "pvp" });
+  await startGame(page, { mode: "pvp", preset: "std" });
   for (const [i, m] of moves.entries()) {
     await expect(page.locator(".board.acting")).toBeVisible();
     await play(page, m.r, m.c, m.kind, touch);

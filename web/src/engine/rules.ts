@@ -204,7 +204,8 @@ export const PRESETS: readonly Preset[] = [
   },
   {
     id: "std",
-    name: "標準",
+    // 2026-10-12 までの「標準」（既定）。スキルありを標準にしたとき、id はそのままで表示名を「スキルなし」に変えた
+    name: "スキルなし",
     note: "方向駒＋反対側の駒の力＋隠し王（最初の7手・返されたら−30）・回復は両端の低い方−1",
     rules: {
       // ユーザーが遊び比べて既定に選んだ組み合わせ（URL: take=flip&gate=0&dmg=sum&heal=avg&hp1=125&hp2=130&fu=10&gin=0&kin=2&hi=3
@@ -222,9 +223,10 @@ export const PRESETS: readonly Preset[] = [
   },
   {
     id: "skill",
-    name: "スキルあり",
-    note: "標準＋スキル（配られた3枚から1枚を選び、ゲージが満タンになるたびに使う）",
-    // 標準にスキルを足す（各スキルの値はスキルなし相手の勝率 52〜56%。kyosho-skillsim の 2 手読み同士・各 2000 局）。
+    // 2026-10-12 から「標準」（既定）。それまでの表示名は「スキルあり」。共有済みの URL・保存の意味を変えないよう id は skill のまま
+    name: "標準",
+    note: "スキルなし＋スキル（配られた3枚から1枚を選び、ゲージが満タンになるたびに使う）＋副将（返されたら−15）",
+    // スキルなしにスキルを足す（各スキルの値はスキルなし相手の勝率 52〜56%。kyosho-skillsim の 2 手読み同士・各 2000 局）。
     // 体力はスキルで決着が早まる分を戻した（11 枚混在の 2 手読み同士 2000 局で平均手数 37.6・先手勝率 50.6%。
     // 129・130 は 36.1 手・47.4%。RULES.md「スキルありの体力」）
     rules: {
@@ -242,10 +244,10 @@ export const PRESETS: readonly Preset[] = [
 export const presetById = (id: PresetId): Preset => PRESETS.find((p) => p.id === id)!;
 
 /**
- * 既定のルール（クエリなしで開いたときの設定）。URL クエリの差分の基準は ui/query.ts の QUERY_BASE（v1.0 で固定）で、
- * これを変えても共有済みの URL の意味は変わらない
+ * 既定のルール（クエリなしで開いたときの設定）。表示名「標準」のプリセット（id skill。スキルあり）。
+ * URL クエリの差分の基準は ui/query.ts の QUERY_BASE（v1.0 で固定）で、これを変えても共有済みの URL の意味は変わらない
  */
-export const DEFAULT_PRESET: PresetId = "std";
+export const DEFAULT_PRESET: PresetId = "skill";
 
 export const cloneRules = (r: RuleSet): RuleSet => ({
   ...r,
