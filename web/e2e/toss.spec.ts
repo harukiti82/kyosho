@@ -32,7 +32,8 @@ async function startDrawn(page: Page, value: number) {
   await page.clock.install();
   await page.goto("/");
   await pauseClock(page);
-  await startGame(page, { side: "random" });
+  // スキルなし（カードを配る抽選が crypto を使わないように）
+  await startGame(page, { side: "random", preset: "std" });
 }
 
 test("先手: 石が回って黒が上を向き「先手」。演出の間は盤と時計が止まり、終われば打てて時計が進む", async ({ page }) => {
@@ -166,7 +167,7 @@ test("動きを減らす設定: 石は回さず、上を向いた色と結果だ
 test("出さない: 手番を先手・後手に選んだとき、2 人対戦、遊び方", async ({ page }) => {
   await stubDraws(page, [0.9]);
   await page.goto("/");
-  await startGame(page, { side: 1 });
+  await startGame(page, { side: 1, preset: "std" });
   await expect(moves(page)).toHaveCount(1, { timeout: 10_000 });
   await expect(toss(page)).toHaveCount(0);
   await page.locator("#btn-menu").click();
@@ -179,7 +180,6 @@ test("出さない: 手番を先手・後手に選んだとき、2 人対戦、�
   await expect(toss(page)).toHaveCount(0);
   await page.locator("#btn-menu").click();
   await page.locator("#menu-learn").click();
-  await page.locator("#menu-learn-std").click();
   await expect(page.locator("#coach")).toBeVisible();
   await expect(toss(page)).toHaveCount(0);
   // 抽選は CPU 対戦の「ランダム」以外では引かない

@@ -1,23 +1,22 @@
-// メニュー画面: CPU対戦（強さを選ぶとそのまま始まる）・マルチ（この端末で 2 人・オンライン）・遊び方（章を選ぶとチュートリアル）・設定。
+// メニュー画面: CPU対戦（強さを選ぶとそのまま始まる）・マルチ（この端末で 2 人・オンライン）・遊び方（チュートリアル）・設定。
 // どの対局も設定メニューで保存したルール（変えなければ標準）で始まる。表示と入力だけで、対局は App が始める。
 
 import { CPU_LEVELS, type CpuLevel } from "../engine/cpu";
 import { byId, h } from "./dom";
-import type { ChapterId } from "./lessons";
 
 export interface MenuActions {
   cpu: (level: CpuLevel) => void;
   pvp: () => void;
   online: () => void;
-  /** 遊び方（チュートリアル）の章を前回の位置から始める */
-  learn: (chapter: ChapterId) => void;
+  /** 遊び方（チュートリアル）を前回の位置から始める */
+  learn: () => void;
   settings: () => void;
   rules: () => void;
   /** 対局中に開いたメニューから、その対局へ戻る */
   resume: () => void;
 }
 
-type Panel = "main" | "levels" | "modes" | "learn";
+type Panel = "main" | "levels" | "modes";
 
 export class Menu {
   private readonly el = {
@@ -28,17 +27,13 @@ export class Menu {
     learn: byId("menu-learn"),
     learnState: byId("menu-learn-state"),
     ruleName: byId("menu-rule-name"),
-    panels: { main: byId("menu-main"), levels: byId("menu-levels"), modes: byId("menu-modes"), learn: byId("menu-learns") } as Record<Panel, HTMLElement>,
+    panels: { main: byId("menu-main"), levels: byId("menu-levels"), modes: byId("menu-modes") } as Record<Panel, HTMLElement>,
   };
 
   constructor(act: MenuActions) {
     byId("menu-cpu").addEventListener("click", () => this.panel("levels"));
     byId("menu-multi").addEventListener("click", () => this.panel("modes"));
-    this.el.learn.addEventListener("click", () => this.panel("learn"));
-    for (const b of this.el.root.querySelectorAll<HTMLElement>("[data-chapter]")) {
-      const chapter = b.dataset.chapter as ChapterId;
-      b.addEventListener("click", () => act.learn(chapter));
-    }
+    this.el.learn.addEventListener("click", () => act.learn());
     byId("menu-settings").addEventListener("click", () => act.settings());
     byId("menu-rule").addEventListener("click", () => act.rules());
     this.el.resume.addEventListener("click", () => act.resume());
@@ -105,15 +100,6 @@ export class Menu {
     // 先頭の空白は読み上げで「遊び方」と区切るため（表示は改行するので見えない）
     this.el.learnState.textContent = ` ${text}`;
     this.el.learn.classList.toggle("fresh", fresh);
-  }
-
-  /** 遊び方の章の項目に添える進み具合（例: 「おすすめ」「つづき 2/7」「クリア済み」。空なら添えない）。fresh なら目立たせる */
-  setChapterState(chapter: ChapterId, text: string, fresh: boolean) {
-    const b = this.el.root.querySelector<HTMLElement>(`[data-chapter="${chapter}"]`);
-    const sub = b?.querySelector<HTMLElement>(".menu-sub");
-    if (!b || !sub) return;
-    sub.textContent = text ? ` ${text}` : "";
-    b.classList.toggle("fresh", fresh);
   }
 
   /** オンライン対戦の入口を出す（サーバーに届く公開先だけ） */

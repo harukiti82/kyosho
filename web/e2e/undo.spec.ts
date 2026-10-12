@@ -61,7 +61,7 @@ test("イージー: 1 手打って CPU が応じた後に待った → 手の前
   const SEED = 21;
   await seedPage(page, SEED);
   await page.goto("/");
-  await startGame(page, { level: "easy" });
+  await startGame(page, { level: "easy", preset: "std" });
   const rand = rng(SEED);
   let s = createGame(STD);
 
@@ -126,7 +126,7 @@ test.describe("PC 幅", () => {
     await seedPage(page, 3);
     await page.goto("/");
     for (const level of ["normal", "hard"] as const) {
-      await startGame(page, { level });
+      await startGame(page, { level, preset: "std" });
       await expect(page.locator(".board.acting")).toHaveCount(1);
       await expect(undoBtn(page)).toHaveCount(0);
       await page.locator("#btn-menu").click();
@@ -136,7 +136,6 @@ test.describe("PC 幅", () => {
     await expect(undoBtn(page)).toHaveCount(0);
     await page.locator("#btn-menu").click();
     await page.locator("#menu-learn").click();
-    await page.locator("#menu-learn-std").click();
     await expect(page.locator("#coach")).toBeVisible();
     await expect(undoBtn(page)).toHaveCount(0);
   });
@@ -145,7 +144,7 @@ test.describe("PC 幅", () => {
     const SEED = 8;
     await seedPage(page, SEED);
     await page.goto("/");
-    await startGame(page, { level: "easy", side: 1 });
+    await startGame(page, { level: "easy", side: 1, preset: "std" });
     const rand = rng(SEED);
     // CPU（先手）の初手
     let s = createGame(STD);
@@ -173,7 +172,7 @@ test.describe("PC 幅", () => {
   test("王を決めた手を戻すと、王は未定・期限の数え方も手の前に戻る", async ({ page }) => {
     await seedPage(page, 4);
     await page.goto("/");
-    await startGame(page, { level: "easy" });
+    await startGame(page, { level: "easy", preset: "std" });
     const deadline = STD.king.deadline;
     await expect(page.locator("#king-toggle")).toContainText(`あと${deadline}手`);
     await expect(page.locator("#player-0 .king-tag")).toContainText("未定");
@@ -198,7 +197,7 @@ test.describe("PC 幅", () => {
     await openSettings(page);
     await page.locator('label:has(> input[name=timeCpu][value="20"])').click();
     await saveSettings(page);
-    await startGame(page, { level: "easy" });
+    await startGame(page, { level: "easy", preset: "std" });
     const num = page.locator("#turn-clock .clock-num");
     await expect(num).toHaveText(clockText(20_000));
     const m = humanMove(createGame(STD));

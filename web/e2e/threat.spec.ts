@@ -1,6 +1,7 @@
 // 取られる駒の警告「!」の表示の切り替え: 既定はオフ・設定メニューで保存・対局中の切り替え（保存は変えない）・古い保存・遊び方のステップは常にオン・
 // 遊び方の最後の実戦は保存した設定。
-// 「!」の場所はページの Math.random を種付きにした CPU（ノーマル）の鏡の対局で、エンジンの threatenedPieces と照らし合わせる。
+// 「!」の場所はページの Math.random を種付きにした CPU（ノーマル）の鏡の対局で、エンジンの threatenedPieces と照らし合わせる
+// （鏡の対局はスキルなし。遊び方の実戦は標準＝スキルありで鏡にできないので、画面で打ち進めて「!」が出る局面を探す）。
 
 import { expect, test, type Page } from "@playwright/test";
 import { cellName } from "../src/engine/board";
@@ -38,7 +39,7 @@ test("既定はオフ。対局中に切り替えるとすぐ出て、保存し�
   const SEED = 11;
   await seedPage(page, SEED);
   await page.goto("/");
-  await startGame(page);
+  await startGame(page, { preset: "std" });
   const rand = rng(SEED);
   let s = createGame(STD);
   const before = await saved(page);
@@ -89,7 +90,7 @@ test.describe("PC 幅", () => {
     const SEED = 11;
     await seedPage(page, SEED);
     await page.goto("/");
-    await startGame(page);
+    await startGame(page, { preset: "std" });
     const rand = rng(SEED);
     let s = createGame(STD);
     for (let i = 0; i < 3; i++) s = await advance(page, s, rand, false);
@@ -124,7 +125,7 @@ test.describe("PC 幅", () => {
     await saveSettings(page);
     expect(JSON.parse((await saved(page))!).threat).toBe(true);
     await page.reload();
-    await startGame(page);
+    await startGame(page, { preset: "std" });
     await expect(toggle(page)).toHaveAttribute("aria-pressed", "true");
     await openTab(page, "legend-box");
     await expect(page.locator("#legend .key-threat")).toHaveCount(1);
@@ -139,7 +140,8 @@ test.describe("PC 幅", () => {
   test("項目のない古い保存はオフ", async ({ page }) => {
     await page.addInitScript((k) => localStorage.setItem(k, JSON.stringify({ side: "0", timeCpu: "20" })), SETTINGS_KEY);
     await page.goto("/");
-    await startGame(page, { side: "saved" });
+    // ルールのない保存は既定の標準（スキルあり）。カードを選んでから
+    await startGame(page, { side: "saved", cards: true });
     await expect(toggle(page)).toHaveAttribute("aria-pressed", "false");
   });
 
@@ -148,7 +150,7 @@ test.describe("PC 幅", () => {
     await page.addInitScript(
       ([key, i]) => {
         if (!sessionStorage.getItem("seeded")) {
-          localStorage.setItem(key, JSON.stringify({ step: i, reached: i, done: false }));
+          localStorage.setItem(key, JSON.stringify({ v: 2, step: i, reached: i, done: false }));
           sessionStorage.setItem("seeded", "1");
         }
       },
@@ -156,7 +158,6 @@ test.describe("PC 幅", () => {
     );
     await page.goto("/");
     await page.locator("#menu-learn").click();
-    await page.locator("#menu-learn-std").click();
     await expect(page.locator("#coach-title")).toHaveText("予測を読む");
     // 光る 2 マスのうち d6 は、置いた歩が次に返される（予測で「!」が出る）
     const d6 = cellAt(page, 5, 3);
@@ -172,7 +173,7 @@ async function openTutorialMatch(page: Page, threat: boolean | null) {
   await page.addInitScript(
     ([key, i, settingsKey, on]) => {
       if (!sessionStorage.getItem("seeded")) {
-        localStorage.setItem(key, JSON.stringify({ step: i, reached: i, done: false }));
+        localStorage.setItem(key, JSON.stringify({ v: 2, step: i, reached: i, done: false }));
         if (on !== null) localStorage.setItem(settingsKey, JSON.stringify({ threat: on }));
         sessionStorage.setItem("seeded", "1");
       }
@@ -181,8 +182,28 @@ async function openTutorialMatch(page: Page, threat: boolean | null) {
   );
   await page.goto("/");
   await page.locator("#menu-learn").click();
-  await page.locator("#menu-learn-std").click();
   await expect(page.locator("#coach-title")).toHaveText("実戦");
+  // 実戦は標準（スキルあり）: 配られた先頭のカードを選ぶ
+  const touch = (page.viewportSize()?.width ?? 1280) < 600;
+  const card = page.locator("#skill-pick .tarot[data-skill]").first();
+  await (touch ? card.tap() : card.click());
+  await (touch ? page.locator("#skill-pick-ok").tap() : page.locator("#skill-pick-ok").click());
+  await expect(page.locator("#skill-pick")).toBeHidden();
+}
+
+/** 画面で 1 手打つ（返せるマスの先頭、なければ置けるマスの先頭）。人間の手番に戻るまで待つ */
+async function playAny(page: Page, touch: boolean) {
+  const take = page.locator(".cell.can-take");
+  const cell = (await take.count()) > 0 ? take.first() : page.locator(".cell.open").first();
+  const name = cellName(Number(await cell.getAttribute("data-r")), Number(await cell.getAttribute("data-c")));
+  if (touch) {
+    await cell.tap();
+    await cell.tap();
+  } else {
+    await cell.click();
+  }
+  await expect(page.locator(".board.acting")).toHaveCount(0);
+  expect(await waitHumanTurnOrEnd(page), `${name} の後に終局した`).toBe(false);
 }
 
 test("遊び方の最後の実戦は保存した設定に従う: オフなら「!」を出さず、切り替えの鍵で出せる", async ({ page }, info) => {
@@ -192,21 +213,23 @@ test("遊び方の最後の実戦は保存した設定に従う: オフなら「
   await openTutorialMatch(page, null);
   await expect(toggle(page)).toBeVisible();
   await expect(toggle(page)).toHaveAttribute("aria-pressed", "false");
-  // 実戦は CPU イージー。自分の駒が返されうる局面まで鏡の対局で進める
-  const rand = rng(SEED);
-  let s = createGame(STD);
-  for (let i = 0; threatenedPieces(s, 0).length === 0; i++) {
-    expect(i).toBeLessThan(12);
-    s = await advance(page, s, rand, touch, "easy");
+  // 実戦は CPU イージー。オフの間は「!」を出さず、鍵でオンにすると出る局面まで打ち進める（確かめた後はオフに戻して打つ）
+  const press = (b: ReturnType<typeof toggle>) => (touch ? b.tap() : b.click());
+  for (let i = 0; ; i++) {
+    expect(i).toBeLessThan(15);
+    await expect(toggle(page)).toHaveAttribute("aria-pressed", "false");
+    await expect(page.locator(".cell .threat")).toHaveCount(0);
+    await press(toggle(page));
+    await expect(toggle(page)).toHaveAttribute("aria-pressed", "true");
+    if ((await threatCells(page)).length > 0) break;
+    await press(toggle(page));
+    await playAny(page, touch);
   }
-  await expect(page.locator(".cell .threat")).toHaveCount(0);
-  await page.evaluate(() => window.scrollTo(0, 0));
-  await page.screenshot({ path: `${SHOT}/${touch ? "sp" : "pc"}-threat-tutorial-match-off.png` });
-  await (touch ? toggle(page).tap() : toggle(page).click());
-  await expect(toggle(page)).toHaveAttribute("aria-pressed", "true");
-  expect(await threatCells(page)).toEqual(threatenedPieces(s, 0).map(([r, c]) => cellName(r, c)).sort());
   await page.evaluate(() => window.scrollTo(0, 0));
   await page.screenshot({ path: `${SHOT}/${touch ? "sp" : "pc"}-threat-tutorial-match-toggled.png` });
+  await press(toggle(page));
+  await expect(page.locator(".cell .threat")).toHaveCount(0);
+  await page.screenshot({ path: `${SHOT}/${touch ? "sp" : "pc"}-threat-tutorial-match-off.png` });
 });
 
 test("遊び方の最後の実戦は保存した設定に従う: オンなら初めから「!」を出す", async ({ page }, info) => {
@@ -216,13 +239,12 @@ test("遊び方の最後の実戦は保存した設定に従う: オンなら初
   await openTutorialMatch(page, true);
   await expect(toggle(page)).toBeVisible();
   await expect(toggle(page)).toHaveAttribute("aria-pressed", "true");
-  const rand = rng(SEED);
-  let s = createGame(STD);
-  for (let i = 0; threatenedPieces(s, 0).length === 0; i++) {
-    expect(i).toBeLessThan(12);
-    s = await advance(page, s, rand, touch, "easy");
+  // 鍵を押さずに打ち進めると「!」が出る
+  for (let i = 0; (await threatCells(page)).length === 0; i++) {
+    expect(i).toBeLessThan(15);
+    await playAny(page, touch);
   }
-  expect(await threatCells(page)).toEqual(threatenedPieces(s, 0).map(([r, c]) => cellName(r, c)).sort());
+  await expect(toggle(page)).toHaveAttribute("aria-pressed", "true");
   await page.evaluate(() => window.scrollTo(0, 0));
   await page.screenshot({ path: `${SHOT}/${touch ? "sp" : "pc"}-threat-tutorial-match-on.png` });
 });

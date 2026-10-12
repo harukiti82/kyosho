@@ -1,5 +1,6 @@
-// チュートリアル（遊び方）のステップ: 用意した局面で 1 手ずつ打って、ルールの要素を易しい順に覚える。
-// 章は 2 つ: 標準ルール（LESSONS）と、標準を覚えた人がプリセット「スキルあり」で足されるものを覚える章（SKILL_LESSONS）。
+// チュートリアル（遊び方）のステップ: 用意した局面で 1 手ずつ打って、標準（プリセットの id は skill）のルールの要素を易しい順に覚える。
+// 1 本の流れ（LESSONS）: スキルなしの要素（挟む〜予測を読む）→ スキルの仕組み（選ぶ・配り直し・ゲージ・使う）→ 副将 → 標準の実戦。
+// 個々のカードの効果は別のチュートリアルで覚える（ここでは強打 1 枚を例にする）。
 // 局面は engine の gameFrom で作り、ダメージ・回復・予測・ゲージはすべてエンジン（playMove / previewMove / useSkill）の結果を見せる。
 // DOM に依存しない（盤の誘導・コーチの表示は ui/app.ts と ui/coach.ts）。
 
@@ -38,11 +39,7 @@ export type LessonId =
   | "skillUse"
   | "vice"
   | "viceHit"
-  | "scout"
-  | "skillMatch";
-
-/** 遊び方の章（標準ルール・スキルあり） */
-export type ChapterId = "std" | "skill";
+  | "scout";
 
 /** プレイヤーが打とうとした手（王・副将にするか、この手番でスキルを使ったかを含む） */
 export interface LessonMove {
@@ -79,7 +76,7 @@ export interface Lesson {
   /** 盤ですること（命令形の 1 文） */
   task: string;
   rules: RuleSet;
-  /** 実戦（CPU イージー・章のルール・制限時間なし）。局面・正解・誘導はない */
+  /** 実戦（CPU イージー・標準・制限時間なし）。局面・正解・誘導はない */
   match?: true;
   /**
    * 盤に打たず、対局の前のカードを選ぶステップ（配り直してから 1 枚選べば正解）。answers・guide は空。
@@ -102,13 +99,17 @@ export interface Lesson {
 const B: Player = 0;
 const W: Player = 1;
 
-/** 教える標準ルール（既定の DEFAULT_PRESET が変わっても、チュートリアルは標準を教える） */
-const std = (): RuleSet => cloneRules(presetById("std").rules);
+/**
+ * 教える標準ルール（表示名「標準」のプリセット。id は skill）。既定の DEFAULT_PRESET が別のプリセットに変わっても、
+ * チュートリアルはこのプリセットを教える
+ */
+const std = (): RuleSet => cloneRules(presetById("skill").rules);
 const STD = std();
 
-/** 標準から、まだ習っていない要素を外したルール（体力・駒の数字は標準のまま） */
-function rulesWith(on: { dirs?: true; anchor?: true; heal?: true; king?: true }): RuleSet {
+/** 標準から、まだ習っていない要素を外したルール（体力・駒の数字は標準のまま）。スキルを外すと副将もなくなる */
+function rulesWith(on: { dirs?: true; anchor?: true; heal?: true; king?: true; skills?: true }): RuleSet {
   const r = std();
+  if (!on.skills) r.skills = false;
   if (!on.dirs) r.dirs = "all";
   if (!on.anchor) r.anchor = "none";
   if (!on.heal) r.heal = "none";
@@ -141,7 +142,9 @@ const kingLoss = (r: RuleSet) => (r.king.penalty === "lose" ? "その場で負�
 
 const pickHint = "光っているマスのどちらかに置く";
 
-export const LESSONS: readonly Lesson[] = [
+// ---- スキルなしの要素（挟む〜予測を読む） ----
+
+const BASIC_LESSONS: readonly Lesson[] = [
   {
     id: "flank",
     title: "挟む",
@@ -350,7 +353,7 @@ export const LESSONS: readonly Lesson[] = [
     title: "王を裏返す",
     point: `王を裏返すと、相手の${kingLoss(STD)}`,
     task: "この練習では「?」の駒が相手の王。光っているマスに歩を置いて挟む",
-    rules: std(),
+    rules: rulesWith({ dirs: true, anchor: true, heal: true, king: true }),
     start() {
       return gameFrom(this.rules, {
         stones: stones([["c8", B, "fu"], ["c7", W, "kin"], ["g8", B, "fu"]]),
@@ -374,7 +377,7 @@ export const LESSONS: readonly Lesson[] = [
     point: "! の付いた駒は、次に裏返されるかもしれない",
     note: "置く前にマスをタップすると、結果が先に出る。",
     task: "光っている 2 マスを見比べて、置いた歩に ! が付かないほうに置く",
-    rules: std(),
+    rules: rulesWith({ dirs: true, anchor: true, heal: true, king: true }),
     start() {
       return gameFrom(this.rules, {
         stones: stones([
@@ -405,36 +408,14 @@ export const LESSONS: readonly Lesson[] = [
       return pv && pv.damage > m.damage ? `${head}もう一方はダメージ ${pv.damage} だが、置いた${name}をすぐ裏返されていた。` : head;
     },
   },
-  {
-    id: "match",
-    title: "実戦",
-    point: "覚えたルールを全部使って対局",
-    note: "この対局には時間の制限がない。",
-    task: "強さイージーの CPU と、最後まで対局する",
-    rules: std(),
-    match: true,
-    start() {
-      return createGame(this.rules);
-    },
-    answers: [],
-    guide: [],
-    hint: () => "",
-    done: () => "",
-  },
 ];
 
-// ---- スキルあり の章 ----
-// 標準を覚えた人に、プリセット「スキルあり」で足されるもの（カードを選ぶ・ゲージ・使う・副将・偵察）を教える。
+// ---- スキルの仕組みと副将 ----
+// カードを選ぶ・配り直し・ゲージ・使う（強打 1 枚を例にする）と、スキルのあるルールで王に加わる副将を教える。
 // カード・ゲージの値はエンジン（skills.ts）のものを使い、文に出す数字は打った後の局面との差から取る
 
-/** 教えるスキルありのルール（標準＋スキル。副将は隠し王ありのときだけ） */
-const skillRules = (): RuleSet => cloneRules(presetById("skill").rules);
-/** スキルありから隠し王（と副将）を外したルール（ゲージ・使うだけを覚えるステップ。王・副の鍵を出さない） */
-function skillOnly(): RuleSet {
-  const r = skillRules();
-  r.king = { ...NO_KING };
-  return r;
-}
+/** 隠し王（と副将）を外したスキルのあるルール（ゲージ・使うだけを覚えるステップ。王・副の鍵を出さない） */
+const skillOnly = (): RuleSet => rulesWith({ dirs: true, anchor: true, heal: true, skills: true });
 
 /** 手番の人（先手）のゲージの、打つ前から打った後に増えた点（GAUGE_UNIT を 1 点に直す） */
 const gaugeGain = (before: GameState, after: GameState) => (after.skills!.sides[0].gauge - before.skills!.sides[0].gauge) / GAUGE_UNIT;
@@ -444,14 +425,14 @@ const cardName = (g: GameState) => {
   return card ? SKILLS[card].name : "スキル";
 };
 
-export const SKILL_LESSONS: readonly Lesson[] = [
+const SKILL_LESSONS: readonly Lesson[] = [
   {
     id: "skillPick",
     title: "カードを選ぶ",
     point: "対局の前に、3 枚から 1 枚を選ぶ",
     note: "配り直しは 1 局に 1 回で、ほかの 8 枚から新しく 3 枚が来る。",
     task: "配り直しを押してから、好きなカードを 1 枚選ぶ",
-    rules: skillRules(),
+    rules: std(),
     start() {
       // 盤は選ぶ画面の後ろに見えるだけ（「!」の出ない形）。相手は選び終えてある
       return gameFrom(this.rules, {
@@ -527,7 +508,7 @@ export const SKILL_LESSONS: readonly Lesson[] = [
     point: `王の後は、${VICE_DEADLINE} 手ごとに副将を置き直す`,
     note: `置かないと、${VICE_DEADLINE} 手目に置いた駒が自動で副将になる。`,
     task: "駒台の右にある副をタップしてから、光っているマスに歩を置く",
-    rules: skillRules(),
+    rules: std(),
     start() {
       // 王はお互い決めてある（自分は e8、相手は h1）。a1・a2 は正解の後も自分に打てる手を残し、終局させない（終局すると相手の王が見える）
       return gameFrom(this.rules, {
@@ -548,7 +529,7 @@ export const SKILL_LESSONS: readonly Lesson[] = [
     title: "副将を裏返す",
     point: `副将を裏返すと、相手の体力が ${VICE_PENALTY} 減る`,
     task: "この練習では「?」の駒が相手の副将。光っているマスに歩を置いて挟む",
-    rules: skillRules(),
+    rules: std(),
     start() {
       // 王と副将はお互い決めてある（自分の王 g8・副将 a8、相手の王 h1・副将 c7）。a1・a2 は終局させないため
       return gameFrom(this.rules, {
@@ -568,74 +549,74 @@ export const SKILL_LESSONS: readonly Lesson[] = [
       return `相手の副将を裏返した。ダメージ ${m.damage} に副将の分の ${extra} が加わり、相手の体力が ${m.damage + extra} 減った。裏返した副将はふつうの駒になり、相手は次の ${VICE_DEADLINE} 手の区切りで新しい副将を置く。`;
     },
   },
-  {
-    id: "scout",
-    title: "偵察",
-    point: "偵察で、相手の王の場所が分かる",
-    note: "王が分かった後に使うと、相手の今の副将の場所が分かる。",
-    task: "名札の偵察を押してから、見えた相手の王を飛で挟む",
-    rules: skillRules(),
-    start() {
-      // 王を決めずに、お互い 7 手ずつ打った局面（7 手目の駒が自動で王。相手の王は d3）。
-      // 自分は左の 2 列を下から・e6、相手は右の 2 列を上から・d3。相手の王の候補は相手が置いた 7 つの駒
-      let g = gameFrom(this.rules, {
-        stones: stones([
-          ["a8", B, "fu"], ["a7", W, "fu"], ["a5", W, "fu"], ["a3", W, "fu"],
-          ["b8", B, "fu"], ["b7", W, "fu"], ["b5", W, "fu"], ["b3", W, "fu"],
-          ["g1", W, "fu"], ["g2", B, "fu"], ["g4", B, "fu"], ["g6", B, "fu"],
-          ["h1", W, "fu"], ["h2", B, "fu"], ["h4", B, "fu"], ["h6", B, "fu"],
-          ["e8", B, "fu"], ["e7", W, "fu"], ["d1", W, "fu"], ["d2", B, "fu"], ["c3", B, "fu"],
-        ]),
-        hands: [hand({ fu: 10, hi: 1 }), hand({ fu: 10 })],
-        // ゲージは満タンから始める（打っていく間も満タンのまま）
-        skills: [{ card: "scout", gauge: gaugeMax("scout") }, {}],
-      });
-      const mine = ["a6", "a4", "a2", "b6", "b4", "b2", "e6"];
-      const theirs = ["g3", "g5", "g7", "h3", "h5", "h7", "d3"];
-      for (const [i, name] of mine.entries()) {
-        for (const at of [name, theirs[i]]) g = playMove(g, ...parseCell(at), "fu");
-      }
-      return g;
-    },
-    answers: [{ at: parseCell("e3"), kind: "hi", skill: true }],
-    guide: cells("e3"),
-    hint: () => "光っているマスに飛を置いて、見えた相手の王を挟む",
-    done(m) {
-      const extra = m.king?.penalty ?? 0;
-      if (m.king?.lose) return "偵察で見えた相手の王を裏返したので、あなたの勝ち。";
-      return `偵察で見えた相手の王を裏返した。ダメージ ${m.damage} に王の分の ${extra} が加わり、相手の体力が ${m.damage + extra} 減った。`;
-    },
-  },
-  {
-    id: "skillMatch",
-    title: "実戦",
-    point: "スキルを使って対局",
-    note: "この対局には時間の制限がない。",
-    task: "カードを選んで、強さイージーの CPU と最後まで対局する",
-    rules: skillRules(),
-    match: true,
-    start() {
-      return createGame(this.rules);
-    },
-    answers: [],
-    guide: [],
-    hint: () => "",
-    done: () => "",
-  },
 ];
 
-/** 章ごとのステップ */
-export const CHAPTERS: Readonly<Record<ChapterId, readonly Lesson[]>> = { std: LESSONS, skill: SKILL_LESSONS };
-export const CHAPTER_IDS: readonly ChapterId[] = ["std", "skill"];
-/** 章の名前（メニューの遊び方の項目） */
-export const CHAPTER_NAME: Readonly<Record<ChapterId, string>> = { std: "基本のルール", skill: "スキルあり" };
+/** 最後の実戦（標準・CPU イージー・制限時間なし。カードは配られた 3 枚から選ぶ） */
+const MATCH: Lesson = {
+  id: "match",
+  title: "実戦",
+  point: "覚えたルールを全部使って対局",
+  note: "この対局には時間の制限がない。",
+  task: "カードを選んで、強さイージーの CPU と最後まで対局する",
+  rules: std(),
+  match: true,
+  start() {
+    return createGame(this.rules);
+  },
+  answers: [],
+  guide: [],
+  hint: () => "",
+  done: () => "",
+};
+
+/** 遊び方のステップ（1 本の流れ。最後は実戦） */
+export const LESSONS: readonly Lesson[] = [...BASIC_LESSONS, ...SKILL_LESSONS, MATCH];
+
+/**
+ * 偵察（カードごとの効果のステップ）。遊び方の流れには入れず、カードごとのチュートリアルを作るときの例として残す
+ * （局面と文は test/lesson.test.ts が確かめる）
+ */
+export const SCOUT_LESSON: Lesson = {
+  id: "scout",
+  title: "偵察",
+  point: "偵察で、相手の王の場所が分かる",
+  note: "王が分かった後に使うと、相手の今の副将の場所が分かる。",
+  task: "名札の偵察を押してから、見えた相手の王を飛で挟む",
+  rules: std(),
+  start() {
+    // 王を決めずに、お互い 7 手ずつ打った局面（7 手目の駒が自動で王。相手の王は d3）。
+    // 自分は左の 2 列を下から・e6、相手は右の 2 列を上から・d3。相手の王の候補は相手が置いた 7 つの駒
+    let g = gameFrom(this.rules, {
+      stones: stones([
+        ["a8", B, "fu"], ["a7", W, "fu"], ["a5", W, "fu"], ["a3", W, "fu"],
+        ["b8", B, "fu"], ["b7", W, "fu"], ["b5", W, "fu"], ["b3", W, "fu"],
+        ["g1", W, "fu"], ["g2", B, "fu"], ["g4", B, "fu"], ["g6", B, "fu"],
+        ["h1", W, "fu"], ["h2", B, "fu"], ["h4", B, "fu"], ["h6", B, "fu"],
+        ["e8", B, "fu"], ["e7", W, "fu"], ["d1", W, "fu"], ["d2", B, "fu"], ["c3", B, "fu"],
+      ]),
+      hands: [hand({ fu: 10, hi: 1 }), hand({ fu: 10 })],
+      // ゲージは満タンから始める（打っていく間も満タンのまま）
+      skills: [{ card: "scout", gauge: gaugeMax("scout") }, {}],
+    });
+    const mine = ["a6", "a4", "a2", "b6", "b4", "b2", "e6"];
+    const theirs = ["g3", "g5", "g7", "h3", "h5", "h7", "d3"];
+    for (const [i, name] of mine.entries()) {
+      for (const at of [name, theirs[i]]) g = playMove(g, ...parseCell(at), "fu");
+    }
+    return g;
+  },
+  answers: [{ at: parseCell("e3"), kind: "hi", skill: true }],
+  guide: cells("e3"),
+  hint: () => "光っているマスに飛を置いて、見えた相手の王を挟む",
+  done(m) {
+    const extra = m.king?.penalty ?? 0;
+    if (m.king?.lose) return "偵察で見えた相手の王を裏返したので、あなたの勝ち。";
+    return `偵察で見えた相手の王を裏返した。ダメージ ${m.damage} に王の分の ${extra} が加わり、相手の体力が ${m.damage + extra} 減った。`;
+  },
+};
 
 /** 実戦を終えたときのコーチの 1 文 */
 export const FINISHED_TEXT = "遊び方はこれで終わり。メニューから、同じルールで CPU や人と対局できる。";
-/** スキルありの実戦を終えたときのコーチの 1 文 */
-export const SKILL_FINISHED_TEXT = "スキルありの遊び方はこれで終わり。設定でスキルありを選ぶと、スキルを使って対局できる。";
-/** 章を終えたときの 1 文 */
-export const finishedText = (chapter: ChapterId) => (chapter === "skill" ? SKILL_FINISHED_TEXT : FINISHED_TEXT);
 
 /** 王にしないで置こうとしたときのヒント */
 export const KING_HINT = "王にするには、先に駒台の右にある王をタップする";
@@ -707,8 +688,8 @@ export function nextNeed(l: Lesson, selected: PieceKind, kingOn: boolean, more: 
 export const TUTORIAL_KEY = "kyosho:tutorial";
 
 /**
- * 保存の形: 標準の章は従来どおり一番上の { step, reached, done }、スキルありの章は skill キーの中に同じ形で持つ
- * （skill キーのない古い保存は、スキルありを開いたことがないものとして読む）
+ * 保存の形: { v: 2, step, reached, done }（step・reached は LESSONS の位置）。
+ * v のない保存は、遊び方が 2 つの章（基本のルール 11 ステップ・スキルあり 7 ステップ）に分かれていた頃のもの（readLegacy で読み替える）
  */
 export interface Progress {
   /** 前回開いていたステップ（0 始まり） */
@@ -718,6 +699,8 @@ export interface Progress {
   /** 最後の実戦まで終えた */
   done: boolean;
 }
+
+const SAVE_VERSION = 2;
 
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 
@@ -731,7 +714,7 @@ function readSaved(store: KeyValueStore): Record<string, unknown> | null {
   }
 }
 
-/** 章の進み具合を検証する（範囲外・形が違えば null） */
+/** 進み具合を検証する（count 個のステップの範囲外・形が違えば null） */
 function progressOf(o: unknown, count: number): Progress | null {
   if (!isObject(o)) return null;
   const isStep = (v: unknown): v is number => Number.isInteger(v) && (v as number) >= 0 && (v as number) < count;
@@ -740,18 +723,44 @@ function progressOf(o: unknown, count: number): Progress | null {
   return { step: o.step, reached, done: o.done === true };
 }
 
-/** 保存した章の進み具合。保存がない・読めないときは null（はじめて） */
-export function loadProgress(store: KeyValueStore, chapter: ChapterId = "std"): Progress | null {
-  const o = readSaved(store);
-  if (!o) return null;
-  return progressOf(chapter === "std" ? o : o.skill, CHAPTERS[chapter].length);
+/** 今の LESSONS での位置 */
+const indexOf = (id: LessonId) => LESSONS.findIndex((l) => l.id === id);
+/**
+ * 2 つの章に分かれていた頃の各ステップの、今の位置（ステップの id で合わせる）。
+ * 基本のルールの実戦はその続きのカードを選ぶステップへ、偵察とスキルありの実戦は今の実戦へ
+ */
+const LEGACY_BASIC_AT = (["flank", "damage", "dirs", "hand", "anchor", "heal", "king", "kingAuto", "kingHit", "read", "skillPick"] as const).map(indexOf);
+const LEGACY_SKILL_AT = (["skillPick", "skillGauge", "skillUse", "vice", "viceHit", "match", "match"] as const).map(indexOf);
+
+/**
+ * 2 つの章の頃の保存を、今の 1 本の流れの進み具合に読み替える。開いたことのある最も先は両方の章の先のほう。
+ * 前回の位置は、基本のルールが途中ならその位置、終えていればスキルありの章の位置（開いていなければカードを選ぶステップ）。
+ * 両方の章を終えていれば終えたものとして読む
+ */
+function readLegacy(o: Record<string, unknown>): Progress | null {
+  const basic = progressOf(o, LEGACY_BASIC_AT.length);
+  const skill = progressOf(o.skill, LEGACY_SKILL_AT.length);
+  if (!basic && !skill) return null;
+  const done = !!basic?.done && !!skill?.done;
+  let step: number;
+  if (done) step = LESSONS.length - 1;
+  else if (basic && !basic.done) step = LEGACY_BASIC_AT[basic.step];
+  else if (skill && !skill.done) step = LEGACY_SKILL_AT[skill.step];
+  else step = indexOf("skillPick");
+  const reached = Math.max(step, basic ? LEGACY_BASIC_AT[basic.reached] : 0, skill ? LEGACY_SKILL_AT[skill.reached] : 0);
+  return { step, reached, done };
 }
 
-/** 章の進み具合を保存する（もう一方の章の保存は残す） */
-export function saveProgress(store: KeyValueStore, p: Progress, chapter: ChapterId = "std") {
-  const o = readSaved(store) ?? {};
-  const plain = { step: p.step, reached: p.reached, done: p.done };
-  store.setItem(TUTORIAL_KEY, JSON.stringify(chapter === "std" ? { ...o, ...plain } : { ...o, skill: plain }));
+/** 保存した進み具合。保存がない・読めないときは null（はじめて） */
+export function loadProgress(store: KeyValueStore): Progress | null {
+  const o = readSaved(store);
+  if (!o) return null;
+  return o.v === SAVE_VERSION ? progressOf(o, LESSONS.length) : readLegacy(o);
+}
+
+/** 進み具合を保存する（前の形の保存は今の形で上書きする） */
+export function saveProgress(store: KeyValueStore, p: Progress) {
+  store.setItem(TUTORIAL_KEY, JSON.stringify({ v: SAVE_VERSION, step: p.step, reached: p.reached, done: p.done }));
 }
 
 /** i 番目のステップを開いたときの進み具合 */
@@ -764,9 +773,9 @@ export const progressAt = (p: Progress | null, i: number): Progress => ({
 /** メニューから始めるステップ（途中なら前回の位置、終えていれば最初から） */
 export const resumeStep = (p: Progress | null) => (!p || p.done ? 0 : p.step);
 
-/** メニューの「遊び方」・章の項目に添える短い状態（スキルありは、はじめてなら何も添えない） */
-export function progressLabel(p: Progress | null, chapter: ChapterId = "std"): string {
-  if (!p) return chapter === "std" ? "おすすめ" : "";
+/** メニューの「遊び方」に添える短い状態 */
+export function progressLabel(p: Progress | null): string {
+  if (!p) return "おすすめ";
   if (p.done) return "クリア済み";
-  return `つづき ${p.step + 1}/${CHAPTERS[chapter].length}`;
+  return `つづき ${p.step + 1}/${LESSONS.length}`;
 }
