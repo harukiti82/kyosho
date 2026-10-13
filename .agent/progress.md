@@ -71,3 +71,4 @@
 
 - アクセス解析（Cloudflare Web Analytics、クッキーなし）: `ui/analytics.ts` が本番のホスト名 `kyosho.rukiharukichi.com` でトークンがあるときだけ `beacon.min.js` を 1 回読む（localhost・e2e・GitHub Pages は読まない）。ユニット `analytics.test.ts`・e2e `analytics.spec.ts`・README
 - 本番に Cloudflare の自動セットアップの計測スクリプトも差し込まれ二重になっていたので、ユーザーの判断で PR #47 の読み込み（`ui/analytics.ts` とテスト）を外し、自動セットアップだけに。README・AGENTS.md に「計測のコードを足さない」の注記
+- 画面と README の「オセロ」（登録商標）を「リバーシ」に言い換え（凡例・盤の読み上げ・ルール詳細・遊び方・設定の title）。識別子・コメント・`<head>` は変えない。e2e `othello.spec.ts` の期待値も揃える

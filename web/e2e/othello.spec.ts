@@ -124,9 +124,9 @@ test.describe("普通のオセロなら置けるマス", () => {
     expect(await marked(page, ".cell.othello.can-take")).toEqual(["d3", "e6"]);
     expect(await marked(page, ".cell.othello:not(.open)")).toEqual(["c4", "f5"]);
     await expect(page.locator(".cell.othello").first()).toHaveCSS("outline-style", "dashed");
-    await expect(page.locator('.cell[aria-label="c4 オセロなら置ける"]')).toHaveCount(1);
-    await expect(page.locator('.cell[aria-label="d3 置くと返せる オセロなら置ける"]')).toHaveCount(1);
-    await expect(page.locator("#legend")).toContainText("普通のオセロなら置けるマス");
+    await expect(page.locator('.cell[aria-label="c4 リバーシなら置ける"]')).toHaveCount(1);
+    await expect(page.locator('.cell[aria-label="d3 置くと返せる リバーシなら置ける"]')).toHaveCount(1);
+    await expect(page.locator("#legend")).toContainText("普通のリバーシなら置けるマス");
     await page.screenshot({ path: `${SHOT}/${pre}-othello-std.png` });
     await page.locator(".board").screenshot({ path: `${SHOT}/${pre}-othello-board.png` });
     await noHorizontalScroll(page, width);

@@ -2154,7 +2154,7 @@ export class App {
     this.el.legend.replaceChildren(
       h("span", {}, [h("span", { class: "key-dot", attrs: { "aria-hidden": "true" } }), ` 置くと${v.can}マス`]),
       h("span", {}, [h("span", { class: "key-take", attrs: { "aria-hidden": "true" } }), ` この手で${v.can}駒`]),
-      h("span", {}, [h("span", { class: "key-othello", attrs: { "aria-hidden": "true" } }), " 普通のオセロなら置けるマス"]),
+      h("span", {}, [h("span", { class: "key-othello", attrs: { "aria-hidden": "true" } }), " 普通のリバーシなら置けるマス"]),
       ...(r.anchor === "attack"
         ? [h("span", {}, [h("span", { class: "key-anchor", attrs: { "aria-hidden": "true" } }), " ダメージに足す反対側の自分の駒"])]
         : []),
@@ -2352,7 +2352,7 @@ export class App {
         }
         if (willTake.has(i)) label += ` ${v.can}`;
         if (canTake) label += ` 置くと${v.can}`;
-        if (othello.has(i)) label += " オセロなら置ける";
+        if (othello.has(i)) label += " リバーシなら置ける";
         cell.setAttribute("aria-label", label);
         cell.disabled = !!g.result;
       }
@@ -3420,12 +3420,12 @@ export class App {
       const ends = h("ul", { class: "rule-lines" });
       fillSentences(ends, endDetails(r));
       content.append(
-        h("p", { text: `オセロの盤で、挟んだ相手の駒の数字がダメージになる二人対戦。体力を 0 にした方の勝ち。` }),
+        h("p", { text: `リバーシの盤で、挟んだ相手の駒の数字がダメージになる二人対戦。体力を 0 にした方の勝ち。` }),
         h("h3", { text: "ルール" }),
         ol,
         h("h3", { text: "準備" }),
         list("ul", [
-          "8×8 の盤。中央の 4 駒は歩（オセロと同じ配置）",
+          "8×8 の盤。中央の 4 駒は歩（リバーシと同じ配置）",
           `持ち駒（両者同じ・公開）: ${handText(r)}`,
           hpText(r),
         ]),
@@ -3452,7 +3452,7 @@ export class App {
           ]),
           h("span", {}, [
             h("span", { class: "key-othello", attrs: { "aria-hidden": "true" } }),
-            " の点線の枠は、駒の種類・方向・強さを考えない普通のオセロなら置けるマス（参考。置けるかは駒ごとの印で決まる）",
+            " の点線の枠は、駒の種類・方向・強さを考えない普通のリバーシなら置けるマス（参考。置けるかは駒ごとの印で決まる）",
           ]),
           h("span", {}, [h("span", { class: "key-threat", attrs: { "aria-hidden": "true" }, text: "!" }), ` の付いた自分の駒は、相手が次の 1 手で${v.can}駒`]),
           ...(r.anchor === "attack"
