@@ -65,7 +65,7 @@ export async function startGame(
   const side = mode === "cpu" ? (opts.side ?? 0) : "saved";
   if (opts.preset || side !== "saved" || opts.threat !== undefined) {
     await openSettings(page);
-    if (opts.preset) await page.locator(`.preset[data-preset=${opts.preset}]`).click();
+    if (opts.preset) await choosePreset(page, opts.preset);
     if (opts.threat !== undefined) {
       const v = opts.threat ? "1" : "0";
       await page.locator(`label:has(> input[name=threat][value="${v}"])`).click();
@@ -100,6 +100,20 @@ export async function startGame(
     await page.locator("#skill-pick .tarot[data-skill]").first().click();
     await page.locator("#skill-pick-ok").click();
   }
+}
+
+/**
+ * 設定メニュー（開いていること）でプリセットの札を押す。標準・スキルなし以外は「カスタム」の中にしまってあるので、
+ * 閉じていれば開いてから押す。tap はスマホ（タッチ）のテストで札をタップする
+ */
+export async function choosePreset(page: Page, id: PresetId, opts: { tap?: boolean } = {}) {
+  const card = page.locator(`.preset[data-preset=${id}]`);
+  if (!(await card.isVisible())) {
+    await page.locator("#rule-details > summary")[opts.tap ? "tap" : "click"]();
+    await expect(page.locator("#rule-details")).toHaveAttribute("open", "");
+  }
+  await card[opts.tap ? "tap" : "click"]();
+  await expect(card).toHaveAttribute("aria-pressed", "true");
 }
 
 /** 設定メニューの「ルールを細かく変える」を開く（設定メニューが閉じていれば開く。開いていれば何もしない） */

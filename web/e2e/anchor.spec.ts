@@ -8,7 +8,7 @@ import { createGame, lastMoveOf, legalCells, playableKinds, playMove, previewMov
 import { presetById, type PieceKind, type RuleSet } from "../src/engine/rules";
 import { encodeRules } from "../src/ui/query";
 import { pieceLabel, ruleLines, sentenceText } from "../src/ui/ruletext";
-import { noHorizontalScroll, openRuleFields, play, openSettings, openTab, readSetup, rng, saveSettings, startGame, waitHumanTurnOrEnd } from "./helpers";
+import { choosePreset, noHorizontalScroll, openRuleFields, play, openSettings, openTab, readSetup, rng, saveSettings, startGame, waitHumanTurnOrEnd } from "./helpers";
 
 const SHOT = "screenshots";
 const ANCHOR = presetById("anchor").rules;
@@ -78,7 +78,7 @@ test.describe("PC 幅", () => {
     page.on("pageerror", (e) => errors.push(String(e)));
     await page.goto("/");
     await openSettings(page);
-    await page.locator(".preset[data-preset=anchor]").click();
+    await choosePreset(page, "anchor");
     expect(await readSetup(page)).toEqual(ANCHOR);
     await expect(page.locator("#custom-tag")).toHaveText("拠点");
     await openRuleFields(page);
@@ -101,7 +101,7 @@ test.describe("PC 幅", () => {
     expect(new URL(page.url()).search).not.toContain("anc");
     // 方向駒に「攻撃に上乗せ」だけ足した設定も再読み込みで復元される
     await openSettings(page);
-    await page.locator(".preset[data-preset=dir]").click();
+    await choosePreset(page, "dir");
     await saveSettings(page);
     expect(new URL(page.url()).search.slice(1)).toBe(encodeRules(presetById("dir").rules));
     await openRuleFields(page);
@@ -203,7 +203,7 @@ test.describe("スマホ幅 375px", () => {
     await seedPage(page, seed);
     await page.goto("/");
     await openSettings(page);
-    await page.locator(".preset[data-preset=anchor]").tap();
+    await choosePreset(page, "anchor", { tap: true });
     await openRuleFields(page);
     await page.locator("#opt-anchor").scrollIntoViewIfNeeded();
     await noHorizontalScroll(page, 375);

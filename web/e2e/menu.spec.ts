@@ -7,7 +7,7 @@ import { createGame, viewFor } from "../src/engine/game";
 import { defaultRules, PIECES, presetById, type RuleSet } from "../src/engine/rules";
 import { encodeRules } from "../src/ui/query";
 import { ruleLines, sentenceText } from "../src/ui/ruletext";
-import { cellAt, draws, noHorizontalScroll, openSettings, rng, saveSettings, seedPage, skipToss, startGame, stubDraws } from "./helpers";
+import { cellAt, choosePreset, draws, noHorizontalScroll, openSettings, rng, saveSettings, seedPage, skipToss, startGame, stubDraws } from "./helpers";
 
 const SHOT = "screenshots";
 const prefix = (page: Page) => ((page.viewportSize()?.width ?? 1280) < 600 ? "sp" : "pc");
@@ -70,7 +70,7 @@ test("設定を保存していなければ CPU 対戦の手番は対局ごとに
   await openSettings(page);
   await expect(page.locator("input[name=side][value=random]")).toBeChecked();
   // 手番だけを確かめる（カードを配る抽選が crypto を使わないよう、スキルなしにする）
-  await page.locator(".preset[data-preset=std]").click();
+  await choosePreset(page, "std");
   await saveSettings(page);
   await page.locator("#menu-cpu").click();
   await page.locator("#menu-levels [data-level=normal]").click();
@@ -129,7 +129,7 @@ test("設定で変えたルールは次の対局と再読み込み後に使わ�
   await page.goto("/");
   // やめる: 保存しない
   await openSettings(page);
-  await page.locator(".preset[data-preset=king]").click();
+  await choosePreset(page, "king");
   await page.locator("#setup-cancel").click();
   await expect(page.locator("#setup")).toBeHidden();
   await expect(page.locator("#menu-rule-name")).toHaveText("標準");
@@ -141,7 +141,7 @@ test("設定で変えたルールは次の対局と再読み込み後に使わ�
   await expect(page.locator(".preset .preset-name").nth(1)).toHaveText("スキルなし");
 
   // 保存: メニューのルール名が変わり、次の対局がそのルール
-  await page.locator(".preset[data-preset=king]").click();
+  await choosePreset(page, "king");
   await saveSettings(page);
   await expect(page.locator("#menu-rule-name")).toHaveText("隠し王");
   await page.screenshot({ path: `${SHOT}/${prefix(page)}-menu-saved.png` });
@@ -160,6 +160,75 @@ test("設定で変えたルールは次の対局と再読み込み後に使わ�
   await expect(page.locator("#menu-rule-name")).toHaveText("v1.0（取る）");
   await page.goto("/");
   await expect(page.locator("#menu-rule-name")).toHaveText("隠し王");
+  expect(errors).toEqual([]);
+});
+
+test("設定のルールは標準とスキルなしだけを出し、試遊用のプリセットと細かい項目は閉じた「カスタム」の中。試遊用・カスタムのルールで開けばカスタムが開いて選ばれて見える", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(String(e)));
+  const width = page.viewportSize()!.width;
+  const details = page.locator("#rule-details");
+  // 保存なし: 見える札は標準とスキルなしだけ。カスタムは閉じている
+  await page.goto("/");
+  await openSettings(page);
+  await expect(page.locator(".preset:visible")).toHaveCount(2);
+  await expect(page.locator(".preset:visible .preset-name")).toHaveText(["標準", "スキルなし"]);
+  await expect(details).not.toHaveAttribute("open");
+  await expect(details.locator("summary")).toHaveText("カスタム");
+  await expect(page.locator("#custom-tag")).toHaveText("標準");
+  await noHorizontalScroll(page, width);
+  await page.screenshot({ path: `${SHOT}/${prefix(page)}-setup-closed.png` });
+  // 開くと試遊用の 7 つのプリセットと細かい項目
+  await details.locator("summary").click();
+  await expect(details).toHaveAttribute("open", "");
+  await expect(page.locator("#trial-presets .preset")).toHaveCount(7);
+  await expect(page.locator(".preset:visible")).toHaveCount(9);
+  await expect(page.locator("input[name=hp0]")).toBeVisible();
+  await noHorizontalScroll(page, width);
+  // 設定はダイアログの中で縦に流れるので、カスタムの見出しを上端に寄せて撮る
+  await details.evaluate((d) => d.scrollIntoView({ block: "start" }));
+  await page.screenshot({ path: `${SHOT}/${prefix(page)}-setup-open.png` });
+  // 開いたまま標準に戻せる（開いた欄は閉じない）
+  await choosePreset(page, "v2");
+  await expect(page.locator("#custom-tag")).toHaveText("v2案（強い駒は返せない）");
+  await choosePreset(page, "skill");
+  await expect(page.locator("#custom-tag")).toHaveText("標準");
+  await expect(details).toHaveAttribute("open", "");
+  await saveSettings(page);
+  await openSettings(page);
+  await expect(details).not.toHaveAttribute("open");
+  await page.locator("#setup-cancel").click();
+
+  // 試遊用のプリセットの URL: カスタムが開いて、その札が選ばれている
+  await page.goto(`/?${encodeRules(presetById("v04").rules)}`);
+  await expect(page.locator("#menu-rule-name")).toHaveText("v0.4");
+  await openSettings(page);
+  await expect(details).toHaveAttribute("open", "");
+  await expect(page.locator(".preset[aria-pressed=true]")).toHaveAttribute("data-preset", "v04");
+  await expect(page.locator(".preset[aria-pressed=true]")).toBeVisible();
+  await page.locator("#setup-cancel").click();
+  await startGame(page, { mode: "pvp" });
+  await ruleCardIs(page, presetById("v04").rules);
+
+  // 細かい項目で変えて保存: 再読み込みしても見出しが「カスタム」で、カスタムが開いて始まる
+  await page.goto("/");
+  await openSettings(page);
+  await choosePreset(page, "std");
+  await details.locator("summary").click();
+  await page.locator("input[name=hp0]").fill("77");
+  await page.locator("input[name=hp0]").blur();
+  await expect(page.locator("#custom-tag")).toHaveText("カスタム");
+  await saveSettings(page);
+  await page.reload();
+  await expect(page.locator("#menu-rule-name")).toHaveText("カスタム");
+  await openSettings(page);
+  await expect(details).toHaveAttribute("open", "");
+  await expect(page.locator("#custom-tag")).toHaveText("カスタム");
+  await expect(page.locator(".preset[aria-pressed=true]")).toHaveCount(0);
+  await expect(page.locator("input[name=hp0]")).toHaveValue("77");
+  await page.locator("#setup-cancel").click();
+  await startGame(page, { mode: "pvp" });
+  await expect(page.locator("#player-0 .hp-num")).toHaveText("77");
   expect(errors).toEqual([]);
 });
 
@@ -185,7 +254,7 @@ test("保存した設定が壊れている・ストレージが使えないと�
     await openSettings(page);
     await expect(page.locator("input[name=side][value=random]")).toBeChecked();
     // 保存できなくても（ストレージが使えない）この対局には使われる
-    await page.locator(".preset[data-preset=dir]").click();
+    await choosePreset(page, "dir");
     await saveSettings(page);
     await expect(page.locator("#menu-rule-name")).toHaveText("方向駒");
     await startGame(page);
@@ -252,7 +321,7 @@ test("前の標準のまま保存した人は今の標準で始まり（ルー�
   // スキルなしを選んで保存し直すと、再読み込みしても（2 回）スキルなしのまま
   await page.goto("/");
   await openSettings(page);
-  await page.locator(".preset[data-preset=std]").click();
+  await choosePreset(page, "std");
   await saveSettings(page);
   await expect(page.locator("#menu-rule-name")).toHaveText("スキルなし");
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem("kyosho:settings") ?? "null"))).toMatchObject({ v: 2, side: "1", threat: true });

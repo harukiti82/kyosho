@@ -170,16 +170,17 @@
         <fieldset class="field">
           <!-- 見出しに選んでいるルールの名前（どのプリセットとも違えば「カスタム」） -->
           <legend class="label">ルール <span class="custom-tag" id="custom-tag"></span></legend>
-          <!-- 標準を大きな札に、ほかのプリセットは小さな札にして並べる（ui/setup.ts） -->
-          <div class="presets" id="presets"></div>
+          <!-- 標準を大きな札に、スキルなしを小さな札にして並べる。ほかのプリセットは下の「カスタム」の中（ui/setup.ts） -->
+          <div class="presets presets-front" id="presets"></div>
           <!-- 選んでいる設定のルール（対局中は引き出しの「ルール」に出る） -->
           <ol class="rules4-list setup-rules" id="setup-rules4" aria-label="この設定のルール"></ol>
         </fieldset>
 
-        <!-- 細かい項目は折りたたむ（プリセットと違う設定で開いたときは開いて始める。ui/setup.ts） -->
+        <!-- 試遊用のプリセットと細かい項目は「カスタム」にしまう（標準・スキルなし以外の設定で開いたときは開いて始める。ui/setup.ts） -->
         <details class="rule-details" id="rule-details">
-          <summary class="rule-details-head">詳細設定</summary>
+          <summary class="rule-details-head">カスタム</summary>
           <div class="rule-fields">
+            <div class="presets presets-trial" id="trial-presets" role="group" aria-label="試遊用のルール"></div>
             <div class="opt">
               <span class="opt-name" id="opt-action">挟んだ駒を</span>
               <div class="seg" role="radiogroup" aria-labelledby="opt-action">

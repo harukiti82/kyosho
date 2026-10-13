@@ -3107,10 +3107,20 @@ button {
   flex: 1 1 auto;
   min-width: 4.6rem;
 }
-/* 既定（標準）は 1 行を占める大きな札、ほかは小さな札 */
+/* 既定（標準）は大きな札、スキルなしはその横の小さな札（1 行に 3 対 1）。試遊用のプリセットは「カスタム」の中に小さな札 */
 .preset-main {
-  flex-basis: 100%;
+  flex: 3 1 0;
   padding: 0.75rem 0.8rem;
+}
+.presets-front {
+  flex-wrap: nowrap;
+  align-items: stretch;
+}
+.presets-front .preset:not(.preset-main) {
+  flex: 1 1 0;
+}
+.presets-trial {
+  padding-bottom: 0.2rem;
 }
 .preset-main .preset-name {
   letter-spacing: 0.1em;

@@ -5,7 +5,7 @@ import { cloneRules, defaultRules, matchPreset, NO_KING, PRESETS, presetById, sa
 import { decodeRules, encodeRules, QUERY_BASE } from "../src/ui/query";
 import compat from "./fixtures/query-compat.json";
 import { endDetails, ruleDetails, ruleLines, sentenceText } from "../src/ui/ruletext";
-import { cryptoRandom, defaultSaved, drawSeat, loadSaved, SAVE_VERSION, seatChoice, SETTINGS_KEY, storeSaved } from "../src/ui/setup";
+import { cryptoRandom, defaultSaved, drawSeat, FRONT_PRESETS, isFrontRules, loadSaved, SAVE_VERSION, seatChoice, SETTINGS_KEY, storeSaved } from "../src/ui/setup";
 import { rulesOf } from "./helpers";
 
 describe("URL クエリ", () => {
@@ -434,5 +434,15 @@ describe("設定メニューの保存（localStorage）", () => {
     }));
     expect(loadSaved(throwing)).toEqual(defaultSaved());
     expect(() => storeSaved(throwing, defaultSaved())).not.toThrow();
+  });
+});
+
+describe("設定メニューのルールの欄", () => {
+  it("いつも出すのは標準（既定・先頭）とスキルなしだけ。ほかのプリセット・細かく変えた設定は「カスタム」", () => {
+    expect(FRONT_PRESETS).toEqual(["skill", "std"]);
+    expect(isFrontRules(presetById("skill").rules)).toBe(true);
+    expect(isFrontRules(presetById("std").rules)).toBe(true);
+    for (const p of PRESETS.filter((p) => !FRONT_PRESETS.includes(p.id))) expect(isFrontRules(p.rules), p.id).toBe(false);
+    expect(isFrontRules({ ...presetById("skill").rules, hp: [77, 134] })).toBe(false);
   });
 });
