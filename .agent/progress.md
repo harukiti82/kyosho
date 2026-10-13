@@ -66,3 +66,7 @@
 - スキルありを新しい「標準」に（id `skill` の表示名を「標準」・既定、id `std` を「スキルなし」。id・URL・保存の意味は変えず、旧標準の保存はスキルなしとして読む）。遊び方を新しい標準の 1 本の流れ（16 ステップ、章を選ぶ段なし、古い 2 章の進み具合は id で読み替え）に。e2e は `startGame` がカードを選ぶ画面が黙って出たら例外にし、スキルを前提にしないテストは `preset: "std"` を明示
 - 旧標準（id `std` と同じ値）のまま保存した設定を新しい標準（id `skill`）に読み替える（`LEGACY_PRESETS` に 1 件）。保存に版 `v: 2` を足し、版のない保存だけを読み替えるので、その後にスキルなしを選んで保存した人は戻されない。ユニット `settings.test.ts`・e2e `menu.spec.ts`
 - スキル練習（カードごとのチュートリアル）: メニューの「スキル練習」→ 11 枚の札の一覧から 1 枚を選び、満タンのカードを使って効き目を見る（補充・王の移し替え・運命の輪の指定、連続行動の 2 手目、鉄壁の相手の応手、巻き戻しの 2 手戻し）。終えた印は `kyosho:skill-tutorial`。偵察のステップをここへ移す。unit `skilllesson.test.ts`・e2e `skill-tutorial.spec.ts`
+
+## 2026-10-13
+
+- アクセス解析（Cloudflare Web Analytics、クッキーなし）: `ui/analytics.ts` が本番のホスト名 `kyosho.rukiharukichi.com` でトークンがあるときだけ `beacon.min.js` を 1 回読む（localhost・e2e・GitHub Pages は読まない）。ユニット `analytics.test.ts`・e2e `analytics.spec.ts`・README
