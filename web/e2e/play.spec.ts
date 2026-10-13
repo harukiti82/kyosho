@@ -205,7 +205,7 @@ test.describe("PC 幅", () => {
 
     // 不正なクエリ: エラーにならず、不正な項目は URL の基準（v1.0）の値（既定を変える前と同じ解釈）
     await other.goto("/?take=zzz&gate=7&dmg=<script>&hp1=-3&hp2=1e9&fu=abc&hi=99&limit=99999&heal=__proto__");
-    await expect(other.locator("#menu-note")).toContainText("v1.0（取る）の値にしました");
+    await expect(other.locator("#menu-note")).toContainText("初期値にしました");
     expect(await readSetup(other)).toEqual(presetById("v10").rules);
     await expect(other.locator(".preset[aria-pressed=true]")).toHaveAttribute("data-preset", "v10");
     await startGame(other);

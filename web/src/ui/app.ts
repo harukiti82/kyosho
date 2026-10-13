@@ -74,6 +74,7 @@ import {
   type EndReason,
 } from "../net/online";
 import { TURN_SECONDS, type ErrorMessage, type MatchRecord, type RematchAction, type RoomPhase, type StateMessage } from "../net/protocol";
+import { AboutDialog } from "./about";
 import { dirIcon } from "./diricon";
 import { clockLevel, clockText, cpuTurnSeconds, turnSecondsText, TurnClock } from "./clock";
 import { byId, h } from "./dom";
@@ -256,6 +257,7 @@ export class App {
   private readonly cells: HTMLButtonElement[][] = [];
   private readonly setup: SetupDialog;
   private readonly menu: Menu;
+  private readonly about = new AboutDialog();
   private readonly fx = new Fx(byId("fx"));
   private readonly el = {
     game: byId("game"),
@@ -289,6 +291,7 @@ export class App {
       learn: () => this.openLesson(resumeStep(this.progress)),
       skillLesson: (id) => this.openSkillLesson(skillLessonIndex(id)),
       settings: () => this.setup.open(),
+      about: () => this.about.open(),
       rules: () => this.showRules(this.setup.current.rules),
       resume: () => this.resume(),
     });

@@ -120,7 +120,7 @@ test.describe("PC 幅", () => {
 
     // 不正な値は項目ごとに URL の基準（v1.0）の値にして知らせる
     await page.goto("/?dir=diagonal&kaku=99&vfu=0&vkin=5");
-    await expect(page.locator("#menu-note")).toHaveText("URL の挟める方向・角の数・歩の数字が読めないので、v1.0（取る）の値にしました");
+    await expect(page.locator("#menu-note")).toHaveText("URL の挟める方向・角の数・歩の数字が読めないので、初期値にしました");
     const bad = await readSetup(page);
     expect([bad.dirs, bad.hand.kaku, bad.values.fu, bad.values.kin]).toEqual(["all", 0, 1, 5]);
     expect(errors).toEqual([]);

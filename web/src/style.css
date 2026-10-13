@@ -636,6 +636,18 @@ button {
 #menu-settings {
   animation-delay: 0.24s;
 }
+#menu-about {
+  animation-delay: 0.28s;
+}
+/* このゲームについて: 小さな項目の中でも一段小さく（字数が多いので、同じ大きさだと主な入口より横に長く目立つ） */
+.menu-panel .menu-about {
+  font-size: clamp(1.05rem, 4.8vw, 1.3rem);
+}
+@media (min-width: 900px) {
+  .menu-panel .menu-about {
+    font-size: 1.6rem;
+  }
+}
 @media (min-width: 900px) {
   .menu {
     padding-top: clamp(1.5rem, 12vh, 7rem);
@@ -3107,7 +3119,7 @@ button {
   flex: 1 1 auto;
   min-width: 4.6rem;
 }
-/* 既定（標準）は大きな札、スキルなしはその横の小さな札（1 行に 3 対 1）。試遊用のプリセットは「カスタム」の中に小さな札 */
+/* 既定（標準）は大きな札、スキルなしはその横の小さな札（1 行に 3 対 1）。そのほかのプリセットは「カスタム」の中に小さな札 */
 .preset-main {
   flex: 3 1 0;
   padding: 0.75rem 0.8rem;
@@ -3694,6 +3706,111 @@ button {
 .rules-body .note {
   font-size: 0.8rem;
   color: var(--ink-dim);
+}
+
+/* ---- このゲームについて（ui/about.ts） ---- */
+/* 名前と版は 1 行に並べ、字の太さで分ける。作者はその下に小さく */
+.about-name {
+  display: flex;
+  align-items: baseline;
+  gap: 0.7rem;
+  margin: 0;
+}
+.about-word {
+  font-family: var(--font-display);
+  font-size: 1.6rem;
+  font-weight: 900;
+  color: #fff;
+  text-shadow: var(--soft-shadow);
+}
+.about-version {
+  font-family: var(--font-display);
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: var(--ink-muted);
+}
+.about-credit {
+  margin: 0.1rem 0 0.4rem;
+  font-size: 0.85rem;
+  color: var(--ink-muted);
+}
+.about-lines {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.about-lines li {
+  margin: 0.7rem 0 0;
+}
+.about-lines .rule-point {
+  display: block;
+}
+.about-lines .rule-note {
+  margin-top: 0.1rem;
+}
+a.btn {
+  display: inline-block;
+  text-decoration: none;
+}
+
+/* ---- 想定外のエラーの知らせ（ui/crash.ts）。トーストと同じ白い斜めの板を下に出し、画面はそのまま残す ---- */
+.crash {
+  position: fixed;
+  inset: auto 0 1.25rem;
+  margin: 0 auto;
+  width: max-content;
+  max-width: calc(100vw - 32px);
+  padding: 0.6rem 0.9rem 0.6rem 1.4rem;
+  border: 0;
+  border-radius: 0;
+  background: #fff;
+  color: var(--navy-900);
+  clip-path: var(--slant-sm);
+  box-shadow: inset 0.45rem 0 0 #0b0b0c;
+}
+.crash[open] {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem 0.9rem;
+}
+.crash::backdrop {
+  background: rgba(2, 8, 23, 0.35);
+}
+.crash-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 900;
+}
+.crash-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+.crash .btn {
+  font-size: 0.86rem;
+}
+/* 白い板の上の鍵は紺の地に白の字（決定は紺の板に反転） */
+.crash .btn.ghost {
+  background: var(--navy-700);
+}
+.crash .btn.primary {
+  background: var(--navy-900);
+  color: #fff;
+}
+.crash .btn:hover {
+  background: var(--navy-950);
+  color: #fff;
+}
+
+/* ---- JavaScript がないとき（noscript） ---- */
+.noscript {
+  margin: 1rem 16px;
+  padding: 0.6rem 0.9rem 0.6rem 1.4rem;
+  background: #fff;
+  color: #0a2c9f;
+  font-weight: 900;
+  box-shadow: inset 0.45rem 0 0 #0b0b0c;
 }
 
 /* 印の見本（盤の印と同じ形・色。盤と同じ色の小さなマスに描く） */

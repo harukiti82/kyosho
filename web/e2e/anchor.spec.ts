@@ -116,7 +116,7 @@ test.describe("PC 幅", () => {
 
     // 不正な値は URL の基準（v1.0）の値（なし）にして知らせる
     await page.goto("/?anc=bogus&dir=piece");
-    await expect(page.locator("#menu-note")).toHaveText("URL の反対側の駒の力が読めないので、v1.0（取る）の値にしました");
+    await expect(page.locator("#menu-note")).toHaveText("URL の反対側の駒の力が読めないので、初期値にしました");
     expect((await readSetup(page)).anchor).toBe("none");
     await expect(page.locator("input[name=anchor][value=none]")).toBeChecked();
     expect(errors).toEqual([]);

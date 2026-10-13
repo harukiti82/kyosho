@@ -117,7 +117,7 @@ test.describe("PC 幅", () => {
 
     // 不正な値は URL の基準（v1.0）の値（なし・体力−20・5 手）にして知らせる
     await page.goto("/?king=1&kpen=boom&kdmg=0&kdue=99");
-    await expect(page.locator("#menu-note")).toContainText("URL の王の罰・王の罰の体力・王の指定期限が読めないので、v1.0（取る）の値にしました");
+    await expect(page.locator("#menu-note")).toContainText("URL の王の罰・王の罰の体力・王の指定期限が読めないので、初期値にしました");
     expect((await readSetup(page)).king).toEqual({ on: true, penalty: "hp", amount: 20, deadline: 5 });
     expect(errors).toEqual([]);
   });
