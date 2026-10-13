@@ -44,3 +44,9 @@ The game text is in Japanese.
 - King: press the King piece at the right end of your hand, then place
 - Skill: press your card on your name plate, then place
 - Rules: the "?" button at the top right
+
+## Privacy and rights
+
+- Settings, tutorial progress and your win/loss record are stored only in your browser
+- At https://kyosho.rukiharukichi.com/ , visits are counted with Cloudflare Web Analytics (no cookies), and online play sends your moves to the game server. No name or account is used
+- Version 1.0. © 2026 rukiharukichi. All rights reserved. Do not copy, redistribute or modify the game, its rules, images or text without permission
