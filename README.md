@@ -1,7 +1,7 @@
 # 挟将（きょうしょう）
 
 リバーシの盤で、挟んだ相手の駒を取って自分の持ち駒にする二人対戦ゲーム。取った駒の数字（歩1・金3・飛5）の合計が相手へのダメージになり、体力 20 を先に削り切った方が勝ち。
-ルールは [RULES.md](RULES.md)（v1.0）を参照。
+ルールは [RULES.md](RULES.md)（標準・スキルなし）を参照。
 
 1. 持ち駒を空いているマスならどこにでも置ける
 2. 置いた駒と自分の駒で挟んだ相手の駒を取って、自分の持ち駒にする
@@ -120,4 +120,4 @@ main への push で web と server のテスト → web のビルド → `wrang
 ## バランス検証（`sim/`）
 
 Python 3 のシミュレーター（標準ライブラリのみ）。v1.0 は `sim/capture.py` / `sim/check_capture.py`、v2 案（強い駒は返せない）は `sim/gate.py`。
-使い方は [RULES.md のシミュレーター節](RULES.md#シミュレーター) を参照。旧ルール v0.4 は [docs/RULES-v0.4.md](docs/RULES-v0.4.md) と `sim/kyosho.py` に残している。
+使い方は [docs/RULES-history.md のシミュレーター節](docs/RULES-history.md#シミュレーター) を参照。旧ルール v0.4 は [docs/RULES-v0.4.md](docs/RULES-v0.4.md) と `sim/kyosho.py` に残している。

@@ -2,8 +2,9 @@
 
 オセロの盤で、挟んだ相手の駒の数字がダメージになる二人対戦ゲーム。ルール設計（`RULES.md`）、Python のバランス検証（`sim/`）、ルールを組み合わせて遊び比べるブラウザの試遊版（`web/`）、オンライン対戦のサーバー（`server/`）からなる。
 
-> ルールの正は `RULES.md`（v1.0「取った駒が持ち駒になる」）。解釈が曖昧なときは `sim/capture.py` の実装を正とする。
-> Web 試遊版の設定項目とプリセット（隠し王・方向駒・拠点・既定の「標準」を含む）は `RULES.md` の「Web 試遊版」節。プリセット v0.4 / v1.0 / v2 案は `sim/kyosho.py` / `sim/capture.py` / `sim/gate.py` と全手一致させる。
+> ルールの正は `RULES.md`（標準 = id `skill` と、スキルなし = id `std` の正式なルール。冒頭の版は `{版}` のまま置き、番号はユーザーが決める）。本文の数字・解釈は `web/src/engine/`（`rules.ts` の `PRESETS`・`skills.ts`・`game.ts`）を正とし、食い違えば RULES.md をコードに揃える。
+> 旧ルール v1.0 の本文・検証の数字・バランスの表・改訂の経緯は `docs/RULES-history.md`（2026-10-13 に RULES.md から移した。v1.0 の解釈が曖昧なときは `sim/capture.py` の実装を正とする）。
+> Web 試遊版の設定項目とプリセット（隠し王・方向駒・拠点・既定の「標準」を含む）は `docs/RULES-history.md` の「Web 試遊版」節。プリセット v0.4 / v1.0 / v2 案は `sim/kyosho.py` / `sim/capture.py` / `sim/gate.py` と全手一致させる。
 > 旧ルール v0.4 は `docs/RULES-v0.4.md` と `sim/kyosho.py` に履歴として残す（変更しない）。
 > ユーザー向けの説明は README.md にある。
 
@@ -11,7 +12,7 @@
 
 - 目的: ルールを詰め、人間の試遊で面白さを確かめる
 - 対象: 作者と試遊する人（ブラウザ版は起動時のメニューから CPU 対戦（強さ 3 段階）・マルチ（同じ端末での 2 人対戦・招待リンクでのオンライン対戦）・遊び方（盤で打ちながら標準を 1 本の流れで覚えるチュートリアル）・スキル練習（カード 11 枚を 1 枚ずつ盤で使って覚える）。ルールは設定メニューで組み合わせて保存し、変えなければ標準）
-- 状況: v0.4 は「難しい」「普通のオセロと変わらない」、v1.0 は「オセロじゃなくてもよくなって悪化」。読み合いを足すため「隠し王」（相手に見えない王）、戦略性を足すため「方向駒」（駒ごとに挟める方向が違う）、駒を置くリスクとリターンを足すため「端の駒の力」（挟んだ端の自分の駒の数字もダメージに足す。プリセット「拠点」）を設定項目とプリセットに追加した。ユーザーが遊び比べて選んだ組み合わせ（方向駒＋端の駒の力＋隠し王−30）をプリセット「標準」として既定にした。ユーザーの案で、返した枚数でゲージが溜まる「スキル」（タロットカード風の 11 枚。対局の前に 3 枚から 1 枚を選ぶ）を標準＋スキルのプリセット「スキルあり」として足した（値はリポジトリ外のシミュレーター kyosho-skillsim で決めた。補充・偵察の作り直しと連続行動・運命の輪・巻き戻しはユーザーの決定。RULES.md「スキル」）。その後ユーザーの指定で王の指定期限を 7 手・回復を低い方−1 にし、体力は 2 手読み同士で先手勝率が 50% に最も近い 129・130 にした（経緯は RULES.md「Web 試遊版」節）。2026-10-12 にユーザーの指示でスキルありを既定にし、表示名を入れ替えた: id `skill` が「標準」（既定）、id `std` が「スキルなし」（内部の id・URL・保存の意味は変えない。コードの id `std` は「スキルなし」のこと）（RULES.md 本文の改稿はまだ。ルールの決定はユーザーがする）
+- 状況: v0.4 は「難しい」「普通のオセロと変わらない」、v1.0 は「オセロじゃなくてもよくなって悪化」。読み合いを足すため「隠し王」（相手に見えない王）、戦略性を足すため「方向駒」（駒ごとに挟める方向が違う）、駒を置くリスクとリターンを足すため「端の駒の力」（挟んだ端の自分の駒の数字もダメージに足す。プリセット「拠点」）を設定項目とプリセットに追加した。ユーザーが遊び比べて選んだ組み合わせ（方向駒＋端の駒の力＋隠し王−30）をプリセット「標準」として既定にした。ユーザーの案で、返した枚数でゲージが溜まる「スキル」（タロットカード風の 11 枚。対局の前に 3 枚から 1 枚を選ぶ）を標準＋スキルのプリセット「スキルあり」として足した（値はリポジトリ外のシミュレーター kyosho-skillsim で決めた。補充・偵察の作り直しと連続行動・運命の輪・巻き戻しはユーザーの決定。経緯は `docs/RULES-history.md`「スキル」）。その後ユーザーの指定で王の指定期限を 7 手・回復を低い方−1 にし、体力は 2 手読み同士で先手勝率が 50% に最も近い 129・130 にした（経緯は `docs/RULES-history.md`「Web 試遊版」節）。2026-10-12 にユーザーの指示でスキルありを既定にし、表示名を入れ替えた: id `skill` が「標準」（既定）、id `std` が「スキルなし」（内部の id・URL・保存の意味は変えない。コードの id `std` は「スキルなし」のこと）。2026-10-13 に RULES.md を標準・スキルなしの正式なルールの本文に書き直した（ルールの決定はユーザーがする）
 - 手応え: 手番が抽選のときは対局の始めに盤の石を投げる演出、大ダメージほど段階的に派手な演出・効果音、終局画面の前に勝ち・負け・引き分けの決着の演出、終局画面に成績（ルール上のボーナスではない。`ui/impact.ts` / `ui/outcome.ts` / `ui/fx.ts` / `ui/sound.ts`）
 - 最重要要件: **ルールが一目で分かること**。ルールはいつでも 1 タップで見られる（設定から生成するルールカードは引き出しの「ルール 名前」のタブ。見出しは常に表示、PC は開いて始め、スマホは閉じて始める）。盤では返せる駒とダメージ・回復の予測（マスのバッジと吹き出し）・返されうる駒の警告（表示を切り替えられる。既定はオフ）・普通のリバーシなら置けるマスの点線の枠（参考）・方向駒のアイコン・端の駒の青枠とダメージの内訳で示す
 - 見た目: 青い地と斜めの勢いはユーザーの個人サイト rukiharukichi.com に揃えつつ、挟む石・盤の格子などゲーム独自のモチーフにした（ユーザーが試作 3 案から選んだ G 案）。説明の文を常に出さず、形と動きで伝える（下の「デザイン規約」）
@@ -32,12 +33,13 @@ kyosho/
 ├── .github/workflows/pages.yml ← PR でテスト+ビルド、main への push で GitHub Pages にデプロイ
 ├── .github/workflows/server.yml ← server/ の型チェックとテスト
 ├── .github/workflows/deploy.yml ← main への push で画面＋サーバーを Cloudflare にデプロイ（Secret CLOUDFLARE_API_TOKEN 未設定ならスキップ）。PR はテストと --dry-run
-├── RULES.md          ← ルール本体（v1.0）・検証結果・改訂履歴（ルール変更はここが起点）
+├── RULES.md          ← 標準・スキルなしの正式なルール（遊ぶ人向けの本文。数字はコードと一致させる）
+├── docs/RULES-history.md ← 旧ルール v1.0 の本文・Web 試遊版の設定項目とプリセット・検証結果・改訂の経緯（ルール変更の経緯はここに足す）
 ├── docs/RULES-v0.4.md ← 旧ルール v0.4 の本文（履歴）
 ├── sim/              ← Python のルールエンジンとバランス検証スクリプト
 │   ├── capture.py        ← v1.0 のエンジンとボット（random / greedy / lookahead）
 │   ├── gate.py           ← v2 案（置いた駒より強い駒は返せない）のエンジンとボット
-│   ├── check_capture.py  ← v1.0 の検証値（RULES.md の表）
+│   ├── check_capture.py  ← v1.0 の検証値（docs/RULES-history.md の表）
 │   ├── export_replays.py ← web の整合テスト用棋譜を書き出す（kyosho.py / capture.py / gate.py の 3 本）
 │   └── kyosho.py ほか    ← v0.4 のシミュレーター（履歴。ロジックは変更しない）
 └── web/
@@ -96,23 +98,23 @@ server/               ← 画面（web/dist の静的アセット）と /api（�
 | バランス確認 | `cd web && npm run balance -- 400 king`（2 手読み同士。スキルは `npm run balance -- skill 400`、11 枚を両者に引かせるのは `skillmix 400`。方向駒は `400 dir`、拠点は `400 anchor`、スキルなしは `400 std`。第 3 引数で体力 "先手,後手"）。CPU の強さ同士は `npm run balance -- vs 400 std easy normal`（先手・後手を 1 局ごとに入れ替え） |
 | 棋譜の再生成 | `python3 sim/export_replays.py`（v0.4 / v1.0 / v2 案、約 30 秒） |
 | 公開 | main への merge で自動デプロイ → https://harukiti82.github.io/kyosho/ （GitHub Pages、移行が済むまで残す）と Cloudflare https://kyosho.rukiharukichi.com/ （`deploy.yml`、Secret 登録後。手順は README「独自ドメイン（kyosho.rukiharukichi.com）」。ルートの rukiharukichi.com は使わない）。workflow は main 直 push せず PR 経由で変更 |
-| シミュレーター | `RULES.md` のシミュレーター節を参照 |
+| シミュレーター | `docs/RULES-history.md` のシミュレーター節を参照 |
 | サーバー | `cd server && npm run dev`（web をビルドして :8787 で画面と `/api`。画面を直しながらなら併せて `cd web && npm run dev` の :5173 が `/api` をプロキシ）/ `npm run typecheck` / `npm test` / `node scripts/play.mjs http://localhost:8787`（2 クライアントで 1 局。第 2 引数でプリセット、既定は std）。`npm run deploy:check`（dry-run）/ `npm run deploy`（web のビルド → wrangler deploy。Cloudflare へのログインが必要） |
 
 ## ルール・設定項目を変えるとき
 
-- 標準（id `skill`）・スキルなし（id `std`）の値を変える: `PRESETS` と RULES.md に加え、遊び方の局面・文（`ui/lessons.ts` は標準から要素を外して各ステップのルールを作る。`npm test` の `test/lesson.test.ts` が確かめる）
+- 標準（id `skill`）・スキルなし（id `std`）・スキル（`skills.ts`）の値を変える: `PRESETS` と RULES.md の本文（数字）・`docs/RULES-history.md`（経緯と検証の値）に加え、遊び方の局面・文（`ui/lessons.ts` は標準から要素を外して各ステップのルールを作る。`npm test` の `test/lesson.test.ts` が確かめる）
 - プリセットの表示名を変える: `PRESETS` の `name` だけ（id は URL・保存・テストが使うので変えない）。名前を出す e2e（`menu.spec.ts` / `play.spec.ts` / `tutorial.spec.ts` の「ルール 標準」など）も揃える
 - e2e で既定のルールのまま対局を始めると、既定はスキルありなのでカードを選ぶ画面が出る。スキルを前提にしないテストは `startGame(page, { preset: "std" })`（スキルなし）を明示する（`startGame` は指定なしで選ぶ画面が出たら例外にする）。オンラインは `createRoomFromSetup(host, "std", …)`
 - 既定を変える: `web/src/engine/rules.ts` の `DEFAULT_PRESET` だけ（`ui/query.ts` の `QUERY_BASE` は変えない。変えると共有済みの URL の意味が変わる）
-- プリセットの値を変える: `web/src/engine/rules.ts` の `PRESETS` と `RULES.md` の「Web 試遊版」節。v0.4 / v1.0 / v2 案は対応するシミュレーターの `Rules`（`sim/export_replays.py` が渡す値）も揃える
+- プリセットの値を変える: `web/src/engine/rules.ts` の `PRESETS` と `docs/RULES-history.md` の「Web 試遊版」節（標準・スキルなしは RULES.md の本文も）。v0.4 / v1.0 / v2 案は対応するシミュレーターの `Rules`（`sim/export_replays.py` が渡す値）も揃える
 - 設定項目を足す: `RuleSet`（`engine/rules.ts`）→ エンジン（`board.ts` / `game.ts` / `cpu.ts`）→ `ui/query.ts`（URL の検証）→ `ui/ruletext.ts`（ルールカード・詳細の文）→ `index.html` の設定フォームと `ui/setup.ts`
 - シミュレーターのルールを変えたら `python3 sim/export_replays.py` で棋譜を作り直し、`npm test` で Python と TS の一致を確認
 - 対局画面のルールカード・ルール詳細は設定から自動生成する（`index.html` に固定の文は書かない）
 
 ## AI 向け詳細仕様
 
-- ルール: `RULES.md`（必要時に Read）
+- ルール: `RULES.md`（標準・スキルなしの正式なルール）、経緯・検証・設定項目とプリセット: `docs/RULES-history.md`（どちらも必要時に Read）
 - オンライン対戦の通信仕様と設計（エンドポイント・メッセージ・流れ・エラー・再接続）: `.agent/online-protocol.md`（必要時に Read）
 - エンジンの公開関数: `web/src/engine/game.ts`（`createGame(rules)` / 指定した局面から始める `gameFrom(rules, position)`（チュートリアル） / `playMove(state, r, c, kind, { king })` / 時間切れの `randomMove` / `playTimeout(state, rng)` / `legalCells` / `playableKinds` / `previewMove`（`base` / `anchors` で内訳） / `threatenedPieces` / `canMove` / `judge` / 隠し王の `kingInfo` / `kingCandidates` / `viewFor`）と `cpu.ts`（`chooseLookahead(viewFor(state, turn))`）。返せる列は `board.ts` の `rawLines`（8 方向。反対端の自駒 `end` / `endAt` を持つ）→ `pieceLines`（駒の方向 `dirs` と強さ制限で絞る）。設定の型とプリセットは `rules.ts`（`RuleSet`（`dirs` / `values` / `anchor` を含む） / `PRESETS` / `NO_KING` / `KIND_ORDER` / `kindsByValue`）
 
