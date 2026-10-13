@@ -188,7 +188,7 @@ const BASIC_LESSONS: readonly Lesson[] = [
     id: "flank",
     title: "挟む",
     point: "白い駒を挟むと、黒に裏返る",
-    note: "あなたは黒で、挟み方はオセロと同じ。",
+    note: "あなたは黒で、挟み方はリバーシと同じ。",
     task: "光っているマスをタップして、歩を置く",
     rules: rulesWith({}),
     start() {
@@ -246,7 +246,7 @@ const BASIC_LESSONS: readonly Lesson[] = [
     guide: cells("e4"),
     hint: () => "光っているマスに飛を置いて、横に並んだ白い歩を挟む",
     done: (m) =>
-      `${PIECES[m.kind].name}で、横に並んだ白い歩を ${m.targets.length} つ裏返した。盤に出る点線の枠は、ふつうのオセロなら置けるマスの目印。駒の向きが合わないと、そこにも置けない。`,
+      `${PIECES[m.kind].name}で、横に並んだ白い歩を ${m.targets.length} つ裏返した。盤に出る点線の枠は、ふつうのリバーシなら置けるマスの目印。駒の向きが合わないと、そこにも置けない。`,
   },
   {
     id: "hand",
