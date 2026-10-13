@@ -70,12 +70,22 @@ npm run dev        # 表示された URL（既定 http://localhost:5173）を開
 | ビルド結果の確認 | `npm run preview` |
 | 型チェック | `npm run typecheck` |
 | ユニットテスト + Python エンジン（v0.4 / v1.0 / v2 案）との整合テスト | `npm test` |
-| ヘッドレスブラウザでの対局テスト（初回は `npx playwright install chromium`。`/api` なし。ポートは既定 :4179、`E2E_PORT=4189 npm run e2e` で変えられる） | `npm run e2e` |
+| ヘッドレスブラウザでの対局テスト（初回は `npx playwright install chromium`。`/api` なし。ポートは既定 :4179 と、GitHub Pages と同じサブパス `/kyosho/` の :4180（`E2E_PORT=4189 npm run e2e` で :4189・:4190 に変えられる）。Service Worker は `pwa.spec.ts` のほかは止める） | `npm run e2e` |
 | オンライン対戦の e2e（`wrangler dev` を :8790（`E2E_ONLINE_PORT` で変更可）で起こし、2 つのブラウザで作成 → 参加 → 終局・再読み込み・切断・エラー・制限時間。先に `server/` で `npm ci`） | `npm run e2e:online` |
 | バランス確認（2 手読み同士。引数: 局数・プリセット・体力 "先手,後手"） | `npm run balance -- 400 king`（方向駒は `400 dir`、拠点は `400 anchor`）。スキルは `npm run balance -- skill 400`（片側だけスキル・カードごとの勝率） |
 
 整合テストの棋譜（`web/test/fixtures/replays.json`）は `python3 sim/export_replays.py` で再生成できる（`sim/kyosho.py`・`sim/capture.py`・`sim/gate.py` の 3 本を、それぞれ対応するプリセットの設定で再生する）。
 シミュレーターのルールを変えたら TypeScript 側も直し、棋譜を作り直してから `npm test` を通す。
+
+### ホーム画面に追加・オフライン（PWA）
+
+本番（https://kyosho.rukiharukichi.com/ ）と GitHub Pages 版は PWA になっていて、スマホのホーム画面に追加できる（Android の Chrome は「アプリをインストール」/「ホーム画面に追加」、iPhone の Safari は共有 →「ホーム画面に追加」）。追加したアイコンから開くと、ブラウザの枠のない画面で動く。一度開いた後は通信がなくても、CPU 対戦・同じ端末の 2 人対戦・遊び方・スキル練習を開いて遊べる。オンライン対戦は通信が要るので、オフラインでは入口が出ない（招待リンクを開くと「接続できません」の案内）。
+
+- 中身: `web/public/manifest.webmanifest`（名前・アイコン・`start_url` / `scope` は相対なのでサブパスでも効く）、アイコン `web/public/icons/`（192・512・maskable。`npm run promo` の「アイコンの画像」が `favicon.svg` から撮る）、Service Worker はビルドのたびに `dist/sw.js` として書き出す（元は `web/pwa/sw.ts`、書き出しは `web/pwa/plugin.ts`。依存は足していない）
+- キャッシュ: 画面の入口はネットワークを優先し（取れなければ・4 秒待っても来なければキャッシュ）、ハッシュ付きの `assets/` はキャッシュを優先する。`/api`（HTTP と WebSocket）・`/cdn-cgi`・別オリジン（計測の `static.cloudflareinsights.com`）・GET 以外は SW が触らない
+- 新しい版: デプロイすると `sw.js` の中身（版）が変わり、次に開いたとき新しい版になる（入口がネットワーク優先なので 1 回目から。開いたままの画面は読み直さない）。前の版のキャッシュは新しい SW が消す
+- 確かめ方: `npm run e2e` の `e2e/pwa.spec.ts`（ルートとサブパス `/kyosho/` で、インストールの条件・オフラインで開き直して 1 手・版の切り替え・`/api` を横取りしない）。公開先では `PWA_TARGETS="https://kyosho.rukiharukichi.com/,https://harukiti82.github.io/kyosho/" npx playwright test -c playwright.pwa.config.ts`
+- 古い版から抜けられないとき: ブラウザのサイトの設定で「データを削除」（Chrome は DevTools の Application → Storage → Clear site data）
 
 ## オンライン対戦サーバーと Cloudflare での公開（`server/`）
 
