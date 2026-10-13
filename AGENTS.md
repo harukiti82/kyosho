@@ -2,8 +2,8 @@
 
 オセロの盤で、挟んだ相手の駒の数字がダメージになる二人対戦ゲーム。ルール設計（`RULES.md`）、Python のバランス検証（`sim/`）、ルールを組み合わせて遊び比べるブラウザの試遊版（`web/`）、オンライン対戦のサーバー（`server/`）からなる。
 
-> ルールの正は `RULES.md`（標準 = id `skill` と、スキルなし = id `std` の正式なルール。冒頭の版は `{版}` のまま置き、番号はユーザーが決める）。本文の数字・解釈は `web/src/engine/`（`rules.ts` の `PRESETS`・`skills.ts`・`game.ts`）を正とし、食い違えば RULES.md をコードに揃える。
-> 旧ルール v1.0 の本文・検証の数字・バランスの表・改訂の経緯は `docs/RULES-history.md`（2026-10-13 に RULES.md から移した。v1.0 の解釈が曖昧なときは `sim/capture.py` の実装を正とする）。
+> ルールの正は `RULES.md`（標準 = id `skill` と、スキルなし = id `std` の正式なルール。版は 1.0（2026-10-13 にユーザーが決めた。試遊のルール v1.0 とは別物で、冒頭に注記がある）。本文の数字・解釈は `web/src/engine/`（`rules.ts` の `PRESETS`・`skills.ts`・`game.ts`）を正とし、食い違えば RULES.md をコードに揃える。
+> 試遊のルール v1.0（取る。プリセット「v1.0（取る）」）の本文・検証の数字・バランスの表・改訂の経緯は `docs/RULES-history.md`（2026-10-13 に RULES.md から移した。v1.0 の解釈が曖昧なときは `sim/capture.py` の実装を正とする）。
 > Web 試遊版の設定項目とプリセット（隠し王・方向駒・拠点・既定の「標準」を含む）は `docs/RULES-history.md` の「Web 試遊版」節。プリセット v0.4 / v1.0 / v2 案は `sim/kyosho.py` / `sim/capture.py` / `sim/gate.py` と全手一致させる。
 > 旧ルール v0.4 は `docs/RULES-v0.4.md` と `sim/kyosho.py` に履歴として残す（変更しない）。
 > ユーザー向けの説明は README.md にある。
@@ -34,7 +34,7 @@ kyosho/
 ├── .github/workflows/server.yml ← server/ の型チェックとテスト
 ├── .github/workflows/deploy.yml ← main への push で画面＋サーバーを Cloudflare にデプロイ（Secret CLOUDFLARE_API_TOKEN 未設定ならスキップ）。PR はテストと --dry-run
 ├── RULES.md          ← 標準・スキルなしの正式なルール（遊ぶ人向けの本文。数字はコードと一致させる）
-├── docs/RULES-history.md ← 旧ルール v1.0 の本文・Web 試遊版の設定項目とプリセット・検証結果・改訂の経緯（ルール変更の経緯はここに足す）
+├── docs/RULES-history.md ← 試遊のルール v1.0 の本文・Web 試遊版の設定項目とプリセット・検証結果・改訂の経緯（ルール変更の経緯はここに足す）
 ├── docs/RULES-v0.4.md ← 旧ルール v0.4 の本文（履歴）
 ├── sim/              ← Python のルールエンジンとバランス検証スクリプト
 │   ├── capture.py        ← v1.0 のエンジンとボット（random / greedy / lookahead）
