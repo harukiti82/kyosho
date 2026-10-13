@@ -148,28 +148,22 @@ for (const base of TARGETS) {
       await context.setOffline(false);
     });
 
-    test("新しい版を出すと、開き直したときに新しい版になり、前の版のキャッシュは消える", async ({ page, context }) => {
-      const first = await install(page, base);
-      // 新しい版の公開を真似る: 入口に印を足し、sw.js の版を変える（assets はそのまま）
-      const swUrl = new URL("sw.js", base).href;
+    // SW 自体の差し替え（sw.js の版が変わって前の版のキャッシュが消える）は、ブラウザが取りに行く sw.js を route で
+    // 差し替えられないのでここでは見ない（ビルドを 2 回出して確かめる。README「ホーム画面に追加・オフライン（PWA）」）
+    test("新しい入口を出すと、1 回目の開き直しで新しい版になり、その後はオフラインでも新しい版", async ({ page, context }) => {
+      await install(page, base);
+      await expect(page.locator('meta[name="kyosho-build"]')).toHaveCount(0);
+      // 新しい版の公開を真似る: 入口に印を足す
       await context.route(base, async (route) => {
         const res = await route.fetch();
         const html = (await res.text()).replace("<head>", '<head><meta name="kyosho-build" content="next" />');
         await route.fulfill({ response: res, body: html });
       });
-      await context.route(swUrl, async (route) => {
-        const res = await route.fetch();
-        const js = (await res.text()).replace(/\)\(self, "([0-9a-f]+)"/, ')(self, "$1next"');
-        await route.fulfill({ response: res, body: js });
-      });
-      // 1 回目の開き直し: 入口はネットワーク優先なので新しい版
       await page.reload();
       await expect(page.locator('meta[name="kyosho-build"]')).toHaveCount(1);
-      // 新しい SW が有効になり、前の版のキャッシュが消える
-      await expect
-        .poll(async () => page.evaluate(async () => (await caches.keys()).filter((k) => k.startsWith("kyosho-"))), { timeout: 30_000 })
-        .toEqual([`${first.caches[0]}next`]);
-      // オフラインで開き直しても新しい版
+      await expect(page.locator("#menu")).toBeVisible();
+      await context.unroute(base);
+      // 取れた入口はキャッシュも更新している（オフラインで開き直しても新しい版）
       await context.setOffline(true);
       await page.reload();
       await expect(page.locator('meta[name="kyosho-build"]')).toHaveCount(1);

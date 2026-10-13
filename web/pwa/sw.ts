@@ -106,7 +106,7 @@ export function serviceWorker(sw: SwScope, version: string, files: readonly stri
     const first = await Promise.race([fresh.catch(() => null), timeout]);
     if (first) return first;
     // オフライン・待ちすぎ: scope の中の navigation はどれも入口を返す（?room= も画面が案内を出す）
-    const cached = await cache.match(shell);
+    const cached = await cache.match(shell, { ignoreVary: true });
     return cached ?? fresh;
   };
 
@@ -114,7 +114,8 @@ export function serviceWorker(sw: SwScope, version: string, files: readonly stri
   const cacheFirst = async (e: SwFetchEvent): Promise<Response> => {
     const req = e.request;
     const cache = await sw.caches.open(CACHE);
-    const hit = await cache.match(req);
+    // Vary（vite preview の Origin など）は見ない: module script は Origin を付けるが、precache の取得は付けない。中身はどれも静的
+    const hit = await cache.match(req, { ignoreVary: true });
     if (hit) return hit;
     const res = await sw.fetch(req);
     if (storable(res) && new URL(req.url).pathname.startsWith(assetsPath)) e.waitUntil(cache.put(req, res.clone()));

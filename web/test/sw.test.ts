@@ -9,7 +9,9 @@ import { registerServiceWorker, SW_URL } from "../src/pwa";
 /** Map で持つ偽の Cache（URL で引く。クエリも区別する） */
 class FakeCache {
   readonly store = new Map<string, Response>();
-  async match(req: RequestInfo | URL): Promise<Response | undefined> {
+  readonly matchOptions: (CacheQueryOptions | undefined)[] = [];
+  async match(req: RequestInfo | URL, options?: CacheQueryOptions): Promise<Response | undefined> {
+    this.matchOptions.push(options);
     const hit = this.store.get(urlOf(req));
     return hit?.clone();
   }
@@ -188,6 +190,18 @@ describe("fetch の振り分け", () => {
     expect(await t.request(`${ORIGIN}/assets/index-b.js`)).toEqual({ status: 200, text: "new js" });
     t.state.network = null;
     expect(await t.request(`${ORIGIN}/assets/index-b.js`)).toEqual({ status: 200, text: "new js" });
+  });
+
+  it("キャッシュは Vary を見ずに引く（vite preview の Vary: Origin で module script が外れてオフラインで動かなかった）", async () => {
+    const t = fakeSw(`${ORIGIN}/`, site(`${ORIGIN}/`));
+    serviceWorker(t.sw, "v1", FILES);
+    await t.lifecycle("install");
+    t.state.network = null;
+    await t.request(`${ORIGIN}/`, { navigate: true });
+    await t.request(`${ORIGIN}/assets/index-a.js`);
+    const opts = t.caches.map.get("kyosho-v1")!.matchOptions;
+    expect(opts.length).toBe(2);
+    expect(opts.every((o) => o?.ignoreVary === true)).toBe(true);
   });
 
   it("assets の外でキャッシュにないもの（ogp.png）は取るだけで入れない", async () => {
