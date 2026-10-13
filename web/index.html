@@ -26,8 +26,9 @@
     <meta name="twitter:card" content="summary_large_image" />
   </head>
   <body>
+    <noscript><p class="noscript">挟将を遊ぶには JavaScript を有効にしてください。</p></noscript>
     <header class="topbar">
-      <h1 class="title"><svg class="brand-mark" viewBox="0 0 120 120" aria-hidden="true"><g transform="skewX(-12) translate(12 0)"><rect class="board-sq" x="8" y="8" width="104" height="104" /><path class="grid" d="M60 8V112M8 60H112" /><circle class="black" cx="34" cy="34" r="20" /><circle class="white" cx="86" cy="34" r="20" /><circle class="black" cx="86" cy="86" r="20" /><polygon class="white" points="34,63 49.2,72.2 53,109 15,109 18.8,72.2" /></g></svg>挟将<span class="title-sub">きょうしょう 試遊版</span></h1>
+      <h1 class="title"><svg class="brand-mark" viewBox="0 0 120 120" aria-hidden="true"><g transform="skewX(-12) translate(12 0)"><rect class="board-sq" x="8" y="8" width="104" height="104" /><path class="grid" d="M60 8V112M8 60H112" /><circle class="black" cx="34" cy="34" r="20" /><circle class="white" cx="86" cy="34" r="20" /><circle class="black" cx="86" cy="86" r="20" /><polygon class="white" points="34,63 49.2,72.2 53,109 15,109 18.8,72.2" /></g></svg>挟将<span class="title-sub">きょうしょう</span></h1>
       <div class="topbar-actions">
         <button type="button" class="icon-btn mute-btn" id="btn-mute" aria-label="消音" aria-pressed="false"></button>
         <button type="button" class="icon-btn" id="btn-rules" aria-label="ルール詳細" title="ルール詳細">?</button>
@@ -53,6 +54,7 @@
             <button type="button" class="btn menu-btn menu-small" id="menu-learn">遊び方<span class="menu-sub" id="menu-learn-state"></span></button>
             <button type="button" class="btn menu-btn menu-small" id="menu-skills">スキル練習<span class="menu-sub" id="menu-skills-state"></span></button>
             <button type="button" class="btn menu-btn menu-small" id="menu-settings">設定</button>
+            <button type="button" class="btn menu-btn menu-small menu-about" id="menu-about">このゲームについて</button>
           </div>
         </div>
         <div class="menu-panel" id="menu-levels" role="group" aria-labelledby="menu-levels-title" hidden>
@@ -178,11 +180,11 @@
           <ol class="rules4-list setup-rules" id="setup-rules4" aria-label="この設定のルール"></ol>
         </fieldset>
 
-        <!-- 試遊用のプリセットと細かい項目は「カスタム」にしまう（標準・スキルなし以外の設定で開いたときは開いて始める。ui/setup.ts） -->
+        <!-- 標準・スキルなし以外のプリセットと細かい項目は「カスタム」にしまう（それらの設定で開いたときは開いて始める。ui/setup.ts） -->
         <details class="rule-details" id="rule-details">
           <summary class="rule-details-head">カスタム</summary>
           <div class="rule-fields">
-            <div class="presets presets-trial" id="trial-presets" role="group" aria-label="試遊用のルール"></div>
+            <div class="presets presets-trial" id="trial-presets" role="group" aria-label="そのほかのルール"></div>
             <div class="opt">
               <span class="opt-name" id="opt-action">挟んだ駒を</span>
               <div class="seg" role="radiogroup" aria-labelledby="opt-action">
@@ -418,6 +420,46 @@
         <div class="modal-actions">
           <button type="button" class="btn primary" id="rules-close">閉じる</button>
         </div>
+      </div>
+    </dialog>
+
+    <!-- このゲームについて（版・作者・権利・プライバシー。版は package.json の version から ui/about.ts が入れる） -->
+    <dialog class="modal" id="about" aria-labelledby="about-title">
+      <div class="modal-body about-body">
+        <h2 class="modal-title" id="about-title" tabindex="-1" autofocus>このゲームについて</h2>
+        <p class="about-name"><span class="about-word">挟将</span><span class="about-version" id="about-version"></span></p>
+        <p class="about-credit">© 2026 rukiharukichi</p>
+        <ul class="rule-lines about-lines">
+          <li>
+            <span class="rule-point">無断利用不可</span>
+            <span class="rule-note">プログラム・ルール・画像・文章の複製・転載・再配布・改変はできません。All rights reserved.</span>
+          </li>
+          <li>
+            <span class="rule-point">保存はこの端末だけ</span>
+            <span class="rule-note">設定・遊び方の進み具合・通算はこのブラウザに保存し、外へは送りません</span>
+          </li>
+          <li>
+            <span class="rule-point">アクセス数の集計</span>
+            <span class="rule-note">kyosho.rukiharukichi.com では Cloudflare Web Analytics でアクセス数を数えます。クッキーは使いません</span>
+          </li>
+          <li>
+            <span class="rule-point">オンライン対戦の通信</span>
+            <span class="rule-note">対局の手と操作をサーバーに送ります。名前やアカウントは使いません</span>
+          </li>
+        </ul>
+        <div class="modal-actions">
+          <a class="btn ghost" id="about-rules" href="https://github.com/harukiti82/kyosho/blob/main/RULES.md" target="_blank" rel="noopener">ルールの全文</a>
+          <button type="button" class="btn primary" id="about-close">閉じる</button>
+        </div>
+      </div>
+    </dialog>
+
+    <!-- 想定外のエラーの知らせ（1 回だけ。ui/crash.ts）。ほかのダイアログの上にも出せるよう dialog にする -->
+    <dialog class="crash" id="crash" aria-labelledby="crash-title">
+      <p class="crash-title" id="crash-title">エラーが起きました</p>
+      <div class="crash-actions">
+        <button type="button" class="btn ghost" id="crash-close">閉じる</button>
+        <button type="button" class="btn primary" id="crash-reload">再読み込み</button>
       </div>
     </dialog>
 

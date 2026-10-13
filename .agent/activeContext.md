@@ -5,10 +5,10 @@
 
 ## 現在の対象
 
-- 何を / どこを: PWA（ホーム画面に追加・オフライン）。`web/public/manifest.webmanifest`・アイコン `web/public/icons/`・手書きの Service Worker（`web/pwa/sw.ts` を `web/pwa/plugin.ts` がビルドのたびに `dist/sw.js` へ）・登録 `web/src/pwa.ts`・e2e `pwa.spec.ts` / `online/pwa.spec.ts`。依頼元セッション（master）経由
-- ステータス: PR #54 でマージ済み。本番と GitHub Pages で `pwa.spec.ts` 28 件緑（インストールの条件・scope・オフラインで 1 手・版の切り替え）。iOS Safari の実機は未検証（ユーザーに頼む）
+- 何を / どこを: 完全版の体裁（版 1.0）。上の帯の「試遊版」をなくし、メニューの「このゲームについて」（`ui/about.ts`・`#about`）・想定外のエラーの知らせ（`ui/crash.ts`・`#crash`）・`<noscript>`・`LICENSE`（All rights reserved）・package.json の UNLICENSED と版 1.0.0。README・promo の紹介文・AGENTS.md の文言も。依頼元セッション（master）経由
+- ステータス: PR（`feat/release-1.0`）。マージ後に本番で上の帯と「このゲームについて」を確かめる
 - 最終更新: 2026-10-13
-- 前の対象: 設定メニューのルールの欄を標準とスキルなしの 2 枚にし、試遊用のプリセットと細かい項目を「カスタム」（`#rule-details`）にしまう（`feat/hide-trial-presets`）。RULES.md を正式なルール 1.0 の本文に（PR #51・#52。仮置きから正式にした項目の確認はユーザー待ち）
+- 前の対象: PWA（PR #54・#55。本番と GitHub Pages で `pwa.spec.ts` 28 件緑。iOS Safari の実機は未検証）。その前は設定メニューのルールの欄を標準とスキルなしの 2 枚にし、試遊用のプリセットと細かい項目を「カスタム」（`#rule-details`）にしまう（`feat/hide-trial-presets`）。RULES.md を正式なルール 1.0 の本文に（PR #51・#52。仮置きから正式にした項目の確認はユーザー待ち）
 - メインの遊び方の流れ: 挟む〜予測を読む（スキルなしの要素）→ カードを選ぶ（配り直し）→ ゲージ → 強打を使う → 副将を置く → 副将を裏返す → 標準の実戦。カードごとの効果はスキル練習で教える
 - 保存した設定: 旧標準のまま保存した設定は新しい標準に読み替える（保存の版 `v` のない保存だけ。PR #45、docs/RULES-history.md に記載）
 
@@ -36,7 +36,6 @@
 
 - [ ] PWA: iOS Safari の実機でホーム画面に追加 → 機内モードで開いて CPU 対戦が打てるかをユーザーに見てもらう。Android の Chrome の「アプリをインストール」の出方も
 - [ ] RULES.md（ルール 1.0）で仮置きから正式として書いた項目（巻き戻しの王・副将の指定・副将の「いる」の見せ方・相手が選んだ後の配り直し・強打と鉄壁の重なり）をユーザーに確認する
-- [ ] README の冒頭（v1.0 の 4 行ルール・体力 20）が今の標準と食い違う。README の試遊版の文言の担当に伝える
 - [ ] 公開: ユーザーが itch.io（zip を HTML ゲームで上げ、本文に本番の URL）とふりーむ!（自作 HTML5 を受け付けるかを先に確かめる。紹介文に URL 不可）に投稿する。手順は `promo/README.md`。X に URL を貼ったカードの見え方もユーザーに見てもらう
 - [ ] アクセス解析: ダッシュボードの Web Analytics（自動セットアップのサイト）に本番の PV が出るかをユーザーに見てもらう
 - [ ] スキル練習をユーザーに見てもらう（入口の置き場所・一覧の札の大きさ・1 枚 1 ステップで足りるか・運命の輪を補充に決めたこと）
@@ -54,6 +53,7 @@
 
 ## 現フェーズで Read すべき設計書
 
+- 完全版の体裁: AGENTS.md の「版の番号」「想定外のエラー」の項 → `web/src/ui/about.ts`, `web/src/ui/crash.ts`, `web/index.html`（`#about` / `#crash` / `noscript`）, `web/e2e/about.spec.ts`, `web/test/about.test.ts`
 - PWA: AGENTS.md の「PWA」の項 → `web/pwa/sw.ts`, `web/pwa/plugin.ts`, `web/src/pwa.ts`, `web/public/manifest.webmanifest`, `web/test/sw.test.ts`, `web/e2e/pwa.spec.ts`
 - スキル: `RULES.md`「スキル」「副将」, `web/src/engine/skills.ts`, `web/src/engine/game.ts`（「副将」節・「スキル」節 `useSkill` / `applyEffect` / `takeBack` / `skillsAfterMove`）, `web/src/engine/skillcpu.ts`, `web/src/ui/skillui.ts`, `web/src/ui/app.ts`（「スキル」節）, `server/src/room.ts`（pick / skill）, `.agent/online-protocol.md`「スキル」, `web/test/skills.test.ts`, `server/test/skill.test.ts`, `web/e2e/skill.spec.ts`, `web/e2e/skill-vice.spec.ts`, `web/e2e/online/skill.spec.ts`
 - 通算（CPU 対戦・2 人対戦）: `web/src/ui/record.ts`, `web/src/ui/app.ts`（`countResult` / `recordOf` / `plateRecord`）, `web/src/ui/setup.ts`（`showRecord`）, `web/test/record.test.ts`, `web/e2e/record.spec.ts`

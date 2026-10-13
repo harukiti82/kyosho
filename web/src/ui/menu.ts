@@ -1,5 +1,5 @@
 // メニュー画面: CPU対戦（強さを選ぶとそのまま始まる）・マルチ（この端末で 2 人・オンライン）・遊び方（チュートリアル）・
-// スキル練習（11 枚のカードの一覧から 1 枚を選んで練習する）・設定。
+// スキル練習（11 枚のカードの一覧から 1 枚を選んで練習する）・設定・このゲームについて（版・権利・プライバシー）。
 // どの対局も設定メニューで保存したルール（変えなければ標準）で始まる。表示と入力だけで、対局は App が始める。
 
 import { CPU_LEVELS, type CpuLevel } from "../engine/cpu";
@@ -17,6 +17,8 @@ export interface MenuActions {
   /** スキル練習で id のカードの練習を始める */
   skillLesson: (id: SkillId) => void;
   settings: () => void;
+  /** このゲームについて（版・作者・権利・プライバシー） */
+  about: () => void;
   rules: () => void;
   /** 対局中に開いたメニューから、その対局へ戻る */
   resume: () => void;
@@ -46,6 +48,7 @@ export class Menu {
     this.el.learn.addEventListener("click", () => act.learn());
     this.el.skills.addEventListener("click", () => this.panel("skills"));
     byId("menu-settings").addEventListener("click", () => act.settings());
+    byId("menu-about").addEventListener("click", () => act.about());
     byId("menu-rule").addEventListener("click", () => act.rules());
     this.el.resume.addEventListener("click", () => act.resume());
     byId("menu-pvp").addEventListener("click", () => act.pvp());

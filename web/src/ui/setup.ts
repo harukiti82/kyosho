@@ -25,7 +25,7 @@ import type { HostSeat } from "../net/protocol";
 import { dirIcon } from "./diricon";
 import { byId, h } from "./dom";
 import { cpuTurnSeconds, DEFAULT_MULTI_SECONDS, isCpuTime, isMultiTime, type CpuTime, type MultiTime } from "./clock";
-import { decodeRules, encodeRules, QUERY_BASE } from "./query";
+import { decodeRules, encodeRules } from "./query";
 import { recordSummary, type RecordBook } from "./record";
 import { ruleLines, verb, type Sentence } from "./ruletext";
 
@@ -133,7 +133,7 @@ function followPreset(r: RuleSet, version: number): RuleSet {
 
 /**
  * 設定メニューのルールの欄にいつも出すプリセット（先頭が既定の大きな札）。
- * ほかの試遊用のプリセットと細かい項目は「カスタム」（#rule-details）にしまう
+ * ほかのプリセットと細かい項目は「カスタム」（#rule-details）にしまう
  */
 export const FRONT_PRESETS: readonly PresetId[] = [DEFAULT_PRESET, ...(["skill", "std"] as const).filter((id) => id !== DEFAULT_PRESET)];
 
@@ -261,13 +261,14 @@ export class SetupDialog {
     showNote: (text: string) => void,
   ) {
     this.saved = loadSaved(store);
-    // URL のクエリにルールがあればそのルールで遊ぶ（共有された URL。保存はしない）。不正な項目は基準（v1.0）の値に戻して知らせる
+    // URL のクエリにルールがあればそのルールで遊ぶ（共有された URL。保存はしない）。不正な項目は基準（QUERY_BASE）の値に戻して知らせる
+    // （知らせの文にはプリセットの名前を出さない。基準は今は遊ばない旧版で、名前を見せても分からない）
     const decoded = decodeRules(window.location.search);
     if (decoded.present) {
       this.saved.rules = decoded.rules;
       if (decoded.invalid.length > 0) {
         showNote(
-          `URL の${decoded.invalid.map((k) => KEY_LABEL[k] ?? k).join("・")}が読めないので、${presetById(QUERY_BASE).name}の値にしました`,
+          `URL の${decoded.invalid.map((k) => KEY_LABEL[k] ?? k).join("・")}が読めないので、初期値にしました`,
         );
       } else {
         showNote("URL の設定で遊びます");
@@ -313,7 +314,7 @@ export class SetupDialog {
     if (!this.el.dialog.open) this.el.dialog.showModal();
   }
 
-  /** 標準・スキルなしと違う設定（試遊用のプリセット・細かく変えた設定）なら、「カスタム」を開いて見せる */
+  /** 標準・スキルなしと違う設定（そのほかのプリセット・細かく変えた設定）なら、「カスタム」を開いて見せる */
   private openDetailsIfCustom() {
     this.el.details.open = !isFrontRules(this.rules);
   }
@@ -325,7 +326,7 @@ export class SetupDialog {
 
   /**
    * プリセットの札。既定（標準）を大きな札で先頭に、スキルなしを小さな札でその横に並べる。
-   * ほかの試遊用のプリセットは「カスタム」の中に新しい順に小さな札で並べる。
+   * ほかのプリセットは「カスタム」の中に新しい順に小さな札で並べる。
    * 説明は選んだあとのルールの文（#setup-rules4）で読めるので、札には名前だけ（説明は title）。
    * 名前の括弧の補足（例: 「v1.0（取る）」の「取る」）は括弧を外して小さな字で添える
    */
