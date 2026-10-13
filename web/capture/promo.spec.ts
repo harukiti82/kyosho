@@ -3,7 +3,7 @@
 // 動画は録画した 1 局から見せ場の区間を promo/src/parts/segments.txt に書き、promo/make-video.sh が ffmpeg でつなぐ。
 // CPU の乱数（Math.random）とカードの配り（crypto）は種で固定し、撮り直しても同じ対局になるようにする
 
-import { expect, test, type BrowserContext, type Page } from "@playwright/test";
+import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { cellAt, openSettings, saveSettings, seedPage, startGame, waitHumanTurnOrEnd } from "../e2e/helpers";
 
@@ -107,18 +107,24 @@ async function saveFirstSeat(page: Page) {
 
 type Window = { from: number; to: number; score: number; skill?: { from: number; to: number } };
 
-test("PC: 1 局を録画し、スクリーンショットと動画の区間を書き出す", async ({ browser }) => {
+/**
+ * PC で CPU（イージー）と 1 局を打つ。種で固定しているので、何度打っても同じ対局になる。
+ * record なら録画して見せ場の区間を測る（録画中に撮るとその瞬間の録画が乱れるので、撮らない）。
+ * record でなければ録画せずにスクリーンショットだけを撮る
+ */
+async function playPc(browser: Browser, record: boolean) {
   const out = promoDir();
-  mkdirSync(`${out}screenshots`, { recursive: true });
-  mkdirSync(`${out}src/parts`, { recursive: true });
   const context: BrowserContext = await browser.newContext({
     viewport: PC,
     deviceScaleFactor: 2,
-    recordVideo: { dir: `${out}src/parts/raw`, size: PC },
+    ...(record ? { recordVideo: { dir: `${out}src/parts/raw`, size: PC } } : {}),
   });
   const page = await context.newPage();
   const start = Date.now();
   const at = () => (Date.now() - start) / 1000;
+  const shot = async (name: string) => {
+    if (!record) await page.screenshot({ path: `${out}screenshots/${name}.png`, scale: "css" });
+  };
   await seedPage(page, CPU_SEED);
   await seedCrypto(page, DEAL_SEED);
   await page.goto("/");
@@ -128,16 +134,17 @@ test("PC: 1 局を録画し、スクリーンショットと動画の区間を�
   // 区間 1: メニュー → CPU対戦 → 強さ → カードを選ぶ → 盤
   const intro = { from: at(), to: 0 };
   await page.waitForTimeout(1800);
-  await page.screenshot({ path: `${out}screenshots/pc-menu.png`, scale: "css" });
+  await shot("pc-menu");
   await page.locator("#menu-cpu").click();
   await page.waitForTimeout(900);
   await page.locator(`#menu-levels [data-level=easy]`).click();
-  const card = await pickCard(page, `${out}screenshots/pc-cards.png`);
+  const card = await pickCard(page, record ? undefined : `${out}screenshots/pc-cards.png`);
   await waitHumanTurnOrEnd(page);
   await page.waitForTimeout(600);
   intro.to = at();
 
   const windows: Window[] = [];
+  const moves: Move[] = [];
   let top = -1;
   for (let i = 0; ; i++) {
     if (await waitHumanTurnOrEnd(page)) break;
@@ -152,6 +159,7 @@ test("PC: 1 局を録画し、スクリーンショットと動画の区間を�
       skill = { from, to: at() };
     }
     const m = await bestMove(page);
+    moves.push(m);
     await selectKind(page, m.kind);
     await page.mouse.move(PC.width - 10, PC.height - 10);
     const from = at();
@@ -159,9 +167,9 @@ test("PC: 1 局を録画し、スクリーンショットと動画の区間を�
     await cellAt(page, m.r, m.c).hover();
     await page.waitForTimeout(1100);
     // 対局中の画面: 中盤以降でダメージの大きい手の予測を出した所（盤だけの切り抜きは OGP・カバーに使う）
-    if (i >= 4 && m.score > top) {
+    if (!record && i >= 4 && m.score > top) {
       top = m.score;
-      await page.screenshot({ path: `${out}screenshots/pc-game.png`, scale: "css" });
+      await shot("pc-game");
       await page.locator(".board-frame").screenshot({ path: `${out}src/parts/board.png` });
     }
     await cellAt(page, m.r, m.c).click();
@@ -171,10 +179,20 @@ test("PC: 1 局を録画し、スクリーンショットと動画の区間を�
     if (end) break;
   }
   await expect(page.locator("#result")).toBeVisible();
-  await page.screenshot({ path: `${out}screenshots/pc-result.png`, scale: "css" });
+  await shot("pc-result");
   const winner = await page.locator("#result-winner").textContent();
   await context.close();
-  await page.video()!.saveAs(`${out}src/parts/play.webm`);
+  if (record) await page.video()!.saveAs(`${out}src/parts/play.webm`);
+  return { intro, windows, moves, card, winner };
+}
+
+let recorded: Move[] = [];
+
+test("PC: 1 局を録画し、動画の区間を書き出す", async ({ browser }) => {
+  const out = promoDir();
+  mkdirSync(`${out}src/parts`, { recursive: true });
+  const { intro, windows, moves, card, winner } = await playPc(browser, true);
+  recorded = moves;
 
   // 見せ場の区間: 始まり・最初の 2 手・最初にスキルを使った手・最もダメージの大きい手・決着の手
   const last = windows[windows.length - 1];
@@ -192,6 +210,14 @@ test("PC: 1 局を録画し、スクリーンショットと動画の区間を�
   expect(winner).toBe("あなたの勝ち");
   expect(total).toBeGreaterThanOrEqual(20);
   expect(total).toBeLessThanOrEqual(40);
+});
+
+test("PC: 同じ 1 局を録画せずに打ち、スクリーンショットを撮る", async ({ browser }) => {
+  mkdirSync(`${promoDir()}screenshots`, { recursive: true });
+  const { moves, winner } = await playPc(browser, false);
+  // 録画した対局と同じ手順（スクリーンショットが動画と同じ対局の場面になる）。-g でこのテストだけ流したときは比べない
+  if (recorded.length > 0) expect(moves).toEqual(recorded);
+  expect(winner).toBe("あなたの勝ち");
 });
 
 test("PC: 遊び方のステップ", async ({ browser }) => {
@@ -218,7 +244,7 @@ test("スマホ: メニューと対局中の画面", async ({ browser }) => {
   await page.goto("/");
   await expect(page.locator("#menu")).toBeVisible();
   await page.waitForTimeout(500);
-  await page.screenshot({ path: `${out}screenshots/sp-menu.png`, scale: "css" });
+  await page.screenshot({ path: `${out}screenshots/sp-menu.png` });
   await startGame(page, { side: 0, level: "easy", cards: false });
   await pickCard(page);
   for (let i = 0; i < 6; i++) {
@@ -236,7 +262,7 @@ test("スマホ: メニューと対局中の画面", async ({ browser }) => {
   const take = page.locator(".cell.can-take");
   await (((await take.count()) > 0 ? take : page.locator(".cell.open")).first()).tap();
   await page.waitForTimeout(600);
-  await page.screenshot({ path: `${out}screenshots/sp-game.png`, scale: "css" });
+  await page.screenshot({ path: `${out}screenshots/sp-game.png` });
   await context.close();
 });
 

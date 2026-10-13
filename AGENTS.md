@@ -46,8 +46,11 @@ kyosho/
     ├── src/net/      ← オンライン対戦（protocol.ts: 通信仕様の型と定数。画面とサーバーが共通で import する / online.ts: 画面の通信層（HTTP・WebSocket・トークン・つなぎ直し。DOM なし））
     ├── test/         ← Vitest（engine・URL・ルール文のユニットテスト + Python 棋譜の再生テスト）
     ├── e2e/          ← Playwright（ヘッドレスで実際に終局まで打つ。king.spec.ts / direction.spec.ts / anchor.spec.ts は種付き乱数の鏡の対局で隠し王・方向駒・拠点を確かめる。impact.spec.ts は段階の演出・効果音・成績、result.spec.ts は決着の演出、seat.spec.ts は CPU 対戦の手番の抽選、othello.spec.ts は普通のリバーシなら置けるマスの枠、timer.spec.ts は 1 手の制限時間（page.clock で時間を進める）、online-hidden.spec.ts は /api がない公開先で入口を出さないこと、menu.spec.ts はメニューからの開始・CPU の強さ・設定の保存と反映、toss.spec.ts は手番の抽選の演出（page.clock で止める・CSS の動きは途中で止めて撮る）、skill-tutorial.spec.ts はスキル練習（一覧から 11 枚すべてを打つ・違う操作のヒント・終えた印と再読み込み・壊れた保存・localStorage なし・遊び方の保存を変えない・途中でメニューから別のカード・鉄壁の応手はメニューの間は待つ）、tutorial.spec.ts は遊び方の全ステップ（違う手のヒント・正解・コーチと盤が重ならない）と実戦・再開・2 つの章の頃の保存・壊れた保存・localStorage なし・CPU と時計が割り込まないこと、undo.spec.ts は待った（鏡の対局・CPU が先手・王の指定・制限時間・終局後）、skill-vice.spec.ts は副将（鍵を押して置く・期限の自動指定・名札と盤の印・2 人対戦で罰 15 → 次の副将・偵察で特定して返しても罰 15。手順は viceplan.ts がエンジンで探す）、skill.spec.ts はスキル（カードの選択・2 人対戦の順・11 枚それぞれを満タンまで溜めて使う・偵察で副将を特定・運命の輪の指定・満タンでも使えないとき（取るルールの 2 人対戦で体力満タンの応急手当）。crypto の差し替えで配るカードと運命の輪の効果を決め、page.clock で進める）、skill-pick.spec.ts はカードを選ぶ画面の配る動きと効果音（AudioParam に渡った周波数で見分ける・動きを減らす設定・消音）と配り直し（二度押し・CPU の配り直し）、skill-gauge.spec.ts はゲージが溜まる演出（「+N」・溜めマスの光・満タン・動きを減らす設定・待った・決着の一手。MutationObserver で出た要素を記録）、threat.spec.ts は「!」の表示の切り替え（既定オフ・保存・対局中・古い保存・遊び方のステップは常にオン・遊び方の実戦は保存した設定）。emphasis.spec.ts は説明文の要点が補足より大きいこと（遊び方・ルールカード・ルール詳細・設定）。record.spec.ts は CPU 対戦・2 人対戦の通算（2 局目から・強さごと・途中でやめた対局・再読み込み・待った・引き分け・「通算を消す」・壊れた保存・localStorage なし）。e2e/online/ はサーバーを起こして 2 つのブラウザで対局する（`npm run e2e:online`。online/skill.spec.ts はスキルの選択・選ぶ前の配り直し（相手に届かない）・使用・再戦の配り直しと、偵察・王の移し替えの隠し情報、待ったと連続行動・運命の輪））
+    ├── capture/      ← 投稿用の素材を撮る Playwright（promo.spec.ts。e2e とは別の設定 playwright.promo.config.ts。`npm run promo`）
+    ├── public/       ← そのまま配信する静的ファイル（favicon.svg・apple-touch-icon.png・共有のカードの ogp.png。png は capture が作る）
     ├── scripts/      ← バランス確認（balance.ts を Vite の runnerImport で Node 実行。`npm run balance`）
     └── screenshots/  ← e2e が保存するスクリーンショット
+promo/                ← 投稿サイト（itch.io・ふりーむ!）用の素材と手順（README.md・紹介文 text-ja.md / text-en.md・カバー・スクリーンショット・動画。OGP とカバーの元の HTML は src/）
 server/               ← 画面（web/dist の静的アセット）と /api（オンライン対戦）を同じオリジンで配信する 1 つの Worker（設定 wrangler.jsonc、Worker の入口 src/index.ts、1 部屋 = 1 Durable Object の src/room.ts、入力検証 src/validate.ts、Workers 上のテスト test/、2 クライアントで 1 局を通す scripts/play.mjs）
 ```
 
@@ -77,6 +80,7 @@ server/               ← 画面（web/dist の静的アセット）と /api（�
 - CPU の強さは `engine/cpu.ts` の `chooseMove(view, level, rng)`（`CpuLevel` = easy / normal / hard。`PlaySettings.level`）。ノーマルは `chooseLookahead` と同じ手（sim と全手一致させる候補手・e2e の鏡の対局はこれを使う）。強さを変えたら `npm run balance -- vs 400 std normal hard` などで勝率を測り、`test/level.test.ts` の下限を確かめる
 - `src/ui/` で `Math.random` を使わない（CPU の乱数と共有で、e2e は Math.random を種付きにして CPU の手を再現する。CPU に打たせる e2e は `e2e/helpers.ts` の `seedPage` で種を固定する。種がないと終局の形が実行ごとに変わり、ときどき落ちる）。CPU 対戦の手番の抽選（「ランダム」。設定の既定）は `ui/setup.ts` の `drawSeat`（既定は `crypto.getRandomValues`。e2e は `helpers.ts` の `stubDraws` で crypto を差し替える。`startGame` は CPU 対戦で side を省くと先手を選ぶ）で、`App.start` が対局を始めるたびに引く（`PlaySettings.randomSeat`）。効果音の AudioContext は最初のユーザー操作の後にだけ作る
 - アクセス解析は Cloudflare Web Analytics の自動セットアップ（本番のエッジで差し込む。リポジトリ外。サイトのトークン `40c7c4c1…`）。リポジトリには計測のコードを置かない。JS のスニペットを足すと二重に数えるので足さない
+- `index.html` の `<head>` の共有のカード（og:url・og:image）と canonical は本番の絶対 URL（`https://kyosho.rukiharukichi.com/`。GitHub Pages・投稿サイトの zip からも本番を指す）、favicon・apple-touch-icon は相対パス（`base: "./"` のまま、どこに置いても読める）。`<head>`・紹介文・画像に「オセロ」「Othello」（登録商標）を使わず「リバーシ」と書く。OGP の画像を変えたら `npm run promo` で撮り直す（`promo/README.md`）
 
 ## コマンド
 
@@ -88,6 +92,7 @@ server/               ← 画面（web/dist の静的アセット）と /api（�
 | test | `cd web && npm test` |
 | e2e | `cd web && npm run e2e`（ビルド → `vite preview :4179` を自動起動。`/api` なし。別の作業ツリーと並べるなら `E2E_PORT=4189`） |
 | オンライン対戦の e2e | `cd web && npm run e2e:online`（ビルド → `wrangler dev :8790`（server/ の依存が要る。`E2E_ONLINE_PORT` で変更可。`--var TEST_TURN_SECONDS:3` 付き）を自動起動し、2 つのブラウザコンテキストで対局。desktop / mobile） |
+| 投稿用の素材 | `cd web && npm run promo`（ビルド → preview を起こしてスクリーンショット・OGP・カバー・アイコンを撮り、1 局を録画）→ `../promo/make-video.sh`（ffmpeg で mp4 と GIF）。手順と投稿の仕方は `promo/README.md` |
 | バランス確認 | `cd web && npm run balance -- 400 king`（2 手読み同士。スキルは `npm run balance -- skill 400`、11 枚を両者に引かせるのは `skillmix 400`。方向駒は `400 dir`、拠点は `400 anchor`、スキルなしは `400 std`。第 3 引数で体力 "先手,後手"）。CPU の強さ同士は `npm run balance -- vs 400 std easy normal`（先手・後手を 1 局ごとに入れ替え） |
 | 棋譜の再生成 | `python3 sim/export_replays.py`（v0.4 / v1.0 / v2 案、約 30 秒） |
 | 公開 | main への merge で自動デプロイ → https://harukiti82.github.io/kyosho/ （GitHub Pages、移行が済むまで残す）と Cloudflare https://kyosho.rukiharukichi.com/ （`deploy.yml`、Secret 登録後。手順は README「独自ドメイン（kyosho.rukiharukichi.com）」。ルートの rukiharukichi.com は使わない）。workflow は main 直 push せず PR 経由で変更 |
