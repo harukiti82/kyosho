@@ -1,5 +1,5 @@
 // 投稿用の素材を本番ビルドから撮る（npm run promo）。e2e ではないので npm run e2e には入れない。
-// 出力はリポジトリ直下の promo/（スクリーンショット・動画の元・OGP とカバーの画像）と web/public/（OGP・apple-touch-icon）。
+// 出力はリポジトリ直下の promo/（スクリーンショット・動画の元・OGP とカバーの画像）と web/public/（OGP・apple-touch-icon・PWA のアイコン icons/）。
 // 動画は録画した 1 局から見せ場の区間を promo/src/parts/segments.txt に書き、promo/make-video.sh が ffmpeg でつなぐ。
 // CPU の乱数（Math.random）とカードの配り（crypto）は種で固定し、撮り直しても同じ対局になるようにする
 
@@ -266,20 +266,34 @@ test("スマホ: メニューと対局中の画面", async ({ browser }) => {
   await context.close();
 });
 
-test("OGP・カバー・アイコンの画像", async ({ browser }) => {
+/** HTML を指定の大きさで開き、画像と書体が揃ってから撮る */
+async function render(browser: Browser, src: string, size: { width: number; height: number }, path: string) {
+  const context = await browser.newContext({ viewport: size, deviceScaleFactor: 1 });
+  const page = await context.newPage();
+  await page.goto(src);
+  await page.evaluate(() => document.fonts.ready);
+  await page.waitForFunction(() => [...document.images].every((i) => i.complete && i.naturalWidth > 0));
+  await page.screenshot({ path });
+  await context.close();
+}
+
+// OGP とカバーは録画の test が書き出す src/parts/board.png を使う（この test だけ -g で流すときは先に録画を流す）
+test("OGP・カバーの画像", async ({ browser }) => {
   const out = promoDir();
   mkdirSync(`${out}images`, { recursive: true });
-  const render = async (src: string, size: { width: number; height: number }, path: string) => {
-    const context = await browser.newContext({ viewport: size, deviceScaleFactor: 1 });
-    const page = await context.newPage();
-    await page.goto(src);
-    await page.evaluate(() => document.fonts.ready);
-    await page.waitForFunction(() => [...document.images].every((i) => i.complete && i.naturalWidth > 0));
-    await page.screenshot({ path });
-    await context.close();
-  };
-  await render(`file://${out}src/ogp.html`, { width: 1200, height: 630 }, `${publicDir()}ogp.png`);
-  await render(`file://${out}src/cover.html`, { width: 630, height: 500 }, `${out}images/cover.png`);
-  await render(`file://${out}src/icon.html`, { width: 180, height: 180 }, `${publicDir()}apple-touch-icon.png`);
-  await render(`file://${out}src/icon.html`, { width: 512, height: 512 }, `${out}images/icon-512.png`);
+  await render(browser, `file://${out}src/ogp.html`, { width: 1200, height: 630 }, `${publicDir()}ogp.png`);
+  await render(browser, `file://${out}src/cover.html`, { width: 630, height: 500 }, `${out}images/cover.png`);
+});
+
+// アイコンは favicon.svg だけから作るので単独で流せる（-g アイコン）
+test("アイコンの画像", async ({ browser }) => {
+  const out = promoDir();
+  mkdirSync(`${out}images`, { recursive: true });
+  await render(browser, `file://${out}src/icon.html`, { width: 180, height: 180 }, `${publicDir()}apple-touch-icon.png`);
+  await render(browser, `file://${out}src/icon.html`, { width: 512, height: 512 }, `${out}images/icon-512.png`);
+  // PWA の manifest のアイコン（web/public/icons/。maskable は中央の安全域に収めた別の元）
+  mkdirSync(`${publicDir()}icons`, { recursive: true });
+  await render(browser, `file://${out}src/icon.html`, { width: 192, height: 192 }, `${publicDir()}icons/icon-192.png`);
+  await render(browser, `file://${out}src/icon.html`, { width: 512, height: 512 }, `${publicDir()}icons/icon-512.png`);
+  await render(browser, `file://${out}src/icon-maskable.html`, { width: 512, height: 512 }, `${publicDir()}icons/icon-maskable-512.png`);
 });

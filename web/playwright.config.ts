@@ -18,13 +18,24 @@ export default defineConfig({
   use: {
     baseURL: `http://localhost:${PORT}`,
     headless: true,
+    // PWA の Service Worker は止める（キャッシュの入口・assets で前のテストの状態を持ち越さない）。SW を確かめる pwa.spec.ts だけ許す
+    serviceWorkers: "block",
   },
-  webServer: {
-    command: `npm run build && npx vite preview --port ${PORT} --strictPort`,
-    url: `http://localhost:${PORT}`,
-    reuseExistingServer: false,
-    timeout: 120_000,
-  },
+  webServer: [
+    {
+      command: `npm run build && npx vite preview --port ${PORT} --strictPort`,
+      url: `http://localhost:${PORT}`,
+      reuseExistingServer: false,
+      timeout: 120_000,
+    },
+    // GitHub Pages と同じサブパス（/kyosho/）で同じビルドを配る（pwa.spec.ts が SW の scope を確かめる）。上のビルドの後に起こす
+    {
+      command: `npx vite preview --base /kyosho/ --port ${PORT + 1} --strictPort`,
+      url: `http://localhost:${PORT + 1}/kyosho/`,
+      reuseExistingServer: false,
+      timeout: 60_000,
+    },
+  ],
   projects: [
     { name: "desktop", use: { ...devices["Desktop Chrome"], viewport: { width: 1280, height: 900 } } },
     {
