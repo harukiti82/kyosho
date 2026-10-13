@@ -3,7 +3,7 @@
 // 読み込みに失敗しても（広告ブロッカーなど）ゲームには関わらない。数えるのはページの表示だけで、独自のイベントは送らない。
 
 /** Cloudflare のダッシュボードで発行したサイトのトークン（公開値。ページに埋め込まれる）。空なら何も読み込まない */
-export const BEACON_TOKEN: string = "";
+export const BEACON_TOKEN: string = "aa2807ed62f64a18af742b772bfd3cba";
 
 export const BEACON_SRC = "https://static.cloudflareinsights.com/beacon.min.js";
 
