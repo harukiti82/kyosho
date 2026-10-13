@@ -76,3 +76,4 @@
 - RULES.md を標準（id `skill`）・スキルなし（id `std`）の正式なルールの本文に書き直し（準備〜スキル 11 枚〜勝ち負け、数字はコードと照合）。旧 v1.0 の本文・Web 試遊版・検証の表・経緯・シミュレーターは `docs/RULES-history.md` へそのまま移し、AGENTS.md・README・.agent の参照を付け替え。冒頭の版は `{版}`
 - RULES.md の版を 1.0 に（ユーザーの決定）。冒頭を「ルール 1.0（標準）」にし、旧ルールとは別物の注記を入れ、docs/RULES-history.md と AGENTS.md の旧ルールの呼び名を「試遊のルール v1.0」に揃える
 - 設定メニューのルールの欄を標準とスキルなしの 2 枚にし、試遊用の 7 プリセットと細かい項目を閉じた「カスタム」にしまう（標準・スキルなし以外の保存・URL では開いて始める）。PRESETS・URL・保存は不変。unit `settings.test.ts`・e2e `menu.spec.ts`、e2e の札は `choosePreset` で押す
+- PWA: manifest（相対の start_url・scope）・アイコン 192・512・maskable・手書きの SW（入口はネットワーク優先・assets はキャッシュ優先・`/api`・`/cdn-cgi`・別オリジンは横取りしない・版は中身の SHA-256、skipWaiting で次に開けば新しい版）。e2e はほかを `serviceWorkers: "block"`、`pwa.spec.ts` がルートとサブパス `/kyosho/` で確かめる
