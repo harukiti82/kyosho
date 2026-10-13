@@ -3,7 +3,7 @@
 // スクリーンショットは web/screenshots/*-seat-*.png に保存する。
 
 import { expect, test, type Page } from "@playwright/test";
-import { draws, noHorizontalScroll, openSettings, seedPage, skipToss, startGame, stubDraws, waitHumanTurnOrEnd } from "./helpers";
+import { choosePreset, draws, noHorizontalScroll, openSettings, seedPage, skipToss, startGame, stubDraws, waitHumanTurnOrEnd } from "./helpers";
 
 const SHOT = "screenshots";
 const moves = (page: Page) => page.locator("#log .log-item.move");
@@ -14,7 +14,7 @@ const prefix = (page: Page) => ((page.viewportSize()?.width ?? 1280) < 600 ? "sp
 async function startCpu(page: Page, side: "random" | "0" | "1", shot?: string) {
   await openSettings(page);
   // スキルなし（カードを配る抽選が crypto を使わないように）
-  await page.locator(".preset[data-preset=std]").click();
+  await choosePreset(page, "std");
   await page.locator(`label:has(> input[name=side][value="${side}"])`).click();
   await expect(page.locator(`input[name=side][value="${side}"]`)).toBeChecked();
   if (shot) {

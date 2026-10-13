@@ -17,7 +17,7 @@ import {
 import { kindsByValue, KIND_ORDER, presetById, type PieceKind } from "../src/engine/rules";
 import { encodeRules } from "../src/ui/query";
 import { dirMark, pieceLabel, ruleLines, sentenceText } from "../src/ui/ruletext";
-import { noHorizontalScroll, openRuleFields, openSettings, readSetup, rng, saveSettings, startGame, waitHumanTurnOrEnd } from "./helpers";
+import { choosePreset, noHorizontalScroll, openRuleFields, openSettings, readSetup, rng, saveSettings, startGame, waitHumanTurnOrEnd } from "./helpers";
 
 const SHOT = "screenshots";
 const DIR = presetById("dir").rules;
@@ -70,7 +70,7 @@ test.describe("PC 幅", () => {
     page.on("pageerror", (e) => errors.push(String(e)));
     await page.goto("/");
     await openSettings(page);
-    await page.locator(".preset[data-preset=dir]").click();
+    await choosePreset(page, "dir");
     expect(await readSetup(page)).toEqual(DIR);
     await expect(page.locator("#custom-tag")).toHaveText("方向駒");
     await openRuleFields(page);
@@ -248,7 +248,7 @@ test.describe("スマホ幅 375px", () => {
     await seedPage(page, 1);
     await page.goto("/");
     await openSettings(page);
-    await page.locator(".preset[data-preset=dir]").tap();
+    await choosePreset(page, "dir", { tap: true });
     await openRuleFields(page);
     await page.locator("#piece-table").scrollIntoViewIfNeeded();
     await noHorizontalScroll(page, 375);

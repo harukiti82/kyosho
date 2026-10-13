@@ -19,7 +19,7 @@ import {
 import { presetById, type HiddenKing, type PieceKind, type RuleSet } from "../src/engine/rules";
 import { encodeRules } from "../src/ui/query";
 import { ruleLines, sentenceText } from "../src/ui/ruletext";
-import { noHorizontalScroll, openRuleFields, openSettings, readSetup, rng, saveSettings, startGame, waitHumanTurnOrEnd } from "./helpers";
+import { choosePreset, noHorizontalScroll, openRuleFields, openSettings, readSetup, rng, saveSettings, startGame, waitHumanTurnOrEnd } from "./helpers";
 
 const SHOT = "screenshots";
 const KING = presetById("king").rules;
@@ -76,9 +76,9 @@ test.describe("PC 幅", () => {
     await page.goto("/");
     await openRuleFields(page);
     // 隠し王なし（v1.0）なら追加設定は隠れている
-    await page.locator(".preset[data-preset=v10]").click();
+    await choosePreset(page, "v10");
     await expect(page.locator("#king-sub")).toBeHidden();
-    await page.locator(".preset[data-preset=king]").click();
+    await choosePreset(page, "king");
     expect(await readSetup(page)).toEqual(KING);
     await expect(page.locator("#king-sub")).toBeVisible();
     await expect(page.locator("#setup-rules4 li")).toHaveText(ruleLines(KING).map(sentenceText));
@@ -341,7 +341,7 @@ test.describe("スマホ幅 375px", () => {
   test("隠し王: 設定画面と対局画面で横スクロールなし。タップで王を指定して置ける", async ({ page }) => {
     await page.goto("/");
     await openSettings(page);
-    await page.locator(".preset[data-preset=king]").tap();
+    await choosePreset(page, "king", { tap: true });
     await openRuleFields(page);
     await page.locator("#king-sub").scrollIntoViewIfNeeded();
     await expect(page.locator("#king-sub")).toBeVisible();

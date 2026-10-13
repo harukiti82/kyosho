@@ -7,7 +7,7 @@ import { createGame, legalCells, playableKinds, playMove, previewMove, targetsAt
 import { defaultRules, kindsByValue, KIND_ORDER, PIECES, PRESETS, presetById, type PieceKind, type RuleSet } from "../src/engine/rules";
 import { encodeRules } from "../src/ui/query";
 import { ruleLines, sentenceText } from "../src/ui/ruletext";
-import { noHorizontalScroll, openRuleFields, openSettings, openTab, readSetup, rng, saveSettings, seedPage, startGame, waitHumanTurnOrEnd } from "./helpers";
+import { choosePreset, noHorizontalScroll, openRuleFields, openSettings, openTab, readSetup, rng, saveSettings, seedPage, startGame, waitHumanTurnOrEnd } from "./helpers";
 
 const SHOT = "screenshots";
 /** プリセット「スキルなし」（id std。2026-10-12 までの「標準」）の URL のクエリ（ユーザーが既定に指定した URL から、回復を低い方−1・王の期限を 7 手に変え、先手の体力を測り直した） */
@@ -136,13 +136,13 @@ test.describe("PC 幅", () => {
 
     // プリセットを選ぶとフォームとルール文が変わる
     for (const p of PRESETS) {
-      await page.locator(`.preset[data-preset=${p.id}]`).click();
+      await choosePreset(page, p.id);
       expect(await readSetup(page)).toEqual(p.rules);
       await expect(page.locator("#setup-rules4 li")).toHaveText(ruleLines(p.rules).map(sentenceText));
       await expect(page.locator("#custom-tag")).toHaveText(`${p.name}`);
     }
     // 個別に変えるとカスタムになる（取るルール＋強さ制限は「取れない」）
-    await page.locator(".preset[data-preset=v2]").click();
+    await choosePreset(page, "v2");
     await openRuleFields(page);
     await page.locator("input[name=action][value=capture]").check({ force: true });
     await expect(page.locator("#custom-tag")).toContainText("カスタム");
@@ -180,7 +180,7 @@ test.describe("PC 幅", () => {
     await context.grantPermissions(["clipboard-read", "clipboard-write"]);
     await page.goto("/");
     await openSettings(page);
-    await page.locator(".preset[data-preset=v04]").click();
+    await choosePreset(page, "v04");
     await openRuleFields(page);
     await page.locator("input[name=gate][value='1']").check({ force: true });
     await page.locator("input[name=maxPlies]").fill("50");
@@ -451,7 +451,7 @@ test.describe("スマホ幅 375px", () => {
     await seedPage(page, 1);
     await page.goto("/");
     await openSettings(page);
-    await page.locator(".preset[data-preset=v2]").tap();
+    await choosePreset(page, "v2", { tap: true });
     await startGame(page);
     await ruleCardIs(page, presetById("v2").rules);
 

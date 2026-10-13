@@ -4,7 +4,7 @@ import { expect, type Browser, type Page, type TestInfo } from "@playwright/test
 import { legalCells, playableKinds, playMove, lastMoveOf, type GameState } from "../../src/engine/game";
 import type { PieceKind, PresetId } from "../../src/engine/rules";
 import type { StateMessage } from "../../src/net/protocol";
-import { play } from "../helpers";
+import { choosePreset, play } from "../helpers";
 
 export const SHOT = "screenshots";
 
@@ -71,7 +71,7 @@ export async function createRoomFromSetup(host: Player, preset: PresetId | null,
   await page.locator("#menu-settings").click();
   await expect(page.locator("#setup")).toBeVisible();
   await expect(page.locator("#host-field")).toBeVisible();
-  if (preset) await page.locator(`.preset[data-preset=${preset}]`).click();
+  if (preset) await choosePreset(page, preset);
   await page.locator(`label:has(> input[name=host][value=${seat}])`).click();
   await page.locator("#setup-save").click();
   await expect(page.locator("#setup")).toBeHidden();

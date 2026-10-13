@@ -4,7 +4,7 @@
 // 時計は Playwright の page.clock で進める（実際には待たない）。スクリーンショットは web/screenshots/*-timer-*.png
 
 import { expect, test, type Page } from "@playwright/test";
-import { noHorizontalScroll, openRuleFields, openSettings, saveSettings, seedPage, startGame, waitHumanTurnOrEnd } from "./helpers";
+import { choosePreset, noHorizontalScroll, openRuleFields, openSettings, saveSettings, seedPage, startGame, waitHumanTurnOrEnd } from "./helpers";
 
 const SHOT = "screenshots";
 const prefix = (page: Page) => ((page.viewportSize()?.width ?? 1280) < 600 ? "sp" : "pc");
@@ -19,7 +19,7 @@ async function open(page: Page, seed = 7) {
   await page.goto("/");
   await expect(page.locator("#menu")).toBeVisible();
   await openSettings(page);
-  await page.locator(".preset[data-preset=std]").click();
+  await choosePreset(page, "std");
   await saveSettings(page);
 }
 
@@ -145,7 +145,7 @@ test("止める（2 人対戦）: 大きな演出の間は次の人の時計が�
   await open(page);
   // 体力 5 なら 1 枚返すだけで体力の 20%（特大）の演出になる
   await openRuleFields(page);
-  await page.locator(".preset[data-preset=orig]").click();
+  await choosePreset(page, "orig");
   await page.locator("input[name=hp0]").fill("5");
   await page.locator("input[name=hp1]").fill("5");
   await page.locator(`label:has(> input[name=heal][value=none])`).click();
@@ -164,7 +164,7 @@ test("止める（2 人対戦）: 大きな演出の間は次の人の時計が�
 test("自動の手で決着がつく（2 人対戦・体力 5）。終局後は時計を出さない", async ({ page }) => {
   await open(page);
   await openRuleFields(page);
-  await page.locator(".preset[data-preset=orig]").click();
+  await choosePreset(page, "orig");
   await page.locator("input[name=hp0]").fill("5");
   await page.locator("input[name=hp1]").fill("5");
   await page.locator(`label:has(> input[name=heal][value=none])`).click();
@@ -222,7 +222,7 @@ test("タブを裏に回して戻ったとき（タイマーが止まり時刻�
 test("隠し王の期限の手で時間切れなら、置いた駒が自動であなたの王になる", async ({ page }) => {
   await open(page);
   await openRuleFields(page);
-  await page.locator(".preset[data-preset=king]").click();
+  await choosePreset(page, "king");
   await page.locator("input[name=kingDeadline]").fill("1");
   await saveSettings(page);
   await startGame(page, { level: "normal", side: 0 });

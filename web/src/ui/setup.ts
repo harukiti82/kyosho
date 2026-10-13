@@ -131,6 +131,18 @@ function followPreset(r: RuleSet, version: number): RuleSet {
   return old ? cloneRules(presetById(old.to).rules) : r;
 }
 
+/**
+ * 設定メニューのルールの欄にいつも出すプリセット（先頭が既定の大きな札）。
+ * ほかの試遊用のプリセットと細かい項目は「カスタム」（#rule-details）にしまう
+ */
+export const FRONT_PRESETS: readonly PresetId[] = [DEFAULT_PRESET, ...(["skill", "std"] as const).filter((id) => id !== DEFAULT_PRESET)];
+
+/** いつも出すプリセットのどれかと一致するルールか（違えば「カスタム」を開いて見せる） */
+export function isFrontRules(r: RuleSet): boolean {
+  const id = matchPreset(r)?.id;
+  return id !== undefined && FRONT_PRESETS.includes(id);
+}
+
 const isSide = (v: unknown): v is Side => v === "0" || v === "1" || v === "random";
 const isHost = (v: unknown): v is HostSeat => v === "random" || v === "first" || v === "second";
 
@@ -219,6 +231,7 @@ export class SetupDialog {
     dialog: byId<HTMLDialogElement>("setup"),
     form: byId<HTMLFormElement>("setup-form"),
     presets: byId("presets"),
+    trialPresets: byId("trial-presets"),
     details: byId<HTMLDetailsElement>("rule-details"),
     customTag: byId("custom-tag"),
     pieceTable: byId("piece-table"),
@@ -300,9 +313,9 @@ export class SetupDialog {
     if (!this.el.dialog.open) this.el.dialog.showModal();
   }
 
-  /** プリセットと違う設定なら、細かい項目を開いて見せる */
+  /** 標準・スキルなしと違う設定（試遊用のプリセット・細かく変えた設定）なら、「カスタム」を開いて見せる */
   private openDetailsIfCustom() {
-    this.el.details.open = !matchPreset(this.rules);
+    this.el.details.open = !isFrontRules(this.rules);
   }
 
   /** オンライン対戦の手番の欄を出す（サーバーに届く公開先だけ） */
@@ -311,14 +324,16 @@ export class SetupDialog {
   }
 
   /**
-   * プリセットの札。既定（標準）を大きな札で先頭に、ほかは新しい順に小さな札で並べる。
+   * プリセットの札。既定（標準）を大きな札で先頭に、スキルなしを小さな札でその横に並べる。
+   * ほかの試遊用のプリセットは「カスタム」の中に新しい順に小さな札で並べる。
    * 説明は選んだあとのルールの文（#setup-rules4）で読めるので、札には名前だけ（説明は title）。
    * 名前の括弧の補足（例: 「v1.0（取る）」の「取る」）は括弧を外して小さな字で添える
    */
   private buildPresets() {
     const main = presetById(DEFAULT_PRESET);
-    const others = PRESETS.filter((p) => p.id !== main.id).reverse();
-    for (const p of [main, ...others]) {
+    const front = FRONT_PRESETS.map(presetById);
+    const trial = PRESETS.filter((p) => !FRONT_PRESETS.includes(p.id)).reverse();
+    for (const p of [...front, ...trial]) {
       const [, name, sub] = /^(.*?)(?:（(.*)）)?$/.exec(p.name)!;
       const b = h(
         "button",
@@ -326,7 +341,7 @@ export class SetupDialog {
         [h("span", { class: "preset-name", text: name }), sub ? h("span", { class: "preset-sub", text: sub }) : null],
       );
       b.addEventListener("click", () => this.writeForm(p.rules));
-      this.el.presets.append(b);
+      (front.includes(p) ? this.el.presets : this.el.trialPresets).append(b);
     }
   }
   /** 駒種ごとの 数・数字 の欄（方向は種類で固定なので表示だけ） */
@@ -486,7 +501,7 @@ export class SetupDialog {
   private refresh(fix: boolean) {
     this.rules = this.readForm(fix);
     const match = matchPreset(this.rules);
-    for (const b of this.el.presets.querySelectorAll<HTMLElement>(".preset")) {
+    for (const b of this.el.form.querySelectorAll<HTMLElement>(".preset")) {
       b.setAttribute("aria-pressed", String(b.dataset.preset === match?.id));
     }
     this.el.customTag.textContent = match ? match.name : "カスタム";
