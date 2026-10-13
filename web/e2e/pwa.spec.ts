@@ -4,7 +4,7 @@
 // PWA_TARGETS に URL をカンマ区切りで渡すと、その公開先を確かめる（npx playwright test -c playwright.pwa.config.ts）
 
 import { expect, test, type BrowserContext, type Page } from "@playwright/test";
-import { openSettings, saveSettings } from "./helpers";
+import { choosePreset, openSettings, saveSettings } from "./helpers";
 
 const env = (globalThis as unknown as { process: { env: Record<string, string | undefined> } }).process.env;
 const PORT = Number(env.E2E_PORT ?? 4179);
@@ -34,7 +34,7 @@ async function install(page: Page, url: string) {
 /** CPU 対戦（スキルなし・イージー・先手）を始めて 1 手打つ。打った後に手数が進むことを見る */
 async function playOneMove(page: Page, touch: boolean) {
   await openSettings(page);
-  await page.locator(".preset[data-preset=std]").click();
+  await choosePreset(page, "std");
   await page.locator('label:has(> input[name=side][value="0"])').click();
   await saveSettings(page);
   await expect(page.locator("#menu")).toBeVisible();
