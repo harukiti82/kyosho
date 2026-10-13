@@ -104,7 +104,7 @@ Cloudflare Workers + Durable Objects の対戦サーバー（招待リンク方�
 1. 設定は済んでいる: `server/wrangler.jsonc` の `"routes": [{ "pattern": "kyosho.rukiharukichi.com", "custom_domain": true }]` と `ALLOWED_ORIGINS`
 2. `cd server && npx wrangler login && npm run deploy`（または Secret を登録して main へマージし、CI がデプロイ）。最初のデプロイで Cloudflare が `kyosho` の DNS レコードと証明書を自動で作る。同じ名前の DNS レコードが先にあると失敗するので、ダッシュボードの DNS で `kyosho` のレコードがないことを確かめておく
 3. https://kyosho.rukiharukichi.com/ で画面、https://kyosho.rukiharukichi.com/api/health で `{"ok":true}` を確かめる（証明書の発行に数分かかることがある）
-4. ドメインを変えるときは `routes` の `pattern` と `ALLOWED_ORIGINS` の 2 か所と、アクセス解析のホスト名（`web/src/ui/analytics.ts` の `ANALYTICS_HOSTS`）を直す
+4. ドメインを変えるときは `routes` の `pattern` と `ALLOWED_ORIGINS` の 2 か所を直す
 
 ### CI からの自動デプロイ（`.github/workflows/deploy.yml`）
 
@@ -113,15 +113,9 @@ main への push で web と server のテスト → web のビルド → `wrang
 - `CLOUDFLARE_API_TOKEN`（必須）: Cloudflare のダッシュボードの「API トークン」で、テンプレート「Edit Cloudflare Workers」から作る。対象のアカウントは自分のもの、ゾーンは `rukiharukichi.com` に絞る
 - `CLOUDFLARE_ACCOUNT_ID`（任意）: トークンが複数のアカウントにまたがるときだけ要る
 
-### アクセス解析（Cloudflare Web Analytics）
+### アクセス解析
 
-本番 https://kyosho.rukiharukichi.com/ のページの表示回数（PV）と訪問者数を、Cloudflare のダッシュボードの「Web Analytics」のサイト `kyosho.rukiharukichi.com` で見られる。
-
-- 計測するもの: ページを開いた回数・訪問者数・参照元・国・端末とブラウザ・表示の速さ（Cloudflare Web Analytics の標準の項目）。対局数などゲームの中の出来事は送らない
-- クッキーや localStorage を使わず、個人を識別しない（同意のバナーは出さない）
-- 計測スクリプト（`https://static.cloudflareinsights.com/beacon.min.js`）は `web/src/ui/analytics.ts` が起動時に、ホスト名が `kyosho.rukiharukichi.com` のときだけ読み込む。localhost・`vite preview`（e2e）・`wrangler dev`・GitHub Pages の公開版では読み込まず、外へ何も送らない。読み込めなくても（広告ブロッカーなど）ゲームはそのまま動く
-- サイトのトークン（公開値）は同じファイルの `BEACON_TOKEN`。空なら何も読み込まない
-- ダッシュボードの「自動セットアップ（automatic setup）」は有効にしない。Cloudflare がスクリプトを差し込むと、こちらの読み込みと二重に数える
+本番 https://kyosho.rukiharukichi.com/ の PV・訪問者数は、Cloudflare Web Analytics の自動セットアップで数える（Cloudflare が配信の途中で計測スクリプトを差し込む。サイトのトークンは `40c7c4c1…`。ダッシュボードの「Web Analytics」で見る）。クッキーは使わない。リポジトリには計測のコードを置かない。JS のスニペットを足すと二重に数えるので足さない。localhost・e2e・GitHub Pages の公開版には差し込まれない。
 
 ## バランス検証（`sim/`）
 
