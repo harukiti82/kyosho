@@ -1,0 +1,117 @@
+/* OGP・カバーの画像の共通の見た目（web/src/style.css のトークン・地・ロゴを写したもの）。web/capture/promo.spec.ts が撮る */
+:root {
+  --navy-900: #04112e;
+  --navy-700: #0f2e6e;
+  --ink: #f2faff;
+  --ink-muted: #cfe9ff;
+  --go: #2fd3ff;
+  --font-display: "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", system-ui, sans-serif;
+  --soft-shadow: 0 2px 10px rgba(2, 8, 23, 0.45);
+  --pinch-black: radial-gradient(circle closest-side, #4a4640 0%, #141311 62%, #000 86%, rgba(255, 255, 255, 0.5) 88% 93%, transparent 96%);
+  --pinch-white: radial-gradient(circle closest-side, #ffffff 0%, #eee8db 62%, #b9b1a0 84%, var(--navy-900) 87% 93%, transparent 96%);
+}
+* {
+  box-sizing: border-box;
+  margin: 0;
+}
+html,
+body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+body {
+  position: relative;
+  font-family: var(--font-display);
+  color: var(--ink);
+  /* 地: 縦のグラデーション → -7° の深い帯 → 盤の格子 → 下へ深くする幕（style.css の html と同じ重なり） */
+  background:
+    linear-gradient(180deg, transparent 0 40%, rgba(10, 44, 159, 0.85) 100%),
+    linear-gradient(90deg, rgba(220, 240, 255, 0.07) 0 1px, transparent 1px) 0 0 / 52px 52px,
+    linear-gradient(180deg, rgba(220, 240, 255, 0.07) 0 1px, transparent 1px) 0 0 / 52px 52px,
+    linear-gradient(173deg, transparent 0 58%, rgba(5, 22, 105, 0.45) 58.3%, rgba(5, 22, 105, 0.3) 100%),
+    linear-gradient(180deg, #1270dc 0%, #0c4fd2 45%, #0a2c9f 100%),
+    #0a2c9f;
+}
+.mark .board-sq {
+  fill: rgba(4, 17, 46, 0.55);
+  stroke: #fff;
+  stroke-width: 3;
+}
+.mark .grid {
+  stroke: rgba(255, 255, 255, 0.7);
+  stroke-width: 2.5;
+}
+.mark .black {
+  fill: #0b0b0c;
+  stroke: rgba(255, 255, 255, 0.4);
+  stroke-width: 1.5;
+}
+.mark .white {
+  fill: #f4f0e6;
+}
+.mark {
+  overflow: visible;
+}
+/* 読みの帯（白の細い枠） */
+.kicker {
+  display: inline-block;
+  padding: 0.12em 0.7em;
+  border: 2px solid rgba(255, 255, 255, 0.85);
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  clip-path: polygon(0.5em 0, 100% 0, calc(100% - 0.5em) 100%, 0 100%);
+}
+.word {
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: 0.04em;
+  text-shadow: var(--soft-shadow);
+}
+/* 白い斜めの板に紺の字を、両端から黒と白の石で挟む（メニューの選んだ項目と同じ形） */
+.pinch {
+  position: relative;
+  display: inline-block;
+}
+.pinch .plate {
+  display: inline-block;
+  background: #fff;
+  color: var(--navy-900);
+  font-weight: 800;
+  line-height: 1.35;
+  clip-path: polygon(0.6em 0, 100% 0, calc(100% - 0.6em) 100%, 0 100%);
+}
+.pinch::before,
+.pinch::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  width: var(--stone);
+  height: var(--stone);
+  transform: translateY(-50%);
+}
+.pinch::before {
+  left: calc(var(--stone) * -0.62);
+  background: var(--pinch-black);
+}
+.pinch::after {
+  right: calc(var(--stone) * -0.62);
+  background: var(--pinch-white);
+}
+/* 実際の盤面（紺の斜めの帯の上に置く） */
+.shot {
+  position: absolute;
+}
+.shot::before {
+  content: "";
+  position: absolute;
+  inset: 6% -14% 6% -10%;
+  background: rgba(4, 17, 46, 0.55);
+  clip-path: polygon(14% 0, 100% 0, 86% 100%, 0 100%);
+}
+.shot img {
+  position: relative;
+  display: block;
+  width: 100%;
+  filter: drop-shadow(0 10px 24px rgba(2, 8, 23, 0.55));
+}

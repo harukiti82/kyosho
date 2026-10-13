@@ -1,0 +1,56 @@
+<!doctype html>
+<!-- itch.io のカバー画像（630×500。一覧では 315×250 に縮むので字は大きく）。web/capture/promo.spec.ts が promo/images/cover.png に撮る -->
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="stylesheet" href="card.css" />
+    <style>
+      .head {
+        position: absolute;
+        left: 34px;
+        top: 30px;
+        display: flex;
+        align-items: center;
+        gap: 16px;
+      }
+      .mark {
+        width: 92px;
+        height: 92px;
+      }
+      .kicker {
+        font-size: 15px;
+        margin-bottom: 6px;
+      }
+      .word {
+        font-size: 92px;
+      }
+      .tag {
+        position: absolute;
+        left: 56px;
+        top: 168px;
+        --stone: 44px;
+      }
+      .tag .plate {
+        font-size: 24px;
+        padding: 6px 30px;
+      }
+      .shot {
+        right: -56px;
+        bottom: -130px;
+        width: 400px;
+        transform: rotate(-7deg);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="head">
+      <svg class="mark" viewBox="0 0 120 120" aria-hidden="true"><g transform="skewX(-12) translate(12 0)"><rect class="board-sq" x="8" y="8" width="104" height="104" /><path class="grid" d="M60 8V112M8 60H112" /><circle class="black" cx="34" cy="34" r="20" /><circle class="white" cx="86" cy="34" r="20" /><circle class="black" cx="86" cy="86" r="20" /><polygon class="white" points="34,63 49.2,72.2 53,109 15,109 18.8,72.2" /></g></svg>
+      <div>
+        <div class="kicker">きょうしょう</div>
+        <div class="word">挟将</div>
+      </div>
+    </div>
+    <div class="pinch tag"><span class="plate">挟んだ駒の数字がダメージ</span></div>
+    <div class="shot"><img src="parts/board.png" alt="" /></div>
+  </body>
+</html>
