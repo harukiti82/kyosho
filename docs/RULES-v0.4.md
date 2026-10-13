@@ -1,6 +1,6 @@
 # 挟将（きょうしょう）ルール v0.4（旧版）
 
-> **これは旧版の記録。現行ルールは [RULES.md](../RULES.md)（標準）。v0.4 の次の v1.0「取った駒が持ち駒になる」は [RULES-history.md](RULES-history.md)。**
+> **これは旧版の記録。現行ルールは [RULES.md](../RULES.md)（標準）。v0.4 の次の試遊のルール v1.0「取った駒が持ち駒になる」は [RULES-history.md](RULES-history.md)。**
 > v0.4 は試遊で「難しくてわからない」「普通のオセロと変わらない」という感想が出たため作り直した（理由は [RULES-history.md](RULES-history.md) の改訂履歴）。
 > v0.4 のシミュレーターは `sim/kyosho.py` に残している。ブラウザ版（`web/`）は v1.0 のみ。
 
