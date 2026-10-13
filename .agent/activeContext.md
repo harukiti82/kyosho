@@ -5,10 +5,10 @@
 
 ## 現在の対象
 
-- 何を / どこを: 設定メニューのルールの欄を標準とスキルなしの 2 枚だけにし、試遊用のプリセット（v0.4・v1.0・v2 案・原案・隠し王・方向駒・拠点）と細かい項目を閉じた「カスタム」（`#rule-details`）にしまう（ユーザーの「奥にしまう」。消さない）。`ui/setup.ts` の `FRONT_PRESETS` / `isFrontRules`、e2e は `choosePreset`。依頼元セッション（master）経由
-- ステータス: PR（`feat/hide-trial-presets`）でマージ・本番で設定メニューを確認する
+- 何を / どこを: PWA（ホーム画面に追加・オフライン）。`web/public/manifest.webmanifest`・アイコン `web/public/icons/`・手書きの Service Worker（`web/pwa/sw.ts` を `web/pwa/plugin.ts` がビルドのたびに `dist/sw.js` へ）・登録 `web/src/pwa.ts`・e2e `pwa.spec.ts` / `online/pwa.spec.ts`。依頼元セッション（master）経由
+- ステータス: PR（`feat/pwa`）。マージ後に本番と GitHub Pages で `PWA_TARGETS=… npx playwright test -c playwright.pwa.config.ts` を流して確かめる。iOS Safari の実機は未検証（ユーザーに頼む）
 - 最終更新: 2026-10-13
-- 前の対象: RULES.md を標準・スキルなしの正式なルール 1.0 の本文に（PR #51。版の番号と仮置きから正式にした項目の確認はユーザー待ち）
+- 前の対象: 設定メニューのルールの欄を標準とスキルなしの 2 枚にし、試遊用のプリセットと細かい項目を「カスタム」（`#rule-details`）にしまう（`feat/hide-trial-presets`）。RULES.md を正式なルール 1.0 の本文に（PR #51・#52。仮置きから正式にした項目の確認はユーザー待ち）
 - メインの遊び方の流れ: 挟む〜予測を読む（スキルなしの要素）→ カードを選ぶ（配り直し）→ ゲージ → 強打を使う → 副将を置く → 副将を裏返す → 標準の実戦。カードごとの効果はスキル練習で教える
 - 保存した設定: 旧標準のまま保存した設定は新しい標準に読み替える（保存の版 `v` のない保存だけ。PR #45、docs/RULES-history.md に記載）
 
@@ -34,6 +34,7 @@
 
 ## 未解決・次の一手
 
+- [ ] PWA: iOS Safari の実機でホーム画面に追加 → 機内モードで開いて CPU 対戦が打てるかをユーザーに見てもらう。Android の Chrome の「アプリをインストール」の出方も
 - [ ] RULES.md（ルール 1.0）で仮置きから正式として書いた項目（巻き戻しの王・副将の指定・副将の「いる」の見せ方・相手が選んだ後の配り直し・強打と鉄壁の重なり）をユーザーに確認する
 - [ ] README の冒頭（v1.0 の 4 行ルール・体力 20）が今の標準と食い違う。README の試遊版の文言の担当に伝える
 - [ ] 公開: ユーザーが itch.io（zip を HTML ゲームで上げ、本文に本番の URL）とふりーむ!（自作 HTML5 を受け付けるかを先に確かめる。紹介文に URL 不可）に投稿する。手順は `promo/README.md`。X に URL を貼ったカードの見え方もユーザーに見てもらう
@@ -53,6 +54,7 @@
 
 ## 現フェーズで Read すべき設計書
 
+- PWA: AGENTS.md の「PWA」の項 → `web/pwa/sw.ts`, `web/pwa/plugin.ts`, `web/src/pwa.ts`, `web/public/manifest.webmanifest`, `web/test/sw.test.ts`, `web/e2e/pwa.spec.ts`
 - スキル: `RULES.md`「スキル」「副将」, `web/src/engine/skills.ts`, `web/src/engine/game.ts`（「副将」節・「スキル」節 `useSkill` / `applyEffect` / `takeBack` / `skillsAfterMove`）, `web/src/engine/skillcpu.ts`, `web/src/ui/skillui.ts`, `web/src/ui/app.ts`（「スキル」節）, `server/src/room.ts`（pick / skill）, `.agent/online-protocol.md`「スキル」, `web/test/skills.test.ts`, `server/test/skill.test.ts`, `web/e2e/skill.spec.ts`, `web/e2e/skill-vice.spec.ts`, `web/e2e/online/skill.spec.ts`
 - 通算（CPU 対戦・2 人対戦）: `web/src/ui/record.ts`, `web/src/ui/app.ts`（`countResult` / `recordOf` / `plateRecord`）, `web/src/ui/setup.ts`（`showRecord`）, `web/test/record.test.ts`, `web/e2e/record.spec.ts`
 - スキル練習: `web/src/ui/skilllessons.ts`（`SKILL_LESSONS` / `wheelRng` / `loadSkillDone`）, `web/src/ui/lessons.ts`（`Lesson` の `aim` / `wheel` / `then` / `reply`・`judgeUse`）, `web/src/ui/app.ts`（`openSkillLesson` / `lessonSolved` / `playReply`）, `web/src/ui/menu.ts`（`setSkillLessons`）, `web/test/skilllesson.test.ts`, `web/e2e/skill-tutorial.spec.ts`

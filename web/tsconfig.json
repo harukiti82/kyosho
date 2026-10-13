@@ -12,7 +12,8 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "noEmit": true,
+    "allowImportingTsExtensions": true,
     "skipLibCheck": true
   },
-  "include": ["src", "test", "e2e", "capture", "scripts", "vite.config.ts", "playwright.config.ts", "playwright.online.config.ts", "playwright.promo.config.ts"]
+  "include": ["src", "pwa", "test", "e2e", "capture", "scripts", "vite.config.ts", "playwright.config.ts", "playwright.online.config.ts", "playwright.promo.config.ts", "playwright.pwa.config.ts"]
 }

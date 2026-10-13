@@ -1,8 +1,11 @@
 import { defineConfig } from "vitest/config";
+import { pwaPlugin } from "./pwa/plugin.ts";
 
 export default defineConfig({
   // どの静的ホスティング（サブパス含む）にも置けるよう相対パスで出力する
   base: "./",
+  // PWA: ビルドのたびに dist/sw.js（precache の一覧と版を埋めた Service Worker）を書き出す。manifest とアイコンは public/
+  plugins: [pwaPlugin()],
   server: {
     // npm run dev のとき、/api（HTTP と WebSocket）を wrangler dev（cd server && npm run dev、:8787）に渡す。
     // 本番は同じ Worker が画面と /api を同じオリジンで配信するので、プロキシは開発のときだけ。
