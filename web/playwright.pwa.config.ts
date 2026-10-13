@@ -4,7 +4,9 @@ import { defineConfig, devices } from "@playwright/test";
 // PWA_TARGETS="https://kyosho.rukiharukichi.com/,https://harukiti82.github.io/kyosho/" npx playwright test -c playwright.pwa.config.ts
 export default defineConfig({
   testDir: "e2e",
+  // e2e/online/pwa.spec.ts（サーバーが要る）は拾わない
   testMatch: "pwa.spec.ts",
+  testIgnore: "online/**",
   timeout: 180_000,
   fullyParallel: false,
   workers: 1,

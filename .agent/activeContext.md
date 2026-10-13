@@ -6,7 +6,7 @@
 ## 現在の対象
 
 - 何を / どこを: PWA（ホーム画面に追加・オフライン）。`web/public/manifest.webmanifest`・アイコン `web/public/icons/`・手書きの Service Worker（`web/pwa/sw.ts` を `web/pwa/plugin.ts` がビルドのたびに `dist/sw.js` へ）・登録 `web/src/pwa.ts`・e2e `pwa.spec.ts` / `online/pwa.spec.ts`。依頼元セッション（master）経由
-- ステータス: PR（`feat/pwa`）。マージ後に本番と GitHub Pages で `PWA_TARGETS=… npx playwright test -c playwright.pwa.config.ts` を流して確かめる。iOS Safari の実機は未検証（ユーザーに頼む）
+- ステータス: PR #54 でマージ済み。本番と GitHub Pages で `pwa.spec.ts` 28 件緑（インストールの条件・scope・オフラインで 1 手・版の切り替え）。iOS Safari の実機は未検証（ユーザーに頼む）
 - 最終更新: 2026-10-13
 - 前の対象: 設定メニューのルールの欄を標準とスキルなしの 2 枚にし、試遊用のプリセットと細かい項目を「カスタム」（`#rule-details`）にしまう（`feat/hide-trial-presets`）。RULES.md を正式なルール 1.0 の本文に（PR #51・#52。仮置きから正式にした項目の確認はユーザー待ち）
 - メインの遊び方の流れ: 挟む〜予測を読む（スキルなしの要素）→ カードを選ぶ（配り直し）→ ゲージ → 強打を使う → 副将を置く → 副将を裏返す → 標準の実戦。カードごとの効果はスキル練習で教える
