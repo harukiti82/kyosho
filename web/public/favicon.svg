@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-9 -8 136 136">
+  <!-- 挟将の印（index.html の .brand-mark と同じ図形）。タブの白地でも沈まないよう青い地に置く。色は style.css の .brand-mark を写したもの -->
+  <rect x="-9" y="-8" width="136" height="136" fill="#0c4fd2" />
+  <g transform="skewX(-12) translate(12 0)">
+    <rect x="8" y="8" width="104" height="104" fill="#04112e" fill-opacity="0.55" stroke="#fff" stroke-width="5" />
+    <path d="M60 8V112M8 60H112" stroke="#fff" stroke-opacity="0.7" stroke-width="4" />
+    <circle cx="34" cy="34" r="20" fill="#0b0b0c" stroke="#fff" stroke-opacity="0.4" stroke-width="2" />
+    <circle cx="86" cy="34" r="20" fill="#f4f0e6" />
+    <circle cx="86" cy="86" r="20" fill="#0b0b0c" stroke="#fff" stroke-opacity="0.4" stroke-width="2" />
+    <polygon points="34,63 49.2,72.2 53,109 15,109 18.8,72.2" fill="#f4f0e6" />
+  </g>
+</svg>
