@@ -177,7 +177,7 @@ test("設定のルールは標準とスキルなしだけを出し、試遊用�
   await expect(details.locator("summary")).toHaveText("カスタム");
   await expect(page.locator("#custom-tag")).toHaveText("標準");
   await noHorizontalScroll(page, width);
-  await page.screenshot({ path: `${SHOT}/${prefix(page)}-setup-closed.png` });
+  await page.screenshot({ path: `${SHOT}/${prefix(page)}-setup-closed.png`, animations: "disabled" });
   // 開くと試遊用の 7 つのプリセットと細かい項目
   await details.locator("summary").click();
   await expect(details).toHaveAttribute("open", "");
@@ -187,7 +187,7 @@ test("設定のルールは標準とスキルなしだけを出し、試遊用�
   await noHorizontalScroll(page, width);
   // 設定はダイアログの中で縦に流れるので、カスタムの見出しを上端に寄せて撮る
   await details.evaluate((d) => d.scrollIntoView({ block: "start" }));
-  await page.screenshot({ path: `${SHOT}/${prefix(page)}-setup-open.png` });
+  await page.screenshot({ path: `${SHOT}/${prefix(page)}-setup-open.png`, animations: "disabled" });
   // 開いたまま標準に戻せる（開いた欄は閉じない）
   await choosePreset(page, "v2");
   await expect(page.locator("#custom-tag")).toHaveText("v2案（強い駒は返せない）");

@@ -3122,6 +3122,11 @@ button {
 .presets-trial {
   padding-bottom: 0.2rem;
 }
+/* 最後の行の余りはこの詰め物が取り、残った札だけが 1 行に伸びて大きな札に見えないようにする */
+.presets-trial::after {
+  content: "";
+  flex: 10 1 auto;
+}
 .preset-main .preset-name {
   letter-spacing: 0.1em;
   font-family: var(--font-display);
