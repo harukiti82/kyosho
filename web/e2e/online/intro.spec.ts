@@ -4,6 +4,7 @@
 
 import { expect, test, type Page } from "@playwright/test";
 import { LOCKED_TITLE } from "../../src/ui/menu";
+import { noHorizontalScroll } from "../helpers";
 import { createRoomFromSetup, enterPhrase, joinFromInvite, newPlayer, playToEnd, prefix, saveOnlineSetup, SHOT, waitPlaying, waitResult } from "./net";
 
 let n = 0;
@@ -33,6 +34,7 @@ test("招待リンクで来た初めての人は、その対局に入って終�
   // 対局の途中にメニューを開くと閉じているが、対局には戻れる
   await guest.page.locator("#btn-menu").click();
   await expectAllLocked(guest.page);
+  await guest.page.waitForTimeout(800);
   await guest.page.screenshot({ path: `${SHOT}/${pre}-online-intro-guest-menu.png` });
   await guest.page.locator("#menu-resume").click();
   await expect(guest.page.locator("#game")).toBeVisible();
@@ -67,22 +69,26 @@ test("合言葉で来る初めての人は、マルチの合言葉だけを使�
   await locked(page, "menu-pvp");
   await locked(page, "menu-online");
   await open(page, "menu-phrase");
+  // 段が出てくる動きが終わってから撮る
+  await page.waitForTimeout(800);
   await page.screenshot({ path: `${SHOT}/${pre}-online-intro-phrase-menu.png` });
+  await noHorizontalScroll(page, info.project.use.viewport!.width);
   await page.locator("#menu-pvp").click();
   await expect(page.locator("#toast")).toHaveText(LOCKED_TITLE);
   await expect(page.locator("#game")).toBeHidden();
+  await page.locator("#menu-modes .menu-back").click();
 
   // 待つのをやめただけなら、合言葉は開いたまま
   expect(await enterPhrase(guest, fresh("solo"), false)).toBe("phrase-wait");
-  await page.locator("#phrase-cancel").click();
-  await expect(page.locator("#menu-modes")).toBeVisible();
+  await page.locator("#phrase-leave").click();
+  await expect(page.locator("#menu")).toBeVisible();
+  await open(page, "menu-multi");
   await open(page, "menu-phrase");
 
   // 合言葉で対局する
   const phrase = fresh("intro");
   await saveOnlineSetup(host, "std", "first");
   expect(await enterPhrase(host, phrase, false)).toBe("phrase-wait");
-  await page.locator("#menu-modes .menu-back").click();
   expect(await enterPhrase(guest, phrase, false)).toBe("join");
   await page.locator("#join-room").click();
   await waitPlaying(host, guest);
