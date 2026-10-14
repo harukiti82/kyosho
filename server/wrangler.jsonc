@@ -16,11 +16,18 @@
     "not_found_handling": "none"
   },
   "durable_objects": {
-    // 1 部屋 = 1 Durable Object（部屋 ID から idFromName で引く）
-    "bindings": [{ "name": "ROOMS", "class_name": "Room" }]
+    // 1 部屋 = 1 Durable Object（部屋 ID から idFromName で引く）。
+    // 合言葉の受付は合言葉ごとに 1 つ（正規化した合言葉の SHA-256 から idFromName で引く。src/lobby.ts）
+    "bindings": [
+      { "name": "ROOMS", "class_name": "Room" },
+      { "name": "LOBBIES", "class_name": "Lobby" }
+    ]
   },
   // 無料プランで使える SQLite 版の Durable Object
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Room"] }],
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["Room"] },
+    { "tag": "v2", "new_sqlite_classes": ["Lobby"] }
+  ],
   "vars": {
     // 同一オリジン（独自ドメイン・workers.dev）からの接続は常に許可する。
     // ここには、それに加えて許可するオリジンをカンマ区切りで書く（末尾 :* は任意のポート）。本番は公開ドメインだけ
