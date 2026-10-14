@@ -1,6 +1,7 @@
 // メニュー画面: CPU対戦（強さを選ぶとそのまま始まる）・マルチ（この端末で 2 人・オンラインの招待リンクと合言葉）・遊び方（チュートリアル）・
 // スキル練習（11 枚のカードの一覧から 1 枚を選んで練習する）・設定・このゲームについて（版・権利・プライバシー）。
 // どの対局も設定メニューで保存したルール（変えなければ標準）で始まる。表示と入力だけで、対局は App が始める。
+// 初めての人が遊び方を終えるまでは、CPU対戦・マルチの鍵に錠を添え、押すと act.locked（ui/intro.ts）。
 
 import { CPU_LEVELS, type CpuLevel } from "../engine/cpu";
 import type { RuleSet } from "../engine/rules";
@@ -24,13 +25,26 @@ export interface MenuActions {
   rules: () => void;
   /** 対局中に開いたメニューから、その対局へ戻る */
   resume: () => void;
+  /** 錠の付いた鍵（遊び方を終えるまで遊べない入口）を押した */
+  locked: () => void;
 }
+
+/** 遊び方を終えるまで閉じる入口。phrase は合言葉の入口を開けておく（初めての人の最初のオンライン対戦） */
+export interface MenuGate {
+  phrase: boolean;
+}
+
+/** 錠の付いた鍵の title */
+export const LOCKED_TITLE = "遊び方を終えると遊べます";
 
 export type Panel = "main" | "levels" | "modes" | "skills";
 
 export class Menu {
   private readonly el = {
     root: byId("menu"),
+    cpu: byId("menu-cpu"),
+    multi: byId("menu-multi"),
+    pvp: byId("menu-pvp"),
     note: byId("menu-note"),
     resume: byId("menu-resume"),
     online: byId("menu-online"),
@@ -45,18 +59,23 @@ export class Menu {
     panels: { main: byId("menu-main"), levels: byId("menu-levels"), modes: byId("menu-modes"), skills: byId("menu-skilllist") } as Record<Panel, HTMLElement>,
   };
 
+  /** 遊び方を終えるまで閉じる入口（null は閉じない） */
+  private gate: MenuGate | null = null;
+
   constructor(private readonly act: MenuActions) {
-    byId("menu-cpu").addEventListener("click", () => this.panel("levels"));
-    byId("menu-multi").addEventListener("click", () => this.panel("modes"));
+    // 錠の付いた鍵は、押しても入口の代わりに act.locked
+    const open = (b: HTMLElement, f: () => void) => b.addEventListener("click", () => (b.classList.contains("locked") ? act.locked() : f()));
+    open(this.el.cpu, () => this.panel("levels"));
+    open(this.el.multi, () => this.panel("modes"));
     this.el.learn.addEventListener("click", () => act.learn());
     this.el.skills.addEventListener("click", () => this.panel("skills"));
     byId("menu-settings").addEventListener("click", () => act.settings());
     byId("menu-about").addEventListener("click", () => act.about());
     byId("menu-rule").addEventListener("click", () => act.rules());
     this.el.resume.addEventListener("click", () => act.resume());
-    byId("menu-pvp").addEventListener("click", () => act.pvp());
-    this.el.online.addEventListener("click", () => act.online());
-    this.el.phrase.addEventListener("click", () => act.phrase());
+    open(this.el.pvp, () => act.pvp());
+    open(this.el.online, () => act.online());
+    open(this.el.phrase, () => act.phrase());
     for (const b of this.el.root.querySelectorAll<HTMLElement>("[data-level]")) {
       const level = b.dataset.level as CpuLevel;
       if (CPU_LEVELS.includes(level)) b.addEventListener("click", () => act.cpu(level));
@@ -145,6 +164,30 @@ export class Menu {
   enableOnline() {
     this.el.online.hidden = false;
     this.el.phrase.hidden = false;
+    this.setGate(this.gate);
+  }
+
+  /**
+   * 遊び方を終えるまで閉じる入口（null で全部開ける）。閉じた鍵に錠（読み上げは LOCKED_TITLE）を添え、遊び方を主な項目にする。
+   * マルチは中に開いている入口（合言葉）があれば開ける
+   */
+  setGate(gate: MenuGate | null) {
+    this.gate = gate;
+    const phrase = !!gate?.phrase && !this.el.phrase.hidden;
+    this.lock(this.el.cpu, !!gate);
+    this.lock(this.el.pvp, !!gate);
+    this.lock(this.el.online, !!gate);
+    this.lock(this.el.phrase, !!gate && !phrase);
+    this.lock(this.el.multi, !!gate && !phrase);
+    this.el.cpu.classList.toggle("primary", !gate);
+    this.el.learn.classList.toggle("primary", !!gate);
+  }
+
+  private lock(b: HTMLElement, on: boolean) {
+    // 押せば知らせるので aria-disabled にはしない（錠の読み上げで閉じていると分かる）
+    b.classList.toggle("locked", on);
+    b.querySelector(".menu-lock")?.remove();
+    if (on) b.append(h("span", { class: "menu-lock", attrs: { title: LOCKED_TITLE, "aria-label": LOCKED_TITLE, role: "img" } }));
   }
 
   private panel(p: Panel, focus = true) {

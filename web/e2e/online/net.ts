@@ -5,6 +5,7 @@ import { legalCells, playableKinds, playMove, lastMoveOf, type GameState } from 
 import type { PieceKind, PresetId } from "../../src/engine/rules";
 import type { StateMessage } from "../../src/net/protocol";
 import { choosePreset, play } from "../helpers";
+import { EMPTY_STATE } from "../intro";
 
 export const SHOT = "screenshots";
 
@@ -20,10 +21,14 @@ export interface Player {
   last: StateMessage | null;
 }
 
-/** プロジェクト（desktop / mobile）と同じ画面の大きさ・タッチでコンテキストを作り、届くメッセージを記録する */
-export async function newPlayer(browser: Browser, info: TestInfo, name: string): Promise<Player> {
+/**
+ * プロジェクト（desktop / mobile）と同じ画面の大きさ・タッチでコンテキストを作り、届くメッセージを記録する。
+ * 保存は設定ファイルの storageState（初めての人の遊び方の必須を解いた印）。fresh なら何も保存していない初めての人
+ */
+export async function newPlayer(browser: Browser, info: TestInfo, name: string, opts: { fresh?: boolean } = {}): Promise<Player> {
   const u = info.project.use;
   const context = await browser.newContext({
+    ...(opts.fresh ? { storageState: EMPTY_STATE } : {}),
     baseURL: u.baseURL,
     viewport: u.viewport,
     hasTouch: u.hasTouch,

@@ -5,10 +5,11 @@
 
 ## 現在の対象
 
-- 何を / どこを: オンライン対戦の合言葉（同じ合言葉を入れた 2 人が同じ部屋。`POST /api/match`・合言葉ごとの受付 DO `server/src/lobby.ts`・正規化 `web/src/net/phrase.ts`・メニューの「オンライン 合言葉」・ダイアログの入力と待機）。招待リンクは今までどおり。依頼元セッション（master）経由
-- ステータス: PR #57 でマージ・デプロイ済み。本番でヘッドレスの 2 つのコンテキストから合言葉（全角と半角）で 1 局を始めて 1 手が両方に届くことを確かめた（2026-10-15）
+- 何を / どこを: 初めての人は遊び方から（初めてこの端末で開いた人は遊び方の実戦の前まで 15 ステップを終えるまで CPU 対戦・マルチに錠。`web/src/ui/intro.ts`・`Menu.setGate`・`App.setIntro`）。依頼元セッション（master）経由。ブランチ `feat/first-tutorial-gate`
+- ステータス: 実装・テスト中
 - 最終更新: 2026-10-15
-- 前の対象: 完全版の体裁（版 1.0。PR #56）。その前は PWA（PR #54・#55。本番と GitHub Pages で `pwa.spec.ts` 28 件緑。iOS Safari の実機は未検証）。その前は設定メニューのルールの欄を標準とスキルなしの 2 枚にし、試遊用のプリセットと細かい項目を「カスタム」（`#rule-details`）にしまう（`feat/hide-trial-presets`）。RULES.md を正式なルール 1.0 の本文に（PR #51・#52。仮置きから正式にした項目の確認はユーザー待ち）
+- 判断した点（ユーザーに報告する）: 初めてかは起動時に 1 回だけ決めて `kyosho:intro` に残す（後から遊び方を途中まで進めても対象外にならない。前からの保存だけの人は対象外）。localStorage が使えない・印が壊れているときは必須にしない。合言葉の入口は初めての人の最初のオンライン対局が始まるまで開ける。招待リンクで来た人が「新しい部屋で再戦」（終局画面から）するのは止めない
+- 前の対象: オンライン対戦の合言葉（PR #57。本番で確認済み）。その前は完全版の体裁（版 1.0。PR #56）、PWA（PR #54・#55。iOS Safari の実機は未検証）
 - メインの遊び方の流れ: 挟む〜予測を読む（スキルなしの要素）→ カードを選ぶ（配り直し）→ ゲージ → 強打を使う → 副将を置く → 副将を裏返す → 標準の実戦。カードごとの効果はスキル練習で教える
 - 保存した設定: 旧標準のまま保存した設定は新しい標準に読み替える（保存の版 `v` のない保存だけ。PR #45、docs/RULES-history.md に記載）
 
@@ -34,6 +35,8 @@
 
 ## 未解決・次の一手
 
+- [ ] 初めての人は遊び方から: ユーザーに見てもらう（錠の形・トーストの文・遊び方を主な項目にしたこと・15 ステップの長さ）。次の作業はユーザー名の機能
+
 - [ ] 合言葉: ユーザーに見てもらう（入口を「オンライン 招待リンク」「オンライン 合言葉」の 2 行にしたこと・同じブラウザの別のタブでも自分とつながること・待っている人が切断すると次の人は別の部屋になること）。送りすぎの制限は Worker のメモリの軽いもの（インスタンスをまたがない）
 - [ ] PWA: iOS Safari の実機でホーム画面に追加 → 機内モードで開いて CPU 対戦が打てるかをユーザーに見てもらう。Android の Chrome の「アプリをインストール」の出方も
 - [ ] RULES.md（ルール 1.0）で仮置きから正式として書いた項目（巻き戻しの王・副将の指定・副将の「いる」の見せ方・相手が選んだ後の配り直し・強打と鉄壁の重なり）をユーザーに確認する
@@ -53,6 +56,8 @@
 - [ ] ユーザーの試遊で演出の手応え・方向駒・隠し王・拠点・オセロの枠の見やすさの感想を聞く
 
 ## 現フェーズで Read すべき設計書
+
+- 初めての人は遊び方から: AGENTS.md の「初めての人は遊び方から」の項 → `web/src/ui/intro.ts`, `web/src/ui/menu.ts`（`setGate`）, `web/src/ui/app.ts`（`setIntro` / `introLocked` / `lessonSolved` / `onState`）, `web/test/intro.test.ts`, `web/e2e/intro.spec.ts`, `web/e2e/tutorial.spec.ts`, `web/e2e/online/intro.spec.ts`, `web/e2e/intro.ts`
 
 - 合言葉: `.agent/online-protocol.md`「合言葉」→ `server/src/lobby.ts`, `server/src/room.ts`（`matchInfo` / `hostPresent`）, `server/src/index.ts`（`match` / `allowMatch`）, `web/src/net/phrase.ts`, `web/src/ui/app.ts`（`openPhrase` / `matchOnline` / `syncLobby`）, `web/src/ui/online.ts`（`phrase` / `phraseWait`）, `server/test/phrase.test.ts`, `web/e2e/online/phrase.spec.ts`
 - 完全版の体裁: AGENTS.md の「版の番号」「想定外のエラー」の項 → `web/src/ui/about.ts`, `web/src/ui/crash.ts`, `web/index.html`（`#about` / `#crash` / `noscript`）, `web/e2e/about.spec.ts`, `web/test/about.test.ts`

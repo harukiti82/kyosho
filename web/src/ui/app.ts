@@ -107,9 +107,10 @@ import {
   type Need,
   type Progress,
 } from "./lessons";
-import { Menu, type Panel } from "./menu";
+import { LOCKED_TITLE, Menu, type Panel } from "./menu";
 import { loadSkillDone, saveSkillDone, SKILL_LESSONS, skillLessonIndex, skillProgressLabel, wheelRng } from "./skilllessons";
 import { gamesOf, recordFor, RecordBook, recordViewer, type RecordKey } from "./record";
+import { introRequired, REQUIRED_STEPS, saveIntro, startIntro, tutorialCleared, type IntroState } from "./intro";
 import { cryptoRandom, drawSeat, fillSentences, SetupDialog, type PlaySettings } from "./setup";
 import { Sound } from "./sound";
 import { Undo, UNDO_LIMIT } from "./undo";
@@ -260,6 +261,8 @@ export class App {
   private readonly tokens = safeStore(() => window.sessionStorage);
   /** この端末で作った部屋の記録（自分の招待リンクを開いたときの注意書き） */
   private readonly local = safeStore(() => window.localStorage);
+  /** 初めての人か（遊び方を終えるまで CPU 対戦・マルチを閉じる）。ほかの保存を書く前に決める */
+  private intro: IntroState = startIntro(this.local);
   /** CPU 対戦（強さごと）と 2 人対戦の通算（この端末の localStorage） */
   private readonly book = new RecordBook(this.local);
   /** 通算に数えた対局の通し番号（gameNo。同じ対局を二度数えない・名札の「2 局目から」をこの対局を除いて数える） */
@@ -315,6 +318,7 @@ export class App {
       about: () => this.about.open(),
       rules: () => this.showRules(this.setup.current.rules),
       resume: () => this.resume(),
+      locked: () => this.introLocked(),
     });
     this.setup = new SetupDialog(
       this.local,
@@ -337,6 +341,7 @@ export class App {
     });
     this.progress = loadProgress(this.local);
     this.skillDone = loadSkillDone(this.local);
+    if (this.intro !== "cleared" && tutorialCleared(this.progress)) this.setIntro("cleared");
     this.showLearnState();
     this.bindControls();
     // 招待リンク（?room=）から開いたら部屋へ、それ以外はメニューから
@@ -1453,6 +1458,8 @@ export class App {
       return;
     }
     const nextIsMatch = !!LESSONS[run.index + 1]?.match;
+    // 実戦の前まで終えた: CPU 対戦とマルチを開ける（保存できなくてもこの画面の間は開ける）
+    if (run.index + 1 >= REQUIRED_STEPS && this.intro !== "cleared") this.setIntro("cleared");
     this.coach.success(run.lesson.done(m, before, this.game!), nextIsMatch ? "実戦へ" : "次へ");
   }
 
@@ -1500,6 +1507,20 @@ export class App {
   private showLearnState() {
     this.menu.setLearnState(progressLabel(this.progress), this.progress === null);
     this.menu.setSkillLessons(this.skillDone, skillProgressLabel(this.skillDone), this.lessonRules());
+    this.menu.setGate(introRequired(this.intro, this.progress) ? { phrase: this.intro === "new" } : null);
+  }
+
+  /** 初めての人の状態を変えて保存する（保存できなくても、この画面の間はこの状態） */
+  private setIntro(state: IntroState) {
+    this.intro = state;
+    saveIntro(this.local, state);
+    this.showLearnState();
+  }
+
+  /** 錠の付いた入口を押した: 短く知らせて、遊び方の鍵に移る */
+  private introLocked() {
+    this.showToast(LOCKED_TITLE);
+    byId("menu-learn").focus();
   }
 
   /** 遊び方で、盤より先にすること（名札のスキル・正解の駒・王・副）。操作できないとき・正解を打った後は何もない */
@@ -1762,6 +1783,8 @@ export class App {
     const next = !!prev && !!prevRoom && prevRoom.gameNo > 0 && m.gameNo > prevRoom.gameNo;
     const grew = !!prev && !next && m.view.history.length > prev.history.length;
     this.rematchSending = false;
+    // 初めての人が招待リンク・合言葉で対局を始めた（相手がそろった）: 合言葉も遊び方の後にする（この対局はそのまま遊べる）
+    if (this.intro === "new" && m.phase !== "waiting") this.setIntro("played");
     // サーバーの時計は届いた時刻から数える（端末とサーバーの時計のずれを持ち込まない）。演出の後に反映する局面でも、ここで受け取る
     this.netClock = m.clock
       ? { seq: m.view.history.length, gameNo: m.gameNo, limitMs: m.clock.limitMs, deadline: Date.now() + m.clock.remainingMs }
