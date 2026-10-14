@@ -1,7 +1,8 @@
-// オンライン対戦の案内ダイアログ（部屋の作成中・招待リンクと相手の待機・招待されたときの参加の確認・エラー）。
+// オンライン対戦の案内ダイアログ（部屋の作成中・招待リンクと相手の待機・招待されたときの参加の確認・合言葉の入力と待機・エラー）。
 // 表示だけを受け持ち、通信と対局の進行は app.ts（通信層は net/online.ts）が行う。
 
 import { PLAYER_NAME, type Player, type RuleSet } from "../engine/rules";
+import { PHRASE_MAX } from "../net/phrase";
 import { turnSecondsText } from "./clock";
 import { byId, h } from "./dom";
 import { ruleLines } from "./ruletext";
@@ -38,7 +39,7 @@ export class OnlineDialog {
     actions: byId("online-actions"),
   };
   /** 今出している画面の種類（e2e と表示の切り替えの確認用に data-view にも入れる） */
-  view: "busy" | "invite" | "join" | "error" | null = null;
+  view: "busy" | "invite" | "join" | "phrase" | "phrase-wait" | "error" | null = null;
 
   constructor() {
     // Esc で閉じない（閉じると何も操作できない画面になるため、ボタンで抜ける）
@@ -107,17 +108,106 @@ export class OnlineDialog {
     );
   }
 
-  /** 招待リンクから開いたときの参加の確認 */
-  join(o: { rules: RuleSet; ruleName: string; turnSeconds: number; createdHere: boolean; onJoin: () => void; onCancel: () => void }) {
+  /**
+   * 合言葉の入力。決めると onSubmit に入力のまま渡す（正規化と検証は呼ぶ側）。error は前の入力が通らなかった理由。
+   * 知らない人とつながりうることは常に出さず、「?」で開く
+   */
+  phrase(o: { value: string; error?: string; onSubmit: (raw: string) => void; onCancel: () => void }) {
+    const input = h("input", {
+      class: "share-url phrase-input",
+      attrs: {
+        type: "text",
+        id: "phrase-input",
+        "aria-label": "合言葉",
+        "aria-describedby": "phrase-error",
+        // NFKC で長くなる文字もあるので、入力の上限は少し広く取る（正規化した後の字数はサーバーと同じ基準で確かめる）
+        maxlength: String(PHRASE_MAX * 2),
+        autocomplete: "off",
+        autocapitalize: "off",
+        spellcheck: "false",
+        enterkeyhint: "go",
+        placeholder: `${PHRASE_MAX} 字まで`,
+      },
+    });
+    input.value = o.value;
+    const submit = () => o.onSubmit(input.value);
+    // 日本語の変換を確定する Enter では送らない
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.isComposing && e.keyCode !== 229) {
+        e.preventDefault();
+        submit();
+      }
+    });
+    const help = h("p", {
+      class: "online-help",
+      attrs: { id: "phrase-help", hidden: "" },
+      text: "よくある言葉だと、知らない人とつながることがあります。全角と半角、大文字と小文字は同じとみなします。",
+    });
+    const helpBtn = h("button", {
+      class: "icon-btn",
+      text: "?",
+      attrs: { type: "button", id: "phrase-help-btn", "aria-label": "合言葉について", "aria-expanded": "false", "aria-controls": "phrase-help", title: "同じ合言葉を入れた人とつながります" },
+    });
+    helpBtn.addEventListener("click", () => {
+      help.hidden = !help.hidden;
+      helpBtn.setAttribute("aria-expanded", String(!help.hidden));
+    });
+    this.show(
+      "phrase",
+      "合言葉",
+      [
+        h("p", { class: "online-lead", text: "同じ合言葉を入れた人と対戦" }),
+        h("div", { class: "phrase-row" }, [input, helpBtn]),
+        h("p", { class: "online-field-error", attrs: { id: "phrase-error", role: "alert" }, text: o.error ?? "" }),
+        help,
+      ],
+      [
+        { label: "やめる", id: "phrase-cancel", onClick: o.onCancel },
+        { label: "決定", primary: true, id: "phrase-go", onClick: submit },
+      ],
+    );
+    input.focus();
+  }
+
+  /** 合言葉で相手の待機（作成者）。合言葉は待っている本人の画面にだけ出す */
+  phraseWait(o: { phrase: string; rules: RuleSet; ruleName: string; turnSeconds: number; you: Player; onLeave: () => void }) {
+    this.show(
+      "phrase-wait",
+      "合言葉で待機中",
+      [
+        h("div", { class: "lobby" }, [
+          h("div", { class: "lobby-seat" }, [
+            h("span", { class: `avatar p${o.you}`, attrs: { "aria-hidden": "true" } }),
+            h("span", { class: "lobby-name", text: "あなた" }),
+            h("span", { class: "online-seat", text: PLAYER_NAME[o.you] }),
+          ]),
+          h("span", { class: "lobby-vs", text: "VS", attrs: { "aria-hidden": "true" } }),
+          h("div", { class: "lobby-seat waiting", attrs: { id: "phrase-waiting" } }, [
+            h("span", { class: "avatar empty", attrs: { "aria-hidden": "true" } }),
+            h("span", { class: "lobby-name", text: "相手" }),
+            h("span", { class: "online-wait" }, [h("span", { class: "spinner", attrs: { "aria-hidden": "true" } }), "参加待ち"]),
+          ]),
+        ]),
+        h("p", { class: "phrase-show" }, [h("span", { class: "label", text: "合言葉" }), h("strong", { attrs: { id: "phrase-show" }, text: o.phrase })]),
+        h("p", { class: "online-lead", text: "同じ合言葉を入れた人が来ると始まります" }),
+        roomTime(o.turnSeconds),
+        roomRules(o.rules, o.ruleName),
+      ],
+      [{ label: "やめる", id: "phrase-leave", onClick: o.onLeave }],
+    );
+  }
+
+  /** 招待リンクから開いたとき・合言葉で待っている部屋が見つかったとき（phrase）の参加の確認 */
+  join(o: { rules: RuleSet; ruleName: string; turnSeconds: number; createdHere: boolean; phrase?: boolean; onJoin: () => void; onCancel: () => void }) {
     this.show(
       "join",
-      "対戦の招待",
+      o.phrase ? "合言葉の相手" : "対戦の招待",
       [
         h("div", { class: "lobby" }, [
           h("div", { class: "lobby-seat" }, [
             // 先手・後手はまだ分からないので、白黒半分の石
             h("span", { class: "avatar half", attrs: { "aria-hidden": "true" } }),
-            h("span", { class: "lobby-name", text: "招いた人" }),
+            h("span", { class: "lobby-name", text: o.phrase ? "待っていた人" : "招いた人" }),
           ]),
           h("span", { class: "lobby-vs", text: "VS", attrs: { "aria-hidden": "true" } }),
           h("div", { class: "lobby-seat" }, [
@@ -125,12 +215,17 @@ export class OnlineDialog {
             h("span", { class: "lobby-name", text: "あなた" }),
           ]),
         ]),
-        h("p", { class: "online-lead", text: "先手・後手は部屋を作った人が決めます" }),
+        h("p", { class: "online-lead", text: o.phrase ? "先手・後手は待っていた人が決めます" : "先手・後手は部屋を作った人が決めます" }),
         o.createdHere
           ? h("p", {
               class: "setup-note",
-              attrs: { id: "join-own", title: "相手と遊ぶなら、参加せずにリンクを相手に送ってください" },
-              text: "このブラウザで作った部屋なので、参加すると自分が相手の席に座ります。",
+              attrs: {
+                id: "join-own",
+                title: o.phrase ? "別のタブで同じ合言葉を待っています" : "相手と遊ぶなら、参加せずにリンクを相手に送ってください",
+              },
+              text: o.phrase
+                ? "このブラウザで待っている部屋なので、参加すると自分が相手の席に座ります。"
+                : "このブラウザで作った部屋なので、参加すると自分が相手の席に座ります。",
             })
           : null,
         roomTime(o.turnSeconds),

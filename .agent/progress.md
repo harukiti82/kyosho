@@ -78,3 +78,7 @@
 - 設定メニューのルールの欄を標準とスキルなしの 2 枚にし、試遊用の 7 プリセットと細かい項目を閉じた「カスタム」にしまう（標準・スキルなし以外の保存・URL では開いて始める）。PRESETS・URL・保存は不変。unit `settings.test.ts`・e2e `menu.spec.ts`、e2e の札は `choosePreset` で押す
 - PWA: manifest（相対の start_url・scope）・アイコン 192・512・maskable・手書きの SW（入口はネットワーク優先・assets はキャッシュ優先・`/api`・`/cdn-cgi`・別オリジンは横取りしない・版は中身の SHA-256、skipWaiting で次に開けば新しい版）。e2e はほかを `serviceWorkers: "block"`、`pwa.spec.ts` がルートとサブパス `/kyosho/` で確かめる
 - 完全版の体裁（版 1.0）: 上の帯の「試遊版」をなくし、メニューの「このゲームについて」（版は package.json・作者・権利・プライバシー・RULES.md へのリンク）・想定外のエラーの知らせ（1 回だけ・再読み込み）・noscript・LICENSE（All rights reserved）。README・紹介文・AGENTS.md の試遊の文言も直す。unit `about.test.ts`・e2e `about.spec.ts`
+
+## 2026-10-15
+
+- オンライン対戦に合言葉: `POST /api/match` と合言葉ごとの受付 DO（正規化した合言葉の SHA-256 で引き、待っている部屋を 1 つ・1 件ずつ処理）。そろった・抜けた・閉じた部屋は空き、合言葉は保存しない。送りすぎは接続元ごとに 1 分 20 回。server `phrase.test.ts`・unit `phrase.test.ts`・e2e `online/phrase.spec.ts`

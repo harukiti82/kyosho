@@ -62,6 +62,19 @@ export const prefix = (info: TestInfo) => (info.project.name === "desktop" ? "pc
  */
 export async function createRoomFromSetup(host: Player, preset: PresetId | null, seat: "first" | "second" | "random", shot?: string): Promise<string> {
   const { page } = host;
+  await saveOnlineSetup(host, preset, seat);
+  await page.locator("#menu-multi").click();
+  if (shot) await page.screenshot({ path: shot });
+  await page.locator("#menu-online").click();
+  await expect(page.locator("#online")).toHaveAttribute("data-view", "invite");
+  const url = await page.locator("#invite-url").inputValue();
+  expect(url).toMatch(/\?room=[A-Za-z0-9_-]{22}$/);
+  return url;
+}
+
+/** トップを開き、設定メニューでルール（preset が null なら既定のまま）とオンラインの手番を選んで保存する（メニューの最初の段に戻る） */
+export async function saveOnlineSetup(p: Player, preset: PresetId | null, seat: "first" | "second" | "random") {
+  const { page } = p;
   await page.goto("/");
   await expect(page.locator("#menu")).toBeVisible();
   // /api/health に届いたら入口が出る
@@ -75,13 +88,6 @@ export async function createRoomFromSetup(host: Player, preset: PresetId | null,
   await page.locator(`label:has(> input[name=host][value=${seat}])`).click();
   await page.locator("#setup-save").click();
   await expect(page.locator("#setup")).toBeHidden();
-  await page.locator("#menu-multi").click();
-  if (shot) await page.screenshot({ path: shot });
-  await page.locator("#menu-online").click();
-  await expect(page.locator("#online")).toHaveAttribute("data-view", "invite");
-  const url = await page.locator("#invite-url").inputValue();
-  expect(url).toMatch(/\?room=[A-Za-z0-9_-]{22}$/);
-  return url;
 }
 
 /** 招待リンクを開いて参加する */

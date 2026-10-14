@@ -627,7 +627,8 @@ button {
   animation-delay: 0.08s;
 }
 #menu-learn,
-.menu-level:nth-of-type(3) {
+.menu-level:nth-of-type(3),
+#menu-phrase {
   animation-delay: 0.16s;
 }
 #menu-skills {
@@ -4242,6 +4243,52 @@ a.btn {
 }
 .invite-actions {
   margin: 0.5rem 0 0.75rem;
+}
+/* 合言葉の入力: 欄と「?」を横に並べ、通らなかった理由は欄の下に小さく */
+.phrase-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.phrase-input {
+  flex: 1;
+  min-width: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  padding: 0.55rem 0.7rem;
+}
+.online-field-error {
+  min-height: 1.2em;
+  margin: 0.35rem 0 0.2rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--warn);
+}
+.online-help {
+  margin: 0 0 0.6rem;
+  font-size: var(--note-size);
+  line-height: 1.6;
+  color: var(--ink-muted);
+}
+/* 待っている人の合言葉: 読みの帯と大きな直立の字 */
+.phrase-show {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.2rem 0.6rem;
+  margin: 0 0 0.5rem;
+}
+.phrase-show .label {
+  margin: 0;
+}
+.phrase-show strong {
+  min-width: 0;
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+  font-weight: 900;
+  color: #fff;
+  overflow-wrap: anywhere;
+  text-shadow: var(--soft-shadow);
 }
 .online-wait {
   display: flex;

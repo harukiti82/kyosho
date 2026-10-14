@@ -7,7 +7,7 @@
 - 1 つの Cloudflare Worker（`server/`、名前 `kyosho`）が、画面（`web/dist` の静的アセット）と API・WebSocket（`/api` の下）を**同じオリジン**で配信する。公開先は https://kyosho.rukiharukichi.com （Custom Domain。`kyosho.<アカウント>.workers.dev` でも同じ）。ルートの `rukiharukichi.com` は使わない
 - `/api` と `/api/*` だけ Worker を先に通す（`wrangler.jsonc` の `assets.run_worker_first`）。それ以外は静的アセットが直接返し、Worker も Durable Object も起こさない。アセットにないパスだけ Worker に落ちて 404（テキスト）
 - GitHub Pages（https://harukiti82.github.io/kyosho/）の公開版は移行が済むまで残すが、オンライン対戦はつながらない（`/api` がない・別オリジンは拒否）。オンラインモードの画面は、`/api/health` に届かなければオンラインの入口を出さない、などで Pages 版でも壊れないようにする
-- 招待リンク方式。ログインなし。1 部屋 = 1 Durable Object（`server/src/room.ts`）
+- 招待リンク方式と合言葉（同じ合言葉を入れた 2 人を同じ部屋にする。下の「合言葉」）。ログインなし。1 部屋 = 1 Durable Object（`server/src/room.ts`）、合言葉の受付は合言葉ごとに 1 つの Durable Object（`server/src/lobby.ts`）
 - 権威サーバー: クライアントは手（r, c, kind, king?）だけを送る。サーバーが `web/src/engine` の `playMove` で検証して適用し、各プレイヤーに `viewFor(state, そのプレイヤー)` を送る。engine はコピーせず import している（ルールを変えるとサーバーにも効く）
 - 隠し王の真の状態（`GameState.kings`）は WebSocket に流さない。届く `view` は `PlayerView`（自分の王だけ `myKing.cell` で見える）
 
@@ -18,6 +18,7 @@
 | メソッドとパス | 用途 | 成功 | 失敗 |
 |---|---|---|---|
 | `POST /api/rooms` | 部屋を作る。本文 `CreateRoomRequest`（`Content-Type: application/json`） | 201 `CreateRoomResponse` | 400 `bad_request`（JSON でない）/ 400 `bad_rules` / 413 `too_large`（8 KB 超） |
+| `POST /api/match` | 合言葉で待っている部屋を探し、なければ作る。本文 `MatchRequest`（`CreateRoomRequest` ＋ `phrase`） | 201 `MatchResponse`（`status: "wait"`。作った）/ 200（`status: "join"`。待っている部屋がある） | 400 `bad_phrase` / 400 `bad_rules` / 400 `bad_request` / 413 `too_large` / 429 `too_many_requests` |
 | `GET /api/rooms/:id` | 参加前にルール・状態を見る | 200 `RoomInfoResponse` | 404 `not_found` |
 | `GET /api/rooms/:id/ws` | WebSocket（`wss://<画面のホスト>/api/rooms/:id/ws`） | 101 | 426 `upgrade_required`（WebSocket 以外） |
 | `GET /api/health` | 死活確認 | 200 `{"ok":true}` | |
@@ -40,6 +41,26 @@
 - `turnSeconds`: 1 手ごとの制限時間（秒）。`TURN_SECONDS`（0 / 20 / 45 / 90、0 は制限なし）のどれか。省略は 0（制限時間の入る前の画面・`scripts/play.mjs` と同じ）。それ以外（30・文字列・null など）は 400 `bad_rules`。e2e 用に `wrangler dev --var TEST_TURN_SECONDS:3` を渡したときだけ、その秒数も受ける（本番の `wrangler.jsonc` にはない）
 - 応答の `token` は作成者の席のトークン。`you` は作成者の手番（0: 先手 / 1: 後手）
 - `GET /api/rooms/:id` の応答 `RoomInfoResponse` は `roomId` / `phase` / `rules` / `turnSeconds` / `open`
+
+### 合言葉（POST /api/match）
+
+```jsonc
+{ "phrase": "あいことば", "rules": { /* RuleSet */ }, "hostSeat": "random", "turnSeconds": 45 }
+// 201: { "status": "wait", "roomId": "…", "token": "…", "you": 0 }     待っている部屋がなかったので作った（作成者）
+// 200: { "status": "join", "roomId": "…", "rules": { … }, "turnSeconds": 45 }  待っている部屋がある（ルールを見せてからトークンなしで join）
+```
+
+- **正規化**（`web/src/net/phrase.ts` の `normalizePhrase`。画面とサーバーが共通で使う）: NFKC → 制御文字・書式文字（ゼロ幅の空白など）・単独のサロゲート・行と段落の区切りがあれば不正 → 英字を小文字 → 連続する空白を 1 つ → 前後の空白を除く。正規化した後の長さが 1〜20 字（`PHRASE_MAX`。サロゲートペアは 1 字）。全角と半角、大文字と小文字、空白の数の違いは同じ合言葉。外れたら 400 `bad_phrase`。ほかの項目は `POST /api/rooms` と同じ検証（`bad_rules`）
+- **受付**: Worker が正規化した合言葉の SHA-256（`kyosho:phrase:` を前に付けた 16 進）から `idFromName` で受付の Durable Object（`Lobby`）を引く。受付は待っている部屋の ID を 1 つだけ storage に持つ（合言葉そのものは持たない）
+- **最初の人**: 待っている部屋がなければ、送られたルール・`hostSeat`・`turnSeconds` で部屋を作り（`Room.create` の `phrase: true`）、その ID を覚えて 201 `wait`。応答は `CreateRoomResponse` と同じ（トークンを保存して join する）
+- **2 人目**: 覚えた部屋が待っていれば（部屋の `matchInfo`）、その部屋のルールと制限時間を 200 `join` で返す。画面は招待リンクと同じ参加の確認を出し、トークンなしの join で参加する
+- **待っている**とは: 合言葉の部屋（`RoomRecord.phrase`）・席が空いている（`phase: "waiting"`）・作成者が `leave` で抜けていない・作成者の WebSocket がつながっている。部屋を作ってから作成者が一度もつないでいない間は `PHRASE_CONNECT_GRACE_MS`（10 秒）だけ、つながっていなくても待っているとみなす（作成の応答から join までの間に来た人を別の部屋に分けない）
+- **空く**: 2 人がそろった・作成者が抜けた・閉じた（切断）・部屋が消えた部屋は待っていないので、次に来た人は新しい部屋を作って待つ（受付の覚える部屋が置き換わる）。そろったかどうかは次の人が来たときに部屋へ聞くので、部屋から受付へは何も送らない。受付の記録は最後に部屋を作ってから 24 時間（`ROOM_TTL_MS`）の alarm で消す
+- **同時**: 受付は要求を 1 件ずつ順に処理する（部屋への問い合わせ・作成は別の Durable Object への呼び出しで、その間は入力ゲートが開いて次の要求が割り込めるので、メモリの Promise の列で直列にする）。ほぼ同時に来た 2 人は、先の 1 人が部屋を作り、後の人はその部屋への `join` を受け取る
+- **参加の確認の間に席が埋まった・作成者がいなくなった**: 同じ部屋の `join` を受け取った人が複数いれば、先に join した人が座り、後の人は `room_full`（4003）。合言葉の部屋で作成者がいない（上の「待っている」でない）ときのトークンなしの join は `room_not_found`（4004）で断る（ひとりの部屋に座らせない）。画面はどちらも同じ合言葉で探し直す（最大 2 回）
+- **自分自身**: 同じブラウザの別のタブで同じ合言葉を入れるとつながる（トークンは sessionStorage でタブごとなので別人として参加する。招待リンクを自分で開いたときと同じ）。参加の確認に「このブラウザで待っている部屋」の注意（`#join-own`）を出す
+- **送りすぎ**: 接続元（`CF-Connecting-IP`）ごとに `MATCH_WINDOW_MS`（1 分）に `MATCH_LIMIT`（20）回まで。超えると 429 `too_many_requests`。合言葉が不正な要求も数える。Worker のインスタンスのメモリで数える軽い制限で、インスタンスをまたいだ合計は数えない（覚える接続元は 1 万まで）。`CF-Connecting-IP` がない（ローカル・テスト）なら数えない。受付・部屋の Durable Object は検証と制限を通った要求でだけ起こす
+- **合言葉を外に出さない**: 合言葉は本文だけで送り（URL に載せない）、サーバーはログ・storage・応答・WebSocket のメッセージに入れない（`server/test/phrase.test.ts` が検査する）。待っている本人の画面は合言葉を `sessionStorage` の `kyosho:phrase:<roomId>` に残して出す（再読み込みしても出る）
 
 ## WebSocket のメッセージ
 
@@ -202,8 +223,9 @@ state{phase:finished, view.result} ◀──────────────
 ## 画面側の挙動（`web/src`）
 
 - **通信層** `net/online.ts`（DOM なし。`test/online.test.ts` が偽の WebSocket と時計で検査）: `checkHealth` / `createRoom` / `getRoomInfo`（HTTP）と `OnlineSession`（1 部屋への WebSocket。参加・トークンの保存・つなぎ直し・ping）。画面はイベント（`joined` / `state` / `error` / `conn` / `ended`）で描き直し、手は `sendMove` で送るだけ
-- **入口**: 起動時に `GET /api/health` を 3 秒まで待ち、`{"ok":true}` が返ったときだけメニューの「マルチ」に「オンライン」（添え書き「招待リンク」）を、設定メニューの手番に自分の席（「オンライン」の行。部屋を作る側の席で、ランダム（既定）／先手／後手 = `hostSeat`）を出す（GitHub Pages・`vite preview` は 404 や画面の HTML が返るので出ない）。「オンライン」を押すとすぐ部屋を作る
+- **入口**: 起動時に `GET /api/health` を 3 秒まで待ち、`{"ok":true}` が返ったときだけメニューの「マルチ」に「オンライン」（添え書き「招待リンク」）と「オンライン」（添え書き「合言葉」、`#menu-phrase`）を、設定メニューの手番に自分の席（「オンライン」の行。部屋を作る側の席で、ランダム（既定）／先手／後手 = `hostSeat`）を出す（GitHub Pages・`vite preview` は 404 や画面の HTML が返るので出ない）。「オンライン」を押すとすぐ部屋を作る
 - **部屋の作成**: 設定メニューで保存した組み合わせ（URL のクエリで開いたときはそのルール、どちらもなければ既定の「標準」）を常に `rules` で送る（プリセットと同じでも `preset` は使わない）。`rules` は RuleSet の全項目なので、画面の既定を変えても送る形式・サーバーの検証は変わらない。応答の `token` を保存してから WebSocket で join する。待機中は案内のダイアログに招待リンク（`?room=<id>`、コピー・`navigator.share` があれば共有）・自分の席・ルールを出し、`phase: "playing"` の state で閉じる
+- **合言葉**: 「オンライン 合言葉」で案内のダイアログに合言葉の入力（`#phrase-input`、Enter か「決定」`#phrase-go`。日本語の変換を確定する Enter では送らない）と「?」（`#phrase-help-btn`。知らない人とつながりうること・全角と半角を同じとみなすこと。常には出さない）。決めると画面で `normalizePhrase` を通し、通らなければ欄の下に理由（`#phrase-error`）を出して送らない。通れば `POST /api/match`（ルール・席・制限時間は部屋の作成と同じく設定メニューの組み合わせ）。`wait` は部屋の作成と同じく入り、待機中は合言葉と待機の表示（`data-view="phrase-wait"`。合言葉 `#phrase-show`・「やめる」`#phrase-leave` = `leave` を送ってメニューへ）。`join` は招待リンクと同じ参加の確認（見出し「合言葉の相手」）。入る前に `room_full` / `room_not_found` で閉じたら、同じ合言葉で探し直す（`App.phraseJoin`、最大 2 回）。`too_many_requests` は「少し待ってください」
 - **アドレス**: 部屋に入ったら `?room=<id>` にする（再読み込みで同じ部屋に戻る）。対局中にメニューを開いても部屋の URL のまま（設定メニューで保存してもアドレスを書き換えない。「対局に戻る」で盤・待機中の案内に戻り、接続は保つ）。部屋を抜けたらクエリを外す
 - **招待リンクから開いた**: 保存したトークンがあれば（再読み込み）確認なしで席に戻る。なければ `GET /api/rooms/:id` でルールを出して「参加する」を待つ。`open: false` は満員（終局済みならその旨）、404 は部屋が見つからない、届かなければ「この公開先ではオンライン対戦を使えない」。この端末で作った部屋（localStorage `kyosho:created` に部屋 ID を最新 20 件。秘密ではない）なら「ここで参加すると相手の席に座る」と注意を出す
 - **トークンの保存先**: `sessionStorage` の `kyosho:token:<roomId>`。再読み込みでは残り、別のタブ・別のウィンドウとは共有しないので、同じブラウザの別タブで招待リンクを開くと別人として参加する（1 台で 2 人分を試せる）。タブを閉じると席に戻れない（同じ部屋に入り直すには、もう一方が新しい部屋を作る）。タブの複製では sessionStorage が写るので同じ席を 2 つのタブで開けるが、後から join した方が残り、古い方は 4001 で閉じて「別のタブで開かれました」と「このタブで続ける」（押すと取り戻す）を出す
@@ -226,6 +248,7 @@ state{phase:finished, view.result} ◀──────────────
 ## サーバーの設計
 
 - **部屋 ID**: 16 バイトの乱数の base64url（22 文字、`ROOM_ID_PATTERN`）。Durable Object は `idFromName(roomId)` で引く。形式の違う ID では Durable Object を作らない
+- **合言葉の受付**: `Lobby`（`server/src/lobby.ts`、binding `LOBBIES`、migration `v2`）。上の「合言葉」
 - **トークン**: 32 バイトの乱数の base64url（43 文字）。Durable Object の storage にだけ置き、比較は `crypto.subtle.timingSafeEqual`
 - **保存**: 部屋の状態（ルール・`GameState`・席のトークン・作成者の席）を storage の `"room"` に 1 件で保存し、参加・手のたびに書く。オブジェクトが退避されてもコンストラクタで読み直す（`blockConcurrencyWhile`）。WebSocket は Hibernation API（`acceptWebSocket`）で受けるので、待っている間は課金されず、退避後も接続は残る。接続ごとの席は `serializeAttachment` に入れる
 - **手の直列化**: 手の処理は storage の書き込みしか待たないので、Durable Object の入力ゲートで 1 手ずつ処理される（同時に届いた手が混ざらない）
@@ -239,11 +262,13 @@ state{phase:finished, view.result} ◀──────────────
 | ファイル | 中身 |
 |---|---|
 | `web/src/net/protocol.ts` | 通信仕様の型と定数（画面・サーバー共通） |
+| `web/src/net/phrase.ts` | 合言葉の正規化と検証（画面・サーバー共通）。テストは `web/test/phrase.test.ts` |
 | `web/src/net/online.ts` | 画面の通信層（HTTP・WebSocket の接続・参加・トークン・つなぎ直し・ping）。テストは `web/test/online.test.ts` |
-| `web/src/ui/online.ts` | 案内のダイアログ（作成中・招待リンクと待機・参加の確認・エラー） |
-| `web/e2e/online/` | 2 つのブラウザで作成 → 参加 → 終局・再読み込み・隠し王の秘匿・エラー・切断・制限時間（`timer.spec.ts`）・同じ部屋での再戦（`rematch.spec.ts`）の e2e（`cd web && npm run e2e:online`、設定 `web/playwright.online.config.ts` が wrangler dev を :8790（`E2E_ONLINE_PORT` で変更可）で、`TEST_TURN_SECONDS` 付きで起こす） |
+| `web/src/ui/online.ts` | 案内のダイアログ（作成中・招待リンクと待機・参加の確認・合言葉の入力と待機・エラー） |
+| `web/e2e/online/` | 2 つのブラウザで作成 → 参加 → 終局・再読み込み・隠し王の秘匿・エラー・切断・制限時間（`timer.spec.ts`）・同じ部屋での再戦（`rematch.spec.ts`）・合言葉（`phrase.spec.ts`）の e2e（`cd web && npm run e2e:online`、設定 `web/playwright.online.config.ts` が wrangler dev を :8790（`E2E_ONLINE_PORT` で変更可）で、`TEST_TURN_SECONDS` 付きで起こす） |
 | `server/wrangler.jsonc` | Worker の設定: 静的アセット（`../web/dist`、`run_worker_first`）・Durable Object・`ALLOWED_ORIGINS`・独自ドメイン（`routes` の Custom Domain `kyosho.rukiharukichi.com`） |
-| `server/src/index.ts` | Worker: `/api` の下のルーティング・Origin・部屋の作成 |
+| `server/src/index.ts` | Worker: `/api` の下のルーティング・Origin・部屋の作成・合言葉（検証・送りすぎの制限・受付への振り分け） |
+| `server/src/lobby.ts` | Durable Object `Lobby`: 合言葉ごとの受付（待っている部屋を 1 つ覚え、1 件ずつ処理する） |
 | `server/src/room.ts` | Durable Object `Room`: 参加・手の検証・配信・再接続・1 手の制限時間（締め切りと自動の手）・再戦（申し込み・成立で席の入れ替え）・退室・alarm |
 | `server/src/validate.ts` | 外部入力の検証（ルールは `ui/query.ts` の `encodeRules` / `decodeRules` を再利用） |
 | `server/test/` | Workers ランタイム上のテスト（`@cloudflare/vitest-pool-workers`） |

@@ -5,10 +5,10 @@
 
 ## 現在の対象
 
-- 何を / どこを: 完全版の体裁（版 1.0）。上の帯の「試遊版」をなくし、メニューの「このゲームについて」（`ui/about.ts`・`#about`）・想定外のエラーの知らせ（`ui/crash.ts`・`#crash`）・`<noscript>`・`LICENSE`（All rights reserved）・package.json の UNLICENSED と版 1.0.0。README・promo の紹介文・AGENTS.md の文言も。依頼元セッション（master）経由
-- ステータス: PR（`feat/release-1.0`）。マージ後に本番で上の帯と「このゲームについて」を確かめる
-- 最終更新: 2026-10-13
-- 前の対象: PWA（PR #54・#55。本番と GitHub Pages で `pwa.spec.ts` 28 件緑。iOS Safari の実機は未検証）。その前は設定メニューのルールの欄を標準とスキルなしの 2 枚にし、試遊用のプリセットと細かい項目を「カスタム」（`#rule-details`）にしまう（`feat/hide-trial-presets`）。RULES.md を正式なルール 1.0 の本文に（PR #51・#52。仮置きから正式にした項目の確認はユーザー待ち）
+- 何を / どこを: オンライン対戦の合言葉（同じ合言葉を入れた 2 人が同じ部屋。`POST /api/match`・合言葉ごとの受付 DO `server/src/lobby.ts`・正規化 `web/src/net/phrase.ts`・メニューの「オンライン 合言葉」・ダイアログの入力と待機）。招待リンクは今までどおり。依頼元セッション（master）経由
+- ステータス: PR（`feat/online-passphrase`）。マージ後に本番で 2 つのブラウザから合言葉で 1 局を始めて 1 手打つ
+- 最終更新: 2026-10-15
+- 前の対象: 完全版の体裁（版 1.0。PR #56）。その前は PWA（PR #54・#55。本番と GitHub Pages で `pwa.spec.ts` 28 件緑。iOS Safari の実機は未検証）。その前は設定メニューのルールの欄を標準とスキルなしの 2 枚にし、試遊用のプリセットと細かい項目を「カスタム」（`#rule-details`）にしまう（`feat/hide-trial-presets`）。RULES.md を正式なルール 1.0 の本文に（PR #51・#52。仮置きから正式にした項目の確認はユーザー待ち）
 - メインの遊び方の流れ: 挟む〜予測を読む（スキルなしの要素）→ カードを選ぶ（配り直し）→ ゲージ → 強打を使う → 副将を置く → 副将を裏返す → 標準の実戦。カードごとの効果はスキル練習で教える
 - 保存した設定: 旧標準のまま保存した設定は新しい標準に読み替える（保存の版 `v` のない保存だけ。PR #45、docs/RULES-history.md に記載）
 
@@ -34,6 +34,7 @@
 
 ## 未解決・次の一手
 
+- [ ] 合言葉: ユーザーに見てもらう（入口を「オンライン 招待リンク」「オンライン 合言葉」の 2 行にしたこと・同じブラウザの別のタブでも自分とつながること・待っている人が切断すると次の人は別の部屋になること）。送りすぎの制限は Worker のメモリの軽いもの（インスタンスをまたがない）
 - [ ] PWA: iOS Safari の実機でホーム画面に追加 → 機内モードで開いて CPU 対戦が打てるかをユーザーに見てもらう。Android の Chrome の「アプリをインストール」の出方も
 - [ ] RULES.md（ルール 1.0）で仮置きから正式として書いた項目（巻き戻しの王・副将の指定・副将の「いる」の見せ方・相手が選んだ後の配り直し・強打と鉄壁の重なり）をユーザーに確認する
 - [ ] 公開: ユーザーが itch.io（zip を HTML ゲームで上げ、本文に本番の URL）とふりーむ!（自作 HTML5 を受け付けるかを先に確かめる。紹介文に URL 不可）に投稿する。手順は `promo/README.md`。X に URL を貼ったカードの見え方もユーザーに見てもらう
@@ -53,6 +54,7 @@
 
 ## 現フェーズで Read すべき設計書
 
+- 合言葉: `.agent/online-protocol.md`「合言葉」→ `server/src/lobby.ts`, `server/src/room.ts`（`matchInfo` / `hostPresent`）, `server/src/index.ts`（`match` / `allowMatch`）, `web/src/net/phrase.ts`, `web/src/ui/app.ts`（`openPhrase` / `matchOnline` / `syncLobby`）, `web/src/ui/online.ts`（`phrase` / `phraseWait`）, `server/test/phrase.test.ts`, `web/e2e/online/phrase.spec.ts`
 - 完全版の体裁: AGENTS.md の「版の番号」「想定外のエラー」の項 → `web/src/ui/about.ts`, `web/src/ui/crash.ts`, `web/index.html`（`#about` / `#crash` / `noscript`）, `web/e2e/about.spec.ts`, `web/test/about.test.ts`
 - PWA: AGENTS.md の「PWA」の項 → `web/pwa/sw.ts`, `web/pwa/plugin.ts`, `web/src/pwa.ts`, `web/public/manifest.webmanifest`, `web/test/sw.test.ts`, `web/e2e/pwa.spec.ts`
 - スキル: `RULES.md`「スキル」「副将」, `web/src/engine/skills.ts`, `web/src/engine/game.ts`（「副将」節・「スキル」節 `useSkill` / `applyEffect` / `takeBack` / `skillsAfterMove`）, `web/src/engine/skillcpu.ts`, `web/src/ui/skillui.ts`, `web/src/ui/app.ts`（「スキル」節）, `server/src/room.ts`（pick / skill）, `.agent/online-protocol.md`「スキル」, `web/test/skills.test.ts`, `server/test/skill.test.ts`, `web/e2e/skill.spec.ts`, `web/e2e/skill-vice.spec.ts`, `web/e2e/online/skill.spec.ts`

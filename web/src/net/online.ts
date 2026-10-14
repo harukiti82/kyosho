@@ -18,6 +18,8 @@ import {
   type HttpErrorBody,
   type HttpErrorCode,
   type JoinedMessage,
+  type MatchRequest,
+  type MatchResponse,
   type MoveMessage,
   type PickMessage,
   type RerollMessage,
@@ -97,6 +99,20 @@ export function rememberCreated(store: KeyValueStore, roomId: string) {
 
 export function createdHere(store: KeyValueStore, roomId: string): boolean {
   return createdList(store).includes(roomId);
+}
+
+/**
+ * 合言葉で作った部屋の合言葉のキー（sessionStorage）。待っている本人の画面にだけ出すため、この端末のこのタブにだけ置く
+ * （サーバーは合言葉を持たないので、再読み込みしたときはここから出す）
+ */
+export const phraseKey = (roomId: string) => `kyosho:phrase:${roomId}`;
+
+export function savePhrase(store: KeyValueStore, roomId: string, phrase: string) {
+  store.setItem(phraseKey(roomId), phrase);
+}
+
+export function loadPhrase(store: KeyValueStore, roomId: string): string | null {
+  return store.getItem(phraseKey(roomId));
 }
 
 // ---- URL ----
@@ -180,6 +196,25 @@ export function createRoom(req: CreateRoomRequest, fetchFn: FetchFn = fetch): Pr
     { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(req) },
     (b): b is CreateRoomResponse =>
       isObj(b) && typeof b.roomId === "string" && ROOM_ID_PATTERN.test(b.roomId) && typeof b.token === "string" && (b.you === 0 || b.you === 1),
+  );
+}
+
+/**
+ * 合言葉で相手を探す（POST /api/match）。待っている部屋がなければ新しい部屋を作って作成者になり（wait）、
+ * あればその部屋への参加の案内（join。ルールと制限時間）が返る
+ */
+export function matchPhrase(req: MatchRequest, fetchFn: FetchFn = fetch): Promise<MatchResponse> {
+  return request(
+    fetchFn,
+    "/match",
+    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(req) },
+    (b): b is MatchResponse =>
+      isObj(b) &&
+      typeof b.roomId === "string" &&
+      ROOM_ID_PATTERN.test(b.roomId) &&
+      (b.status === "wait"
+        ? typeof b.token === "string" && (b.you === 0 || b.you === 1)
+        : b.status === "join" && isObj(b.rules) && typeof b.turnSeconds === "number"),
   );
 }
 
