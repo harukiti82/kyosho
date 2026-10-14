@@ -62,6 +62,15 @@
 - **送りすぎ**: 接続元（`CF-Connecting-IP`）ごとに `MATCH_WINDOW_MS`（1 分）に `MATCH_LIMIT`（20）回まで。超えると 429 `too_many_requests`。合言葉が不正な要求も数える。Worker のインスタンスのメモリで数える軽い制限で、インスタンスをまたいだ合計は数えない（覚える接続元は 1 万まで）。`CF-Connecting-IP` がない（テスト）なら数えない。wrangler dev ではどのブラウザも同じ接続元になるので、オンラインの e2e は `--var TEST_MATCH_LIMIT:1000` で上限を上げる（本番の `wrangler.jsonc` にはない）。受付・部屋の Durable Object は検証と制限を通った要求でだけ起こす
 - **合言葉を外に出さない**: 合言葉は本文だけで送り（URL に載せない）、サーバーはログ・storage・応答・WebSocket のメッセージに入れない（`server/test/phrase.test.ts` が検査する）。待っている本人の画面は合言葉を `sessionStorage` の `kyosho:phrase:<roomId>` に残して出す（再読み込みしても出る）
 
+## 名前
+
+設定メニューで決めた名前（`Saved.name`）を、部屋に入るときの `join` に付けて送る。アカウントはない。
+
+- **検証**（`web/src/net/name.ts` の `normalizeName`。画面とサーバーが共通で使う）: NFC → 合言葉と同じ使えない文字（制御文字・書式文字＝ゼロ幅の空白や右から左の書式・単独のサロゲート・行と段落の区切り。`phrase.ts` の `FORBIDDEN`）と、4 つ以上続く結合文字があれば不正 → 連続する空白を 1 つの半角の空白 → 前後の空白を除く。長さは 0〜10 字（`NAME_MAX`。サロゲートペアは 1 字）。空は名前なし。合言葉と違って NFKC・小文字にはしない（決めた字のまま見せる）
+- **サーバー**（`server/src/validate.ts`）: `join` の `name` を `normalizeName` で検証し、通った空でない名前だけを `JoinMessage.name` に載せる。不正な名前（長すぎる・使えない文字・文字列でない）は**エラーにせず名前なし**として参加させる（参加を断ると、前の画面や壊れた保存の人が入れなくなる）。名前を送らない古い画面もそのまま参加できる
+- **部屋の中**（`server/src/room.ts`）: 名前は人（作成者・参加者）ごとに `RoomRecord.names`（`[作成者, 参加者]`、名前の入る前の部屋にはない）に持ち、その人が最初に名前を送った `join` で決める。つなぎ直しで別の名前を送っても変えない（設定で名前を変えたら次の部屋から）。再戦で席が入れ替わっても人に付いて回る（`host` で席を人に直す）。部屋ごとの Durable Object にだけあるので、別の部屋に漏れない。部屋が消えるときに一緒に消える
+- **届け方**: `state.name`（自分の名前。相手の画面に出る名前）と `state.opponent.name`（相手の名前。相手が参加するまで null）。画面は名札・終局画面に `textContent` でだけ出す（HTML として読まない）。名前なしは今までどおり「あなた」「相手」
+
 ## WebSocket のメッセージ
 
 すべて JSON のテキスト 1 つ = 1 メッセージ。型は `protocol.ts` の `ClientMessage` / `ServerMessage`。
@@ -70,7 +79,7 @@
 
 | type | フィールド | いつ |
 |---|---|---|
-| `join` | `token?: string` | 接続直後に 1 回。`token` あり = その席に戻る（作成者の最初の接続もこちら）、なし = 空いている席に参加 |
+| `join` | `token?: string`, `name?: string` | 接続直後に 1 回。`token` あり = その席に戻る（作成者の最初の接続もこちら）、なし = 空いている席に参加。`name` は自分の名前（下の「名前」。省略は名前なし） |
 | `move` | `r`, `c`（0〜7 の整数）, `kind`（`PieceKind`）, `king?: boolean`, `vice?: boolean`, `seq?: number` | 自分の手番に 1 手。`king: true` で置いた駒を自分の王にする（隠し王）。`vice: true` で置いた駒を自分の副将にする（スキルありで隠し王ありの部屋の、副将を出す期間。下の「スキル」）。`seq` は手を考えた局面の棋譜の長さ（`view.history.length`）で、サーバーの局面と違えば `stale_move`（制限時間切れの自動の手と入れ違った手を、次の局面に打たない）。省略すると調べない |
 | `pick` | `card`（`SkillId`） | スキルありのルールで、対局の前に 1 回。配られた 3 枚（`view.skills.sides[you].offer`）のどれか。両者が選ぶまで `move` は `illegal_move`。下の「スキル」 |
 | `reroll` | なし | スキルありのルールで、選ぶ前に 1 局 1 回。配られた 3 枚を配り直す（新しい `state` は送り主にだけ届く）。下の「スキル」の「配り直し」 |
@@ -86,7 +95,7 @@
 | type | 中身 | いつ |
 |---|---|---|
 | `joined` | `roomId`, `you`（自分の手番）, `token` | join が通った直後（直後に `state` が続く）。`token` を保存する |
-| `state` | `roomId`, `phase`, `gameNo`, `you`, `view`（`PlayerView`）, `opponent: { joined, online, left }`, `rematch`（`{ you, opponent } \| null`）, `record`（`MatchRecord`）, `clock`（`TurnClockInfo \| null`） | 自分の join・相手の参加・どちらかの手（時間切れの自動の手を含む）・相手の切断／復帰／退室・終局・再戦の申し込みと成立のたびに、各自に自分用の内容で |
+| `state` | `roomId`, `phase`, `gameNo`, `you`, `name`（サーバーが受け付けた自分の名前 \| null）, `view`（`PlayerView`）, `opponent: { joined, online, left, name }`（`name` は相手の名前 \| null）, `rematch`（`{ you, opponent } \| null`）, `record`（`MatchRecord`）, `clock`（`TurnClockInfo \| null`） | 自分の join・相手の参加・どちらかの手（時間切れの自動の手を含む）・相手の切断／復帰／退室・終局・再戦の申し込みと成立のたびに、各自に自分用の内容で |
 | `error` | `code`（`WsErrorCode`）, `message` | 送ったメッセージが拒否されたとき（拒否されたメッセージを送った人にだけ） |
 
 - `state` は毎回 `view` の全体を送る（差分ではない）。画面は受け取った `view` で描き直す。新しい手は `view.history` が伸びた分（`lastMoveOf(view)`）で分かるので、演出はそこから出す
@@ -239,6 +248,7 @@ state{phase:finished, view.result} ◀──────────────
 - **接続の表示**: 盤の枠の下の縁の左（`#net`、色の点と短い文字）に「相手: 接続中」（緑）／「相手: 切断中」（赤。手番の表示 `#status` は「相手の接続が切れています」）／「相手を待っています」／「再接続中…」。相手の参加・切断・復帰はトーストでも知らせる
 - **終わり方**: 4001 → 別のタブで開かれた、4004 → 部屋が見つからない、4010 → 期限切れ、4003 は直前の `error.code` で満員／席に戻れない（`invalid_token` は保存したトークンを消す）。どれも案内のダイアログに出し、メニューへ戻れる。終局後に部屋が片付けられた（4004 / 4010）ときは何も出さず、盤と結果をそのまま見せる
 - **終局後**: 終局画面は CPU 対戦と同じく自分の目線（勝利／敗北の演出・自分の成績）。終局画面の下と、盤面を見ている間の駒台の場所に再戦のボタン（`App.rematchControls`、`data-rematch`）と状態の 1 文（`#result-rematch-note` / `#tray-rematch-note`）: 何もなし →「再戦」／申し込み中 →「再戦の返事待ち」と「取り消し」／申し込まれた →「相手から再戦の申し込み」と「断る」「受ける」／断られた →「再戦を断られました」と「再戦」／相手が退室 →「相手が退室しました」と「新しい部屋で再戦」（同じルール・今の自分の席（先手なら `first`）で部屋を作り直し、招待リンクを出す）。送ってから次の `state` が届くまでと、つながっていない間はボタンを押せない（二重押しを防ぐ）。終局画面を閉じているときは、申し込まれた・断られた・取り消された・退室をトーストでも知らせる
+- **名前**: 部屋に入るときの保存した名前（`App.setup.current.name`）を `OnlineSession` に渡し、`join`（つなぎ直しも）に付ける。名札・終局画面の自分の名前は `state.name`、相手の名前は `state.opponent.name`（`App.playerName`。名前なしは「あなた」「相手」）。案内のダイアログ（招待・参加の確認・待機）は今までどおり「あなた」「相手」
 - **通算の戦績**: 終局画面の成績表に「通算」の行（各列はその人から見た「2勝1敗」、引き分けがあれば「1勝1敗1分」。`ui/outcome.ts` の `recordText`）。2 局目からは名札の名前の横にも小さく（`.plate-record`）
 - **抽選の演出**: `state.seatDraw` が `true` で、`phase: "playing"`・まだ手がない state を、このタブで初めて受け取ったとき（参加者は最初の state、作成者は待機中から対局中に変わった state）に `App.playToss`。上を向く色は `you`。見たことは `sessionStorage` の `kyosho:toss:<roomId>` に残し、再読み込みでは出し直さない。メニューを開いている間に始まったら出さない。演出中は盤を操作できず、届いた相手の手は演出の後に反映する。相手の参加のトーストには席を書かない（演出で見せる）
 - **再戦の成立**: `state.gameNo` が増えたら `App.startNextGame`: 前の対局の演出・終局画面・時計を片付けて、届いた `view` で描き直す（自分の名札は下のまま、席の色が入れ替わる）。トースト「再戦開始　あなたは先手」
@@ -263,6 +273,7 @@ state{phase:finished, view.result} ◀──────────────
 |---|---|
 | `web/src/net/protocol.ts` | 通信仕様の型と定数（画面・サーバー共通） |
 | `web/src/net/phrase.ts` | 合言葉の正規化と検証（画面・サーバー共通）。テストは `web/test/phrase.test.ts` |
+| `web/src/net/name.ts` | 名前の正規化と検証（画面・サーバー共通）。テストは `web/test/name.test.ts`・`server/test/name.test.ts`・`web/e2e/online/names.spec.ts` |
 | `web/src/net/online.ts` | 画面の通信層（HTTP・WebSocket の接続・参加・トークン・つなぎ直し・ping）。テストは `web/test/online.test.ts` |
 | `web/src/ui/online.ts` | 案内のダイアログ（作成中・招待リンクと待機・参加の確認・合言葉の入力と待機・エラー） |
 | `web/e2e/online/` | 2 つのブラウザで作成 → 参加 → 終局・再読み込み・隠し王の秘匿・エラー・切断・制限時間（`timer.spec.ts`）・同じ部屋での再戦（`rematch.spec.ts`）・合言葉（`phrase.spec.ts`）の e2e（`cd web && npm run e2e:online`、設定 `web/playwright.online.config.ts` が wrangler dev を :8790（`E2E_ONLINE_PORT` で変更可）で、`TEST_TURN_SECONDS`・`TEST_MATCH_LIMIT` 付きで起こす） |
