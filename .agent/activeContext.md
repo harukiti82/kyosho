@@ -5,11 +5,11 @@
 
 ## 現在の対象
 
-- 何を / どこを: 初めての人は遊び方から（初めてこの端末で開いた人は遊び方の実戦の前まで 15 ステップを終えるまで CPU 対戦・マルチに錠。`web/src/ui/intro.ts`・`Menu.setGate`・`App.setIntro`）。依頼元セッション（master）経由。ブランチ `feat/first-tutorial-gate`
-- ステータス: PR #59（typecheck・unit 684・e2e 306・オンライン e2e 緑）。マージ後に本番で空のブラウザの錠を確かめる
+- 何を / どこを: プレイヤーの名前（設定の「名前」→ 名札・終局画面・オンラインの相手の画面。`web/src/net/name.ts`・`ui/setup.ts`・`App.playerName` / `shortName`・`server/src/room.ts` の `names`）。依頼元セッション（master）経由。ブランチ `feat/player-names`
+- ステータス: PR を作ってマージ → 本番で合言葉の 2 ブラウザの名前を確かめる
 - 最終更新: 2026-10-15
-- 判断した点（ユーザーに報告する）: 初めてかは起動時に 1 回だけ決めて `kyosho:intro` に残す（後から遊び方を途中まで進めても対象外にならない。前からの保存だけの人は対象外）。localStorage が使えない・印が壊れているときは必須にしない。合言葉の入口は初めての人の最初のオンライン対局が始まるまで開ける。招待リンクで来た人が「新しい部屋で再戦」（終局画面から）するのは止めない
-- 前の対象: オンライン対戦の合言葉（PR #57。本番で確認済み）。その前は完全版の体裁（版 1.0。PR #56）、PWA（PR #54・#55。iOS Safari の実機は未検証）
+- 判断した点（ユーザーに報告する）: 不正な名前はサーバーでエラーにせず名前なしで参加させる。部屋の中の名前は人ごとに最初に届いたもので固定（設定で変えたら次の部屋から）。2 人対戦は先手・後手の名前を別の欄に。案内のダイアログ・抽選と決着の演出・「あなたの番」は名前にしない。NG ワードの辞書は入れていない
+- 前の対象: 初めての人は遊び方から（PR #59。本番で確認済み）。その前は合言葉（PR #57）、完全版の体裁（PR #56）、PWA（PR #54・#55。iOS Safari の実機は未検証）
 - メインの遊び方の流れ: 挟む〜予測を読む（スキルなしの要素）→ カードを選ぶ（配り直し）→ ゲージ → 強打を使う → 副将を置く → 副将を裏返す → 標準の実戦。カードごとの効果はスキル練習で教える
 - 保存した設定: 旧標準のまま保存した設定は新しい標準に読み替える（保存の版 `v` のない保存だけ。PR #45、docs/RULES-history.md に記載）
 
@@ -35,7 +35,8 @@
 
 ## 未解決・次の一手
 
-- [ ] 初めての人は遊び方から: ユーザーに見てもらう（錠の形・トーストの文・遊び方を主な項目にしたこと・15 ステップの長さ）。次の作業はユーザー名の機能
+- [ ] 名前: ユーザーに見てもらう（設定の「名前」の置き場所・2 人対戦の 2 つの欄・10 文字・終局画面の見出しを「〇〇の勝ち」にしたこと）。悪い言葉の対策（NG ワード・相手の名前を隠す設定）を足すかはユーザーの判断
+- [ ] 初めての人は遊び方から: ユーザーに見てもらう（錠の形・トーストの文・遊び方を主な項目にしたこと・15 ステップの長さ）
 
 - [ ] 合言葉: ユーザーに見てもらう（入口を「オンライン 招待リンク」「オンライン 合言葉」の 2 行にしたこと・同じブラウザの別のタブでも自分とつながること・待っている人が切断すると次の人は別の部屋になること）。送りすぎの制限は Worker のメモリの軽いもの（インスタンスをまたがない）
 - [ ] PWA: iOS Safari の実機でホーム画面に追加 → 機内モードで開いて CPU 対戦が打てるかをユーザーに見てもらう。Android の Chrome の「アプリをインストール」の出方も
@@ -57,6 +58,7 @@
 
 ## 現フェーズで Read すべき設計書
 
+- 名前: AGENTS.md の「プレイヤーの名前」の項・`.agent/online-protocol.md`「名前」→ `web/src/net/name.ts`, `web/src/ui/setup.ts`（`Saved.name` / `pvpNames`・`checkName`）, `web/src/ui/app.ts`（`playerName` / `shortName` / `name`）, `server/src/room.ts`（`names`）, `server/test/name.test.ts`, `web/e2e/names.spec.ts`, `web/e2e/online/names.spec.ts`
 - 初めての人は遊び方から: AGENTS.md の「初めての人は遊び方から」の項 → `web/src/ui/intro.ts`, `web/src/ui/menu.ts`（`setGate`）, `web/src/ui/app.ts`（`setIntro` / `introLocked` / `lessonSolved` / `onState`）, `web/test/intro.test.ts`, `web/e2e/intro.spec.ts`, `web/e2e/tutorial.spec.ts`, `web/e2e/online/intro.spec.ts`, `web/e2e/intro.ts`
 
 - 合言葉: `.agent/online-protocol.md`「合言葉」→ `server/src/lobby.ts`, `server/src/room.ts`（`matchInfo` / `hostPresent`）, `server/src/index.ts`（`match` / `allowMatch`）, `web/src/net/phrase.ts`, `web/src/ui/app.ts`（`openPhrase` / `matchOnline` / `syncLobby`）, `web/src/ui/online.ts`（`phrase` / `phraseWait`）, `server/test/phrase.test.ts`, `web/e2e/online/phrase.spec.ts`

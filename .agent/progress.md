@@ -83,3 +83,4 @@
 
 - オンライン対戦に合言葉: `POST /api/match` と合言葉ごとの受付 DO（正規化した合言葉の SHA-256 で引き、待っている部屋を 1 つ・1 件ずつ処理）。そろった・抜けた・閉じた部屋は空き、合言葉は保存しない。送りすぎは接続元ごとに 1 分 20 回。server `phrase.test.ts`・unit `phrase.test.ts`・e2e `online/phrase.spec.ts`
 - 初めての人は遊び方から: 初回の人は遊び方の実戦の前まで（15 ステップ）を終えるまで CPU 対戦・マルチに錠（押すとトースト）。印 `kyosho:intro` を起動時に決め、前からの保存がある人・localStorage が使えない人は対象外。招待リンク・合言葉で来た人はその 1 局を先に。unit `intro.test.ts`・e2e `intro.spec.ts`・`tutorial.spec.ts`・`online/intro.spec.ts`
+- プレイヤーの名前: 設定の「名前」（自分・2 人対戦の先手と後手、10 文字まで、見えない文字は弾く）を名札・終局画面に。オンラインは join で送り、サーバーが検証して人ごとに最初の名前を保持（不正は名前なし）。unit `name.test.ts`・server `name.test.ts`・e2e `names.spec.ts`・`online/names.spec.ts`

@@ -21,6 +21,7 @@ import {
   type RuleSet,
 } from "../engine/rules";
 import type { KeyValueStore } from "../net/online";
+import { NAME_PROBLEM_TEXT, normalizeName } from "../net/name";
 import type { HostSeat } from "../net/protocol";
 import { dirIcon } from "./diricon";
 import { byId, h } from "./dom";
@@ -50,6 +51,12 @@ export interface PlaySettings {
   turnSeconds: number;
   /** 相手が次の手で返せる（取れる）自分の駒の「!」を出して始める（ルールではない表示の設定。対局中は画面で切り替えられる） */
   threat?: boolean;
+  /**
+   * 名札・終局画面に出す名前（normalizeName を通したもの。空は名前なし）。CPU 対戦は人間の、オンライン対戦は部屋に入るときに送る自分の名前。
+   * 2 人対戦は seatNames（[先手, 後手]）を使う
+   */
+  name?: string;
+  seatNames?: [string, string];
 }
 
 /** 設定メニューで保存する中身（ルール・CPU 対戦の手番・オンラインで部屋を作るときの手番・制限時間） */
@@ -63,6 +70,10 @@ export interface Saved {
   timeMulti: MultiTime;
   /** 取られる駒の警告「!」を出す（既定は出さない） */
   threat: boolean;
+  /** 自分の名前（CPU 対戦の名札・オンライン対戦で相手に見える名前）。空は名前なし（「あなた」） */
+  name: string;
+  /** 同じ端末の 2 人対戦の名前 [先手, 後手]。空は名前なし（「先手」「後手」） */
+  pvpNames: [string, string];
 }
 /** CPU 対戦の手番の設定（"0" 先手 / "1" 後手 / "random" 対局ごとに抽選） */
 export type Side = "0" | "1" | "random";
@@ -77,7 +88,15 @@ export const defaultSaved = (): Saved => ({
   timeCpu: "auto",
   timeMulti: `${DEFAULT_MULTI_SECONDS}`,
   threat: false,
+  name: "",
+  pvpNames: ["", ""],
 });
+
+/** 保存した名前を読む。文字列でない・検証を通らない名前は名前なし（空） */
+const savedName = (v: unknown): string => {
+  const n = typeof v === "string" ? normalizeName(v) : null;
+  return n?.ok ? n.name : "";
+};
 
 /**
  * 保存の形の版（JSON の v）。v のない保存は版 1（この版を足す前の保存）。
@@ -143,6 +162,10 @@ export function isFrontRules(r: RuleSet): boolean {
   return id !== undefined && FRONT_PRESETS.includes(id);
 }
 
+/** 設定メニューの名前の欄（自分・2 人対戦の先手・後手） */
+const NAME_FIELDS = ["name", "name0", "name1"] as const;
+type NameField = (typeof NAME_FIELDS)[number];
+
 const isSide = (v: unknown): v is Side => v === "0" || v === "1" || v === "random";
 const isHost = (v: unknown): v is HostSeat => v === "random" || v === "first" || v === "second";
 
@@ -172,13 +195,26 @@ export function loadSaved(store: KeyValueStore): Saved {
   if (isCpuTime(o.timeCpu)) out.timeCpu = o.timeCpu;
   if (isMultiTime(o.timeMulti)) out.timeMulti = o.timeMulti;
   if (typeof o.threat === "boolean") out.threat = o.threat;
+  // 名前の項目のない古い保存は名前なし
+  out.name = savedName(o.name);
+  if (Array.isArray(o.pvpNames)) out.pvpNames = [savedName(o.pvpNames[0]), savedName(o.pvpNames[1])];
   return out;
 }
 
 export function storeSaved(store: KeyValueStore, s: Saved) {
   store.setItem(
     SETTINGS_KEY,
-    JSON.stringify({ v: SAVE_VERSION, rules: encodeRules(s.rules), side: s.side, host: s.host, timeCpu: s.timeCpu, timeMulti: s.timeMulti, threat: s.threat }),
+    JSON.stringify({
+      v: SAVE_VERSION,
+      rules: encodeRules(s.rules),
+      side: s.side,
+      host: s.host,
+      timeCpu: s.timeCpu,
+      timeMulti: s.timeMulti,
+      threat: s.threat,
+      name: s.name,
+      pvpNames: s.pvpNames,
+    }),
   );
 }
 
@@ -286,16 +322,18 @@ export class SetupDialog {
 
   /** 次の対局の設定 */
   get current(): Saved {
-    return { ...this.saved, rules: cloneRules(this.saved.rules) };
+    return { ...this.saved, rules: cloneRules(this.saved.rules), pvpNames: [...this.saved.pvpNames] };
   }
 
   /** 次の対局の設定で、mode の対局を始める設定にする */
   playSettings(mode: Mode, level?: CpuLevel): PlaySettings {
-    const { rules, side, host, timeCpu, timeMulti, threat } = this.current;
-    if (mode === "cpu") return { mode, ...seatChoice(side), rules, level, turnSeconds: cpuTurnSeconds(timeCpu, level ?? DEFAULT_CPU_LEVEL), threat };
+    const { rules, side, host, timeCpu, timeMulti, threat, name, pvpNames } = this.current;
+    if (mode === "cpu") {
+      return { mode, ...seatChoice(side), rules, level, turnSeconds: cpuTurnSeconds(timeCpu, level ?? DEFAULT_CPU_LEVEL), threat, name };
+    }
     const turnSeconds = Number(timeMulti);
-    if (mode === "online") return { mode, human: 0, rules, hostSeat: host, turnSeconds, threat };
-    return { mode, human: 0, rules, turnSeconds, threat };
+    if (mode === "online") return { mode, human: 0, rules, hostSeat: host, turnSeconds, threat, name };
+    return { mode, human: 0, rules, turnSeconds, threat, seatNames: pvpNames };
   }
 
   /** 保存済みの設定をフォームに入れて開く */
@@ -306,6 +344,9 @@ export class SetupDialog {
     this.radio("timeCpu", this.saved.timeCpu);
     this.radio("timeMulti", this.saved.timeMulti);
     this.radio("threat", this.saved.threat ? "1" : "0");
+    this.writeName("name", this.saved.name);
+    this.writeName("name0", this.saved.pvpNames[0]);
+    this.writeName("name1", this.saved.pvpNames[1]);
     this.openDetailsIfCustom();
     this.el.shareStatus.textContent = "";
     this.el.shareUrl.hidden = true;
@@ -373,12 +414,40 @@ export class SetupDialog {
     }
   }
 
+  /** 名前の欄に値を入れ、検証の印を消す */
+  private writeName(field: NameField, value: string) {
+    const el = this.input(field);
+    el.value = value;
+    this.checkName(field);
+  }
+
+  /** 名前の欄を検証する。通らなければ欄の下に理由を出し、保存の鍵で止める（通ったら正規化した名前） */
+  private checkName(field: NameField): string | null {
+    const el = this.input(field);
+    const n = normalizeName(el.value);
+    const msg = n.ok ? "" : NAME_PROBLEM_TEXT[n.problem];
+    el.setCustomValidity(msg);
+    const note = byId(`${field}-error`);
+    note.textContent = msg;
+    note.hidden = n.ok;
+    el.setAttribute("aria-invalid", String(!n.ok));
+    return n.ok ? n.name : null;
+  }
+
   private bind() {
     const { dialog, form } = this.el;
+    for (const field of NAME_FIELDS) this.input(field).addEventListener("input", () => this.checkName(field));
     // 数値は入力し終えたとき（change）に範囲内へ直す。入力中（input）は表示だけ更新する
     form.addEventListener("input", () => this.refresh(false));
     form.addEventListener("change", () => this.refresh(true));
-    form.addEventListener("submit", () => {
+    form.addEventListener("submit", (e) => {
+      // 名前が通らなければ保存せず（ダイアログを閉じず）、その欄へ
+      const bad = NAME_FIELDS.find((field) => this.checkName(field) === null);
+      if (bad) {
+        e.preventDefault();
+        this.input(bad).focus();
+        return;
+      }
       const f = new FormData(form);
       this.refresh(true);
       const side = f.get("side");
@@ -393,6 +462,9 @@ export class SetupDialog {
         timeCpu: isCpuTime(timeCpu) ? timeCpu : d.timeCpu,
         timeMulti: isMultiTime(timeMulti) ? timeMulti : d.timeMulti,
         threat: f.get("threat") === "1",
+        // 検証を通らない名前はフォームの検証で保存の前に止まる。ここでは正規化した値（前後の空白を除いたものなど）を保存する
+        name: this.checkName("name") ?? "",
+        pvpNames: [this.checkName("name0") ?? "", this.checkName("name1") ?? ""],
       };
       storeSaved(this.store, this.saved);
       this.onSaved(this.current);

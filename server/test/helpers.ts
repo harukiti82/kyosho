@@ -63,10 +63,10 @@ export class Client {
     return new Client(res.webSocket);
   }
 
-  /** 接続して join し、joined と最初の state を読む */
-  static async join(roomId: string, token?: string): Promise<{ client: Client; joined: JoinedMessage; state: StateMessage }> {
+  /** 接続して join し、joined と最初の state を読む。name は join に付ける名前（省略は名前を送らない古い画面と同じ） */
+  static async join(roomId: string, token?: string, name?: unknown): Promise<{ client: Client; joined: JoinedMessage; state: StateMessage }> {
     const client = await Client.connect(roomId);
-    client.send(token === undefined ? { type: "join" } : { type: "join", token });
+    client.send({ type: "join", ...(token === undefined ? {} : { token }), ...(name === undefined ? {} : { name }) });
     const joined = await client.expect("joined");
     const state = await client.expect("state");
     return { client, joined, state };

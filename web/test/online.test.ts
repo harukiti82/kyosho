@@ -105,8 +105,9 @@ function stateMsg(over: Partial<StateMessage> = {}): StateMessage {
     phase: "playing",
     gameNo: 1,
     you: 0,
+    name: null,
     view: viewFor(createGame(defaultRules()), 0),
-    opponent: { joined: true, online: true, left: false },
+    opponent: { joined: true, online: true, left: false, name: null },
     rematch: null,
     record: { wins: 0, losses: 0, draws: 0 },
     clock: null,
@@ -120,7 +121,7 @@ let store: ReturnType<typeof memStore>;
 let sockets: FakeSocket[];
 let log: { conn: [ConnState, number][]; ended: [EndReason, string][]; states: StateMessage[]; errors: string[]; joined: number[] };
 
-function session(initialToken?: string) {
+function session(initialToken?: string, name?: string) {
   if (initialToken) saveToken(store, ROOM, initialToken);
   const deps: SessionDeps = {
     connect: (url) => {
@@ -138,7 +139,7 @@ function session(initialToken?: string) {
     state: (m) => log.states.push(m),
     error: (m) => log.errors.push(m.code),
     joined: (m) => log.joined.push(m.you),
-  }, deps);
+  }, deps, name);
   s.start();
   return s;
 }
@@ -167,6 +168,21 @@ describe("参加とトークン", () => {
     session(TOKEN);
     last().serverOpen();
     expect(sentOf(last())).toEqual([{ type: "join", token: TOKEN }]);
+  });
+
+  it("名前があれば join に付けて送る（つなぎ直しでも同じ名前）。空なら送らない", () => {
+    session(undefined, "はる");
+    last().serverOpen();
+    expect(sentOf(last())).toEqual([{ type: "join", name: "はる" }]);
+    last().serverSend({ type: "joined", roomId: ROOM, you: 0, token: TOKEN });
+    last().serverClose(1006);
+    clock.advance(RECONNECT_DELAYS_MS[0]);
+    last().serverOpen();
+    expect(sentOf(last())).toEqual([{ type: "join", token: TOKEN, name: "はる" }]);
+    store.map.clear();
+    session(undefined, "");
+    last().serverOpen();
+    expect(sentOf(last())).toEqual([{ type: "join" }]);
   });
 
   it("state は届いた順に渡し、別の部屋の state は捨てる", () => {

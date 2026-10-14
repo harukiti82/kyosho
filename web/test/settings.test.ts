@@ -293,7 +293,7 @@ describe("設定メニューの保存（localStorage）", () => {
   };
   it("保存がなければ標準・CPU 対戦の手番もオンラインの席もランダム", () => {
     expect(loadSaved(memory())).toEqual(defaultSaved());
-    expect(defaultSaved()).toEqual({ rules: defaultRules(), side: "random", host: "random", timeCpu: "auto", timeMulti: "45", threat: false });
+    expect(defaultSaved()).toEqual({ rules: defaultRules(), side: "random", host: "random", timeCpu: "auto", timeMulti: "45", threat: false, name: "", pvpNames: ["", ""] });
     // 既定の手番は対局ごとに抽選する
     expect(seatChoice(defaultSaved().side)).toEqual({ human: 0, randomSeat: true });
   });
@@ -309,15 +309,16 @@ describe("設定メニューの保存（localStorage）", () => {
     for (const p of PRESETS) {
       for (const threat of [false, true]) {
         const store = memory();
-        storeSaved(store, { rules: p.rules, side: "random", host: "second", timeCpu: "90", timeMulti: "0", threat });
-        expect(loadSaved(store)).toEqual({ rules: p.rules, side: "random", host: "second", timeCpu: "90", timeMulti: "0", threat });
+        const saved = { rules: p.rules, side: "random", host: "second", timeCpu: "90", timeMulti: "0", threat, name: "はる", pvpNames: ["", "後手の人"] } as const;
+        storeSaved(store, { ...saved, pvpNames: [...saved.pvpNames] });
+        expect(loadSaved(store)).toEqual(saved);
       }
     }
   });
   it("駒の警告「!」は既定でオフ。項目のない古い保存・真偽値でない値もオフ", () => {
     expect(defaultSaved().threat).toBe(false);
     const old = loadSaved(memory({ [SETTINGS_KEY]: JSON.stringify({ rules: encodeRules(defaultRules()), side: "1", host: "first", timeCpu: "20", timeMulti: "90" }) }));
-    expect(old).toEqual({ rules: defaultRules(), side: "1", host: "first", timeCpu: "20", timeMulti: "90", threat: false });
+    expect(old).toEqual({ rules: defaultRules(), side: "1", host: "first", timeCpu: "20", timeMulti: "90", threat: false, name: "", pvpNames: ["", ""] });
     for (const bad of ["1", 1, "true", null]) expect(loadSaved(memory({ [SETTINGS_KEY]: JSON.stringify({ threat: bad }) })).threat).toBe(false);
     expect(loadSaved(memory({ [SETTINGS_KEY]: JSON.stringify({ threat: true }) })).threat).toBe(true);
     // ルールではないので共有 URL に載らない
@@ -352,7 +353,7 @@ describe("設定メニューの保存（localStorage）", () => {
   it("既定をスキルありに変える前に標準のまま保存した設定は、新しい標準（id skill）として読む。ルール以外の保存はそのまま", () => {
     const std = presetById("std").rules;
     const saved = loadSaved(memory({ [SETTINGS_KEY]: JSON.stringify({ rules: encodeRules(std), side: "0", host: "first", timeCpu: "20", timeMulti: "90", threat: true }) }));
-    expect(saved).toEqual({ rules: presetById("skill").rules, side: "0", host: "first", timeCpu: "20", timeMulti: "90", threat: true });
+    expect(saved).toEqual({ rules: presetById("skill").rules, side: "0", host: "first", timeCpu: "20", timeMulti: "90", threat: true, name: "", pvpNames: ["", ""] });
     expect(matchPreset(saved.rules)).toMatchObject({ id: "skill", name: "標準" });
     // 版 1 と明示した保存も同じ
     expect(loadSaved(memory({ [SETTINGS_KEY]: JSON.stringify({ v: 1, rules: encodeRules(std) }) })).rules).toEqual(presetById("skill").rules);
@@ -424,6 +425,22 @@ describe("設定メニューの保存（localStorage）", () => {
     expect(savedOf(OLD_SKILL.replace("hp1=129", "hp1=zz")).rules).toEqual(defaultSaved().rules);
     // 読み替えの後の版で前のスキルありの値を保存した（ユーザーが体力を 129・130 に調整した）ものは読み替えない
     expect(loadSaved(memory({ [SETTINGS_KEY]: JSON.stringify({ v: SAVE_VERSION, rules: OLD_SKILL }) })).rules.hp).toEqual([129, 130]);
+  });
+  it("名前: 既定は名前なし。項目のない古い保存・文字列でない値・検証を通らない名前は名前なし。保存は正規化した名前", () => {
+    expect(defaultSaved()).toMatchObject({ name: "", pvpNames: ["", ""] });
+    const read = (o: object) => loadSaved(memory({ [SETTINGS_KEY]: JSON.stringify({ rules: encodeRules(defaultRules()), ...o }) }));
+    expect(read({})).toMatchObject({ name: "", pvpNames: ["", ""] });
+    expect(read({ name: "  はる  ", pvpNames: ["先の人", "後の人"] })).toMatchObject({ name: "はる", pvpNames: ["先の人", "後の人"] });
+    for (const bad of [1, null, ["a"], "あいうえおかきくけこさ", "a\nb", "a\u200bb", "\u0000"]) {
+      expect(read({ name: bad, pvpNames: [bad, bad] })).toMatchObject({ name: "", pvpNames: ["", ""] });
+    }
+    expect(read({ pvpNames: "ab" }).pvpNames).toEqual(["", ""]);
+    expect(read({ pvpNames: ["ab"] }).pvpNames).toEqual(["ab", ""]);
+    // 名前はルールではないので共有 URL に載らない
+    const store = memory();
+    storeSaved(store, { ...defaultSaved(), name: "<b>はる</b>" });
+    expect(loadSaved(store).name).toBe("<b>はる</b>");
+    expect(encodeRules(loadSaved(store).rules)).not.toMatch(/name|%E3%81%AF/);
   });
   it("ストレージが例外を投げても標準（safeStore 越し）", async () => {
     const { safeStore } = await import("../src/net/online");

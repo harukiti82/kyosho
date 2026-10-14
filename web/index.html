@@ -289,6 +289,31 @@
           <input type="text" class="share-url" id="share-url" readonly aria-label="この設定の URL" hidden />
         </div>
 
+        <!-- 名前（ui/setup.ts。net/name.ts で検証）。空は今までどおり「あなた」「先手」「後手」。オンライン対戦では自分の名前を相手に送る -->
+        <fieldset class="field set-list">
+          <legend class="label">名前</legend>
+          <div class="opt set-row">
+            <label class="opt-name" for="name-self" title="CPU対戦とオンラインの名札。オンラインでは相手にも見える">自分</label>
+            <div class="name-box">
+              <input type="text" class="name-input" id="name-self" name="name" placeholder="あなた" autocomplete="nickname" enterkeyhint="done" spellcheck="false" aria-describedby="name-error" />
+              <span class="name-error" id="name-error" role="alert" hidden></span>
+            </div>
+          </div>
+          <div class="opt set-row">
+            <span class="opt-name" id="opt-name-pvp" title="この端末で2人で遊ぶとき">2人対戦</span>
+            <div class="name-pair" role="group" aria-labelledby="opt-name-pvp">
+              <div class="name-box">
+                <label class="name-seat"><i class="seg-stone p0" aria-hidden="true"></i><input type="text" class="name-input" name="name0" placeholder="先手" autocomplete="off" enterkeyhint="done" spellcheck="false" aria-label="先手の名前" aria-describedby="name0-error" /></label>
+                <span class="name-error" id="name0-error" role="alert" hidden></span>
+              </div>
+              <div class="name-box">
+                <label class="name-seat"><i class="seg-stone p1" aria-hidden="true"></i><input type="text" class="name-input" name="name1" placeholder="後手" autocomplete="off" enterkeyhint="done" spellcheck="false" aria-label="後手の名前" aria-describedby="name1-error" /></label>
+                <span class="name-error" id="name1-error" role="alert" hidden></span>
+              </div>
+            </div>
+          </div>
+        </fieldset>
+
         <!-- 手番と時間は設定の行（左に名前、右に選択）。先手・後手は石の色で示す -->
         <fieldset class="field set-list">
           <legend class="label">手番</legend>
@@ -437,7 +462,7 @@
           </li>
           <li>
             <span class="rule-point">保存はこの端末だけ</span>
-            <span class="rule-note">設定・遊び方の進み具合・通算はこのブラウザに保存し、外へは送りません</span>
+            <span class="rule-note">設定・名前・遊び方の進み具合・通算はこのブラウザに保存します。名前のほかは外へ送りません</span>
           </li>
           <li>
             <span class="rule-point">アクセス数の集計</span>
@@ -445,7 +470,7 @@
           </li>
           <li>
             <span class="rule-point">オンライン対戦の通信</span>
-            <span class="rule-note">対局の手と操作、合言葉をサーバーに送ります。合言葉は相手探しにだけ使い、保存しません。名前やアカウントは使いません</span>
+            <span class="rule-note">対局の手と操作、合言葉、決めた名前をサーバーに送ります。名前は対局の相手の画面に出ます。合言葉は相手探しにだけ使い、保存しません。アカウントは使いません</span>
           </li>
         </ul>
         <div class="modal-actions">

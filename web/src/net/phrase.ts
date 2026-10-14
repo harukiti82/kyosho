@@ -4,8 +4,8 @@
 /** 正規化した合言葉の長さの上限（文字数。サロゲートペアは 1 字） */
 export const PHRASE_MAX = 20;
 
-/** 合言葉に使えない文字: 制御文字・書式文字（ゼロ幅の空白など、見えない違い）・単独のサロゲート・行や段落の区切り */
-const FORBIDDEN = /[\p{Cc}\p{Cf}\p{Cs}\p{Zl}\p{Zp}]/u;
+/** 合言葉・名前に使えない文字: 制御文字・書式文字（ゼロ幅の空白など、見えない違い）・単独のサロゲート・行や段落の区切り */
+export const FORBIDDEN = /[\p{Cc}\p{Cf}\p{Cs}\p{Zl}\p{Zp}]/u;
 
 /** empty: 空（空白だけを含む） / long: PHRASE_MAX 字を超える / char: 使えない文字がある */
 export type PhraseProblem = "empty" | "long" | "char";
