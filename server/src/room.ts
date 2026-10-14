@@ -11,6 +11,8 @@
 // 選ぶ前に 1 局 1 回の配り直し（reroll）もここの crypto で引き、新しい view は送り主にだけ送る（配り直したことを相手に知らせない）。
 // スキルの使用（skill）も engine の useSkill で検証する。偵察で分かった王・王の移し替えの先は kings の中だけにあり、viewFor が相手に出さない。
 // 運命の輪の引く効果はここの crypto で決め、巻き戻しで戻す局面（skills.undo。王を含む）も viewFor が消す。
+// 合言葉の受付（lobby.ts）が作った部屋は phrase の印だけを持つ（合言葉そのものは持たない）。受付には、作成者が抜けず・つながっていて
+// 席が空いているときだけ待っている部屋として答え（matchInfo）、作成者がいなくなった部屋へのトークンなしの参加は断る。
 
 import { DurableObject } from "cloudflare:workers";
 import { createGame, dealSkills, pickSkill, playMove, playTimeout, rerollSkills, useSkill, viewFor, type GameState } from "../../web/src/engine/game";
@@ -18,6 +20,7 @@ import { other, type Player, type RuleSet } from "../../web/src/engine/rules";
 import {
   CLOSE,
   FINISHED_TTL_MS,
+  PHRASE_CONNECT_GRACE_MS,
   PING_TEXT,
   PONG_TEXT,
   ROOM_TTL_MS,
@@ -71,6 +74,8 @@ export interface RoomRecord {
   left?: [boolean, boolean];
   /** 前の対局までの通算（今の対局は含まない）。wins は人ごと [作成者, 参加者]。再戦の入る前に作った部屋にはない（= 0） */
   record?: Tally;
+  /** 合言葉の受付が作った部屋（合言葉そのものは持たない）。招待リンクの部屋にはない */
+  phrase?: boolean;
 }
 
 /** 人ごとの勝ち数 [作成者, 参加者] と引き分けの数 */
@@ -121,6 +126,8 @@ function sameToken(a: string, b: string): boolean {
 
 export class Room extends DurableObject<Env> {
   private room: RoomRecord | null = null;
+  /** 作成者がこのオブジェクトで一度 join した（合言葉の部屋で、つながる前の猶予を終える。退避で消えても、つながっていれば足りる） */
+  private hostSeen = false;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -133,8 +140,8 @@ export class Room extends DurableObject<Env> {
 
   // ---- Worker から呼ぶ RPC ----
 
-  /** 部屋を作る。同じ ID の部屋がすでにあれば null（ID の衝突。Worker が別の ID で作り直す） */
-  async create(roomId: string, rules: RuleSet, hostSeat: HostSeat, turnSeconds = 0): Promise<CreateRoomResponse | null> {
+  /** 部屋を作る。同じ ID の部屋がすでにあれば null（ID の衝突。Worker・合言葉の受付が別の ID で作り直す）。phrase は合言葉の受付が作った部屋 */
+  async create(roomId: string, rules: RuleSet, hostSeat: HostSeat, turnSeconds = 0, phrase = false): Promise<CreateRoomResponse | null> {
     if (this.room) return null;
     const host: Player = hostSeat === "first" ? 0 : hostSeat === "second" ? 1 : (randomInt(2) as Player);
     const token = randomId(32);
@@ -149,9 +156,17 @@ export class Room extends DurableObject<Env> {
       game: newGame(rules),
       turnMs: turnSeconds * 1000,
       deadline: null,
+      ...(phrase ? { phrase: true } : {}),
     };
     await this.save();
     return { roomId, token, you: host };
+  }
+
+  /** 合言葉の受付からの問い合わせ: この部屋が合言葉で相手を待っているなら、参加する人に見せるルールと制限時間。待っていなければ null */
+  async matchInfo(): Promise<{ rules: RuleSet; turnSeconds: number } | null> {
+    const room = this.room;
+    if (!room?.phrase || this.phase() !== "waiting" || !this.hostPresent()) return null;
+    return { rules: room.game.rules, turnSeconds: (room.turnMs ?? 0) / 1000 };
   }
 
   async info(): Promise<RoomInfoResponse | null> {
@@ -236,6 +251,17 @@ export class Room extends DurableObject<Env> {
 
   // ---- 内部 ----
 
+  /**
+   * 作成者が部屋にいる: leave で抜けておらず、今つながっている。部屋を作った直後でまだ一度もつないでいなければ、
+   * PHRASE_CONNECT_GRACE_MS の間はつながっていなくてもいるとみなす（作成の応答から WebSocket の join までの間）
+   */
+  private hostPresent(): boolean {
+    const room = this.room!;
+    if (room.left?.[room.host]) return false;
+    const online = this.ctx.getWebSockets().some((ws) => ws.readyState === WebSocket.OPEN && attachmentOf(ws).player === room.host);
+    return online || (!this.hostSeen && Date.now() - room.createdAt < PHRASE_CONNECT_GRACE_MS);
+  }
+
   private phase(): RoomPhase {
     const room = this.room!;
     if (room.tokens.includes(null)) return "waiting";
@@ -309,6 +335,11 @@ export class Room extends DurableObject<Env> {
         send(ws, errorMsg("room_full", "この部屋は満員です"));
         return closeQuietly(ws, CLOSE.rejected, "room_full");
       }
+      // 合言葉の部屋で、待っていた作成者が抜けた・閉じた。ひとりだけの部屋に座らせない（画面は合言葉で入り直す）
+      if (room.phrase && !this.hostPresent()) {
+        send(ws, errorMsg("room_not_found", "待っていた相手がいなくなりました"));
+        return closeQuietly(ws, CLOSE.notFound, "room_not_found");
+      }
       player = seat as Player;
       mine = randomId(32);
       room.tokens[player] = mine;
@@ -320,6 +351,7 @@ export class Room extends DurableObject<Env> {
       if (old !== ws && attachmentOf(old).player === player) closeQuietly(old, CLOSE.replaced, "replaced");
     }
     ws.serializeAttachment({ ...att, player } satisfies Attachment);
+    if (player === room.host) this.hostSeen = true;
     // 抜けた人が同じトークンで戻った
     const returned = room.left?.[player] === true;
     if (returned) room.left![player] = false;

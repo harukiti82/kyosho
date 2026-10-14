@@ -77,6 +77,30 @@ export interface CreateRoomResponse {
   you: Player;
 }
 
+/**
+ * POST /api/match の本文（合言葉）。phrase のほかは CreateRoomRequest と同じで、待っている部屋がなく新しく作るときだけ使う。
+ * phrase はサーバーが net/phrase.ts の normalizePhrase で正規化して検証する（1〜PHRASE_MAX 字）
+ */
+export type MatchRequest = CreateRoomRequest & { phrase: string };
+
+/**
+ * POST /api/match の応答。
+ * wait（201）: 同じ合言葉で待っている部屋がなかったので、新しい部屋を作った（作成者として CreateRoomResponse と同じ扱い）。
+ * join（200）: 同じ合言葉で待っている部屋がある。ルールを確かめてから、トークンなしの join で参加する
+ */
+export type MatchResponse =
+  | ({ status: "wait" } & CreateRoomResponse)
+  | { status: "join"; roomId: string; rules: RuleSet; turnSeconds: number };
+
+/** 同じ接続元からの POST /api/match の上限（MATCH_WINDOW_MS ごと）。超えると 429 too_many_requests */
+export const MATCH_LIMIT = 20;
+export const MATCH_WINDOW_MS = 60_000;
+/**
+ * 合言葉の部屋を作ってから、作成者の WebSocket が join するまでの猶予（ミリ秒）。この間は作成者がまだつながっていなくても
+ * 待っている部屋として扱う（ほぼ同時に入れた 2 人を同じ部屋にするため）。過ぎたら作成者がつながっている部屋だけ
+ */
+export const PHRASE_CONNECT_GRACE_MS = 10_000;
+
 /** 待機中（相手の参加待ち）/ 対局中 / 終局 */
 export type RoomPhase = "waiting" | "playing" | "finished";
 
@@ -99,6 +123,8 @@ export interface HttpErrorBody {
 export type HttpErrorCode =
   | "bad_request" // 本文が JSON でない・形が違う
   | "bad_rules" // ルールの型・範囲が不正
+  | "bad_phrase" // 合言葉が空・長すぎる・使えない文字を含む（POST /api/match）
+  | "too_many_requests" // 同じ接続元から合言葉を短い間に送りすぎた（POST /api/match）
   | "too_large" // 本文が MAX_CREATE_BYTES を超えた
   | "not_found" // 部屋（またはパス）がない
   | "method_not_allowed"

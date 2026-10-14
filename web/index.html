@@ -76,6 +76,7 @@
           <button type="button" class="btn menu-btn" id="menu-pvp">この端末で 2 人</button>
           <!-- オンライン対戦のサーバー（/api/health）に届く公開先でだけ出す（ui/app.ts） -->
           <button type="button" class="btn menu-btn" id="menu-online" hidden>オンライン<span class="menu-sub">招待リンク</span></button>
+          <button type="button" class="btn menu-btn" id="menu-phrase" hidden title="同じ合言葉を入れた人と対戦">オンライン<span class="menu-sub">合言葉</span></button>
           <button type="button" class="btn ghost menu-btn menu-back">戻る</button>
         </div>
         <button type="button" class="menu-rule" id="menu-rule" title="ルール詳細"><span>ルール</span><strong id="menu-rule-name"></strong></button>
@@ -403,7 +404,7 @@
       </div>
     </dialog>
 
-    <!-- オンライン対戦の案内（部屋の作成・招待リンクと待機・参加の確認・エラー。ui/online.ts） -->
+    <!-- オンライン対戦の案内（部屋の作成・招待リンクと待機・参加の確認・合言葉の入力と待機・エラー。ui/online.ts） -->
     <dialog class="modal" id="online" aria-labelledby="online-title">
       <div class="modal-body online-body">
         <h2 class="modal-title" id="online-title" tabindex="-1"></h2>
@@ -444,7 +445,7 @@
           </li>
           <li>
             <span class="rule-point">オンライン対戦の通信</span>
-            <span class="rule-note">対局の手と操作をサーバーに送ります。名前やアカウントは使いません</span>
+            <span class="rule-note">対局の手と操作、合言葉をサーバーに送ります。合言葉は相手探しにだけ使い、保存しません。名前やアカウントは使いません</span>
           </li>
         </ul>
         <div class="modal-actions">

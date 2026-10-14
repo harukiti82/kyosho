@@ -2,11 +2,22 @@
 // 画面（静的アセット）は wrangler.jsonc の assets が Worker を通さずに返す。ここに来るのは /api と、アセットにないパスだけ。
 // エンドポイントと通信仕様は .agent/online-protocol.md。
 
-import { API_PATH, CLOSE, MAX_CREATE_BYTES, ROOM_ID_PATTERN, type CreateRoomResponse } from "../../web/src/net/protocol";
-import type { Room } from "./room";
-import { httpError, json, randomId, rejectSocket } from "./util";
-import { parseCreate } from "./validate";
+import {
+  API_PATH,
+  CLOSE,
+  MATCH_LIMIT,
+  MATCH_WINDOW_MS,
+  MAX_CREATE_BYTES,
+  ROOM_ID_PATTERN,
+  type CreateRoomResponse,
+  type MatchResponse,
+} from "../../web/src/net/protocol";
+import { PHRASE_MAX } from "../../web/src/net/phrase";
+import type { Lobby } from "./lobby";
+import { httpError, json, randomId, rejectSocket, roomStub } from "./util";
+import { parseCreate, parseMatch } from "./validate";
 
+export { Lobby } from "./lobby";
 export { Room } from "./room";
 
 /** Origin が許可リスト（ALLOWED_ORIGINS）にあるか。"http://localhost:*" のように末尾 :* は任意のポート */
@@ -49,8 +60,16 @@ async function readCapped(req: Request, max: number): Promise<string | null> {
   return new TextDecoder().decode(buf);
 }
 
-const roomStub = (env: Env, roomId: string) =>
-  (env.ROOMS as DurableObjectNamespace<Room>).get(env.ROOMS.idFromName(roomId));
+/** 本文を上限まで読んで JSON にする。読めなければ HTTP のエラー応答 */
+async function readBody(req: Request): Promise<{ ok: true; body: unknown } | { ok: false; res: Response }> {
+  const text = await readCapped(req, MAX_CREATE_BYTES);
+  if (text === null) return { ok: false, res: httpError(413, "too_large", `本文は ${MAX_CREATE_BYTES} バイトまでです`) };
+  try {
+    return { ok: true, body: JSON.parse(text) };
+  } catch {
+    return { ok: false, res: httpError(400, "bad_request", "本文が JSON として読めません") };
+  }
+}
 
 /**
  * e2e 用に追加で受ける制限時間（秒）。wrangler dev の --var TEST_TURN_SECONDS:2 のように渡したときだけ（本番の wrangler.jsonc にはない）。
@@ -62,15 +81,9 @@ function testTurnSeconds(env: Env): number | undefined {
 }
 
 async function createRoom(req: Request, env: Env): Promise<Response> {
-  const text = await readCapped(req, MAX_CREATE_BYTES);
-  if (text === null) return httpError(413, "too_large", `本文は ${MAX_CREATE_BYTES} バイトまでです`);
-  let body: unknown;
-  try {
-    body = JSON.parse(text);
-  } catch {
-    return httpError(400, "bad_request", "本文が JSON として読めません");
-  }
-  const parsed = parseCreate(body, testTurnSeconds(env));
+  const read = await readBody(req);
+  if (!read.ok) return read.res;
+  const parsed = parseCreate(read.body, testTurnSeconds(env));
   if (!parsed) return httpError(400, "bad_rules", "rules（RuleSet）・preset・hostSeat・turnSeconds のどれかが不正です");
   // 部屋 ID は 128 ビットの乱数なので衝突はまず起きないが、起きたら作り直す
   for (let i = 0; i < 3; i++) {
@@ -81,9 +94,69 @@ async function createRoom(req: Request, env: Env): Promise<Response> {
   return httpError(500, "internal", "部屋を作れませんでした");
 }
 
+/**
+ * 接続元ごとの POST /api/match の回数（MATCH_WINDOW_MS ごとに数え直す）。合言葉を次々に試す行為への軽い制限で、
+ * この Worker のインスタンスのメモリだけで数える（インスタンスをまたいだ合計は数えない）。合言葉はここにも残さない
+ */
+const matchHits = new Map<string, { count: number; resetAt: number }>();
+/** 覚えておく接続元の数の上限（メモリを使いすぎない） */
+const MATCH_HITS_MAX = 10_000;
+
+/** 接続元 ip の今回の POST /api/match を通すか。ip が分からない（ローカル・テスト）なら数えない。limit は MATCH_WINDOW_MS ごとの上限 */
+export function allowMatch(ip: string | null, now = Date.now(), limit = MATCH_LIMIT): boolean {
+  if (!ip) return true;
+  const hit = matchHits.get(ip);
+  if (hit && now < hit.resetAt) return ++hit.count <= limit;
+  if (matchHits.size >= MATCH_HITS_MAX) {
+    for (const [k, v] of matchHits) if (now >= v.resetAt) matchHits.delete(k);
+    if (matchHits.size >= MATCH_HITS_MAX) matchHits.clear();
+  }
+  matchHits.set(ip, { count: 1, resetAt: now + MATCH_WINDOW_MS });
+  return true;
+}
+
+/** 正規化した合言葉から受付の Durable Object の名前（SHA-256。合言葉そのものを名前にしない） */
+export async function lobbyName(phrase: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`kyosho:phrase:${phrase}`));
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/**
+ * e2e 用に POST /api/match の上限を上げる（wrangler dev の --var TEST_MATCH_LIMIT。本番の wrangler.jsonc にはない）。
+ * wrangler dev ではどのブラウザも同じ接続元になり、e2e を続けて流すと 1 分の上限を超えるため
+ */
+function matchLimit(env: Env): number {
+  const n = Number((env as unknown as { TEST_MATCH_LIMIT?: string }).TEST_MATCH_LIMIT);
+  return Number.isInteger(n) && n > MATCH_LIMIT ? n : MATCH_LIMIT;
+}
+
+/** POST /api/match: 合言葉で待っている部屋を探し、なければ作る */
+async function match(req: Request, env: Env): Promise<Response> {
+  if (!allowMatch(req.headers.get("CF-Connecting-IP"), Date.now(), matchLimit(env))) {
+    return httpError(429, "too_many_requests", "合言葉を続けて送りすぎです。少し待ってから試してください");
+  }
+  const read = await readBody(req);
+  if (!read.ok) return read.res;
+  const parsed = parseMatch(read.body, testTurnSeconds(env));
+  if (!parsed.ok) {
+    return parsed.code === "bad_phrase"
+      ? httpError(400, "bad_phrase", `合言葉は 1〜${PHRASE_MAX} 字で、制御文字などは使えません`)
+      : httpError(400, "bad_rules", "rules（RuleSet）・preset・hostSeat・turnSeconds のどれかが不正です");
+  }
+  const lobbies = env.LOBBIES as DurableObjectNamespace<Lobby>;
+  const lobby = lobbies.get(lobbies.idFromName(await lobbyName(parsed.phrase)));
+  const res = (await lobby.match({ rules: parsed.rules, hostSeat: parsed.hostSeat, turnSeconds: parsed.turnSeconds })) as MatchResponse;
+  return json(res, res.status === "wait" ? 201 : 200);
+}
+
 /** /api の下のルーティング。parts は /api を除いたパスの区切り（末尾スラッシュの有無は同じ扱い） */
 async function route(req: Request, env: Env, parts: string[]): Promise<Response> {
   if (parts.length === 1 && parts[0] === "health") return json({ ok: true });
+  // POST /api/match（合言葉）
+  if (parts.length === 1 && parts[0] === "match") {
+    if (req.method !== "POST") return httpError(405, "method_not_allowed", "POST だけを受け付けます");
+    return match(req, env);
+  }
   if (parts[0] !== "rooms" || parts.length > 3) return httpError(404, "not_found", "そのパスはありません");
 
   // POST /api/rooms

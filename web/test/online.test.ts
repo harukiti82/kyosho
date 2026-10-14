@@ -8,6 +8,9 @@ import {
   createdHere,
   createRoom,
   getRoomInfo,
+  loadPhrase,
+  matchPhrase,
+  savePhrase,
   inviteUrl,
   loadToken,
   OnlineHttpError,
@@ -419,6 +422,37 @@ describe("HTTP", () => {
     });
     await expect(createRoom({ preset: "king" }, () => Promise.reject(new TypeError("x")))).rejects.toBeInstanceOf(OnlineHttpError);
     await expect(createRoom({ preset: "king" }, () => res(200, "<html>"))).rejects.toMatchObject({ code: "bad_response" });
+  });
+
+  it("合言葉: POST /api/match に送り、作った（wait）・参加の案内（join）のどちらかを確かめる", async () => {
+    let sent: { url: string; init?: RequestInit } | null = null;
+    const req = { phrase: "あいことば", rules: defaultRules(), hostSeat: "random" as const, turnSeconds: 45 as const };
+    const wait = await matchPhrase(req, (url, init) => {
+      sent = { url, init };
+      return res(201, { status: "wait", roomId: ROOM, token: TOKEN, you: 1 });
+    });
+    expect(wait).toEqual({ status: "wait", roomId: ROOM, token: TOKEN, you: 1 });
+    expect(sent!.url).toBe("/api/match");
+    expect(sent!.init?.method).toBe("POST");
+    expect(JSON.parse(String(sent!.init?.body))).toEqual(req);
+    const join = { status: "join", roomId: ROOM, rules: defaultRules(), turnSeconds: 0 };
+    expect(await matchPhrase(req, () => res(200, join))).toEqual(join);
+    await expect(matchPhrase(req, () => res(200, { status: "join", roomId: ROOM }))).rejects.toMatchObject({ code: "bad_response" });
+    await expect(matchPhrase(req, () => res(201, { status: "wait", roomId: "x", token: TOKEN, you: 0 }))).rejects.toMatchObject({ code: "bad_response" });
+    await expect(matchPhrase(req, () => res(400, { error: { code: "bad_phrase", message: "不正" } }))).rejects.toMatchObject({ code: "bad_phrase" });
+    await expect(matchPhrase(req, () => res(429, { error: { code: "too_many_requests", message: "多い" } }))).rejects.toMatchObject({
+      status: 429,
+      code: "too_many_requests",
+    });
+  });
+
+  it("合言葉の保存: 部屋ごとに sessionStorage へ（待っている本人の画面だけに出す）", () => {
+    const store = new Map<string, string>();
+    const kv = { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => void store.set(k, v), removeItem: (k: string) => void store.delete(k) };
+    expect(loadPhrase(kv, ROOM)).toBeNull();
+    savePhrase(kv, ROOM, "あいことば");
+    expect(loadPhrase(kv, ROOM)).toBe("あいことば");
+    expect([...store.keys()]).toEqual([`kyosho:phrase:${ROOM}`]);
   });
 
   it("部屋の確認: 404 は not_found", async () => {

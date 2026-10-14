@@ -63,16 +63,20 @@ import {
   createRoom,
   getRoomInfo,
   inviteUrl,
+  loadPhrase,
   loadToken,
+  matchPhrase,
   OnlineHttpError,
   OnlineSession,
   rememberCreated,
   roomIdFromSearch,
   safeStore,
+  savePhrase,
   saveToken,
   wsUrl,
   type EndReason,
 } from "../net/online";
+import { normalizePhrase, PHRASE_MAX, type PhraseProblem } from "../net/phrase";
 import { TURN_SECONDS, type ErrorMessage, type MatchRecord, type RematchAction, type RoomPhase, type StateMessage } from "../net/protocol";
 import { AboutDialog } from "./about";
 import { dirIcon } from "./diricon";
@@ -144,6 +148,15 @@ interface LessonRun {
 
 const idx = ([y, x]: Cell) => y * SIZE + x;
 const ruleName = (r: RuleSet) => matchPreset(r)?.name ?? "カスタム";
+
+/** 合言葉が通らなかったときの、入力の欄の下の一言 */
+const PHRASE_PROBLEM: Record<PhraseProblem, string> = {
+  empty: "合言葉を入れてください",
+  long: `合言葉は ${PHRASE_MAX} 字まで`,
+  char: "使えない文字が入っています",
+};
+/** 合言葉で見つけた部屋に入れなかったときに探し直す回数 */
+const PHRASE_RETRIES = 2;
 
 export class App {
   private settings: PlaySettings | null = null;
@@ -233,6 +246,13 @@ export class App {
   private rematchSending = false;
   /** 演出の間に届いた state（演出が終わってから反映する） */
   private queued: StateMessage | null = null;
+  /**
+   * 合言葉で見つけた部屋に参加しているところ（相手の席が先に埋まった・待っていた人がいなくなったら、同じ合言葉で探し直す）。
+   * tries は探し直した回数
+   */
+  private phraseJoin: { phrase: string; settings: PlaySettings; tries: number } | null = null;
+  /** 最後に入れた合言葉（入力の欄に残す。この画面のメモリだけ） */
+  private lastPhrase = "";
   /** 最後に届いたサーバーの時計（seq はその局面の棋譜の長さ、deadline はこの端末の時刻で数えたサーバーの締め切り） */
   private netClock: { seq: number; gameNo: number; limitMs: number; deadline: number } | null = null;
   private readonly lobby = new OnlineDialog();
@@ -288,6 +308,7 @@ export class App {
       cpu: (level) => this.start(this.setup.playSettings("cpu", level)),
       pvp: () => this.start(this.setup.playSettings("pvp")),
       online: () => this.start(this.setup.playSettings("online")),
+      phrase: () => this.openPhrase(),
       learn: () => this.openLesson(resumeStep(this.progress)),
       skillLesson: (id) => this.openSkillLesson(skillLessonIndex(id)),
       settings: () => this.setup.open(),
@@ -1545,6 +1566,75 @@ export class App {
     }
   }
 
+  /** 合言葉の入力（メニューの「オンライン 合言葉」・通らなかった合言葉の入れ直し）。error は前の入力が通らなかった理由 */
+  private openPhrase(error?: string) {
+    this.menu.hide();
+    this.lobby.phrase({
+      value: this.lastPhrase,
+      error,
+      onSubmit: (raw) => {
+        this.lastPhrase = raw;
+        const r = normalizePhrase(raw);
+        if (!r.ok) {
+          this.openPhrase(PHRASE_PROBLEM[r.problem]);
+          return;
+        }
+        byId("btn-menu").hidden = false;
+        void this.matchOnline(r.phrase, this.setup.playSettings("online"));
+      },
+      // 対局中に開いたメニューから来たなら、その対局はそのまま（メニューの「対局に戻る」で戻れる）
+      onCancel: () => this.showMenu("modes"),
+    });
+  }
+
+  /**
+   * 合言葉で相手を探す（phrase は正規化した合言葉）。待っている部屋がなければ、設定メニューの組み合わせで部屋を作って待ち、
+   * あれば待っていた人のルールを見せてから参加する。tries は探し直した回数（先に席が埋まった・待っていた人がいなくなった）
+   */
+  private async matchOnline(phrase: string, settings: PlaySettings, tries = 0) {
+    this.lobby.busy("相手を探しています…");
+    try {
+      const turnSeconds = TURN_SECONDS.find((t) => t === settings.turnSeconds) ?? 0;
+      const res = await matchPhrase({ phrase, rules: settings.rules, hostSeat: settings.hostSeat ?? "random", turnSeconds });
+      if (res.status === "wait") {
+        saveToken(this.tokens, res.roomId, res.token);
+        rememberCreated(this.local, res.roomId);
+        // 合言葉は待っている本人の画面にだけ出す（サーバーは持たないので、再読み込みに備えてこのタブに残す）
+        savePhrase(this.tokens, res.roomId, phrase);
+        this.enterRoom(res.roomId, { ...settings, human: res.you });
+        return;
+      }
+      this.lobby.join({
+        rules: res.rules,
+        ruleName: ruleName(res.rules),
+        turnSeconds: res.turnSeconds,
+        createdHere: createdHere(this.local, res.roomId),
+        phrase: true,
+        onJoin: () => {
+          this.enterRoom(res.roomId, { mode: "online", human: 0, rules: res.rules, turnSeconds: res.turnSeconds });
+          this.phraseJoin = { phrase, settings, tries };
+        },
+        onCancel: () => this.leaveToMenu(),
+      });
+    } catch (e) {
+      const code = e instanceof OnlineHttpError ? e.code : null;
+      if (code === "bad_phrase") {
+        this.openPhrase(PHRASE_PROBLEM.char);
+        return;
+      }
+      const [title, text] =
+        code === "too_many_requests"
+          ? ["少し待ってください", "合言葉を続けて送りすぎました。1 分ほど待ってから試してください。"]
+          : code === "bad_rules"
+            ? ["相手を探せませんでした", "この設定ではオンラインの部屋を作れません。"]
+            : ["相手を探せませんでした", "サーバーにつながりません。時間をおいて試してください。"];
+      this.lobby.error(title, text, [
+        { label: "メニューへ", onClick: () => this.leaveToMenu() },
+        { label: "再試行", primary: true, onClick: () => void this.matchOnline(phrase, settings, tries) },
+      ]);
+    }
+  }
+
   /** 招待リンク（?room=）から開いた。保存したトークンがあれば（再読み込み）そのまま席に戻る */
   private async openRoom(id: string | null) {
     this.el.game.hidden = true;
@@ -1641,6 +1731,7 @@ export class App {
     this.net?.close();
     this.net = null;
     this.room = null;
+    this.phraseJoin = null;
     this.sending = false;
     this.rematchSending = false;
     this.queued = null;
@@ -1766,12 +1857,24 @@ export class App {
     this.showToast(`再戦開始　あなたは${PLAYER_NAME[m.you]}`);
   }
 
-  /** 待機中は招待リンクの案内、それ以外は案内を閉じる */
+  /** 待機中は招待リンクの案内（合言葉で作った部屋は合言葉と待機の表示）、それ以外は案内を閉じる */
   private syncLobby() {
     const room = this.room;
     if (!room || !this.settings || this.menu.visible) return;
     if (room.phase === "waiting") {
-      if (this.lobby.view !== "invite") {
+      const phrase = loadPhrase(this.tokens, room.id);
+      if (phrase !== null) {
+        if (this.lobby.view !== "phrase-wait") {
+          this.lobby.phraseWait({
+            phrase,
+            rules: this.settings.rules,
+            ruleName: ruleName(this.settings.rules),
+            turnSeconds: this.settings.turnSeconds,
+            you: this.settings.human,
+            onLeave: () => this.leaveToMenu(),
+          });
+        }
+      } else if (this.lobby.view !== "invite") {
         this.lobby.invite({
           url: inviteUrl(room.id, window.location),
           rules: this.settings.rules,
@@ -1781,7 +1884,7 @@ export class App {
           onLeave: () => this.leaveToMenu(),
         });
       }
-    } else if (this.lobby.view === "invite" || this.lobby.view === "busy") {
+    } else if (this.lobby.view === "invite" || this.lobby.view === "phrase-wait" || this.lobby.view === "busy") {
       this.lobby.close();
     }
   }
@@ -1850,6 +1953,12 @@ export class App {
 
   /** つなぎ直さない終わり方（別のタブ・部屋がない・満員・期限切れ） */
   private onEnded(reason: EndReason, message: string) {
+    // 合言葉で見つけた部屋に入る前に、相手の席が先に埋まった・待っていた人がいなくなった。同じ合言葉で探し直す（新しい部屋で待つこともある）
+    const retry = this.phraseJoin;
+    if (retry && !this.game && (reason === "room_full" || reason === "room_not_found") && retry.tries < PHRASE_RETRIES) {
+      void this.matchOnline(retry.phrase, retry.settings, retry.tries + 1);
+      return;
+    }
     // 終局後に部屋が片付けられたのは正常。盤と結果はそのまま見せる
     if (this.room?.phase === "finished" && (reason === "expired" || reason === "room_not_found")) {
       this.net = null;

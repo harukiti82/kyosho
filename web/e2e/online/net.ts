@@ -62,6 +62,19 @@ export const prefix = (info: TestInfo) => (info.project.name === "desktop" ? "pc
  */
 export async function createRoomFromSetup(host: Player, preset: PresetId | null, seat: "first" | "second" | "random", shot?: string): Promise<string> {
   const { page } = host;
+  await saveOnlineSetup(host, preset, seat);
+  await page.locator("#menu-multi").click();
+  if (shot) await page.screenshot({ path: shot });
+  await page.locator("#menu-online").click();
+  await expect(page.locator("#online")).toHaveAttribute("data-view", "invite");
+  const url = await page.locator("#invite-url").inputValue();
+  expect(url).toMatch(/\?room=[A-Za-z0-9_-]{22}$/);
+  return url;
+}
+
+/** トップを開き、設定メニューでルール（preset が null なら既定のまま）とオンラインの手番を選んで保存する（メニューの最初の段に戻る） */
+export async function saveOnlineSetup(p: Player, preset: PresetId | null, seat: "first" | "second" | "random") {
+  const { page } = p;
   await page.goto("/");
   await expect(page.locator("#menu")).toBeVisible();
   // /api/health に届いたら入口が出る
@@ -75,13 +88,26 @@ export async function createRoomFromSetup(host: Player, preset: PresetId | null,
   await page.locator(`label:has(> input[name=host][value=${seat}])`).click();
   await page.locator("#setup-save").click();
   await expect(page.locator("#setup")).toBeHidden();
+}
+
+/** メニューのマルチ → オンライン 合言葉 で入力のダイアログを開く（トップを開くところから。open: false なら今の画面から） */
+export async function openPhrase(p: Player, open = true) {
+  const { page } = p;
+  if (open) await page.goto("/");
   await page.locator("#menu-multi").click();
-  if (shot) await page.screenshot({ path: shot });
-  await page.locator("#menu-online").click();
-  await expect(page.locator("#online")).toHaveAttribute("data-view", "invite");
-  const url = await page.locator("#invite-url").inputValue();
-  expect(url).toMatch(/\?room=[A-Za-z0-9_-]{22}$/);
-  return url;
+  await expect(page.locator("#menu-phrase")).toBeVisible();
+  await page.locator("#menu-phrase").click();
+  await expect(page.locator("#online")).toHaveAttribute("data-view", "phrase");
+}
+
+/** 合言葉を入れて決める（Enter で送る）。待つ（phrase-wait）か参加の確認（join）になるまで待つ */
+export async function enterPhrase(p: Player, phrase: string, open = true): Promise<"phrase-wait" | "join"> {
+  await openPhrase(p, open);
+  await p.page.locator("#phrase-input").fill(phrase);
+  await p.page.locator("#phrase-input").press("Enter");
+  const online = p.page.locator("#online");
+  await expect(online).toHaveAttribute("data-view", /^(phrase-wait|join)$/, { timeout: 15_000 });
+  return (await online.getAttribute("data-view")) as "phrase-wait" | "join";
 }
 
 /** 招待リンクを開いて参加する */

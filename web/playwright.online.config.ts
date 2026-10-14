@@ -7,7 +7,8 @@ const env = (globalThis as unknown as { process: { env: Record<string, string | 
 // wrangler dev でローカルに立て、2 つのブラウザコンテキストで対局する。部屋の保存先はテスト用のディレクトリに分ける。
 // ふだんの e2e（playwright.config.ts、vite preview だけ）は /api がない公開先としてオンラインの入口が出ないことを確かめる。
 // ポートは E2E_ONLINE_PORT で変えられる（同じマシンで別の作業ツリーの e2e と並べて走らせるとき）。
-// TEST_TURN_SECONDS は時間切れの e2e 用に追加で受ける 1 手の制限時間（秒。本番の設定にはない）
+// TEST_TURN_SECONDS は時間切れの e2e 用に追加で受ける 1 手の制限時間（秒。本番の設定にはない）。
+// TEST_MATCH_LIMIT は合言葉の送りすぎの上限（どのブラウザも同じ接続元になるので、続けて流しても超えないように上げる。本番の設定にはない）
 const PORT = Number(env.E2E_ONLINE_PORT ?? 8790);
 export const TEST_TURN_SECONDS = 3;
 
@@ -22,7 +23,7 @@ export default defineConfig({
     headless: true,
   },
   webServer: {
-    command: `npm run build && cd ../server && npx wrangler types && npx wrangler dev --port ${PORT} --persist-to .wrangler/e2e-state --var "ALLOWED_ORIGINS:http://localhost:*,http://127.0.0.1:*" --var "TEST_TURN_SECONDS:${TEST_TURN_SECONDS}"`,
+    command: `npm run build && cd ../server && npx wrangler types && npx wrangler dev --port ${PORT} --persist-to .wrangler/e2e-state --var "ALLOWED_ORIGINS:http://localhost:*,http://127.0.0.1:*" --var "TEST_TURN_SECONDS:${TEST_TURN_SECONDS}" --var "TEST_MATCH_LIMIT:1000"`,
     url: `http://localhost:${PORT}/api/health`,
     reuseExistingServer: false,
     timeout: 180_000,

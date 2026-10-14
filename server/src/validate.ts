@@ -5,6 +5,7 @@ import { cloneRules, PIECES, PRESETS, sameRules, type PieceKind, type RuleSet } 
 import { SKILLS, type SkillId } from "../../web/src/engine/skills";
 import type { ClientMessage, HostSeat, WsErrorCode } from "../../web/src/net/protocol";
 import { MAX_MESSAGE_BYTES, TOKEN_PATTERN, TURN_SECONDS } from "../../web/src/net/protocol";
+import { normalizePhrase } from "../../web/src/net/phrase";
 import { decodeRules, encodeRules } from "../../web/src/ui/query";
 
 const isObject = (x: unknown): x is Record<string, unknown> => typeof x === "object" && x !== null && !Array.isArray(x);
@@ -42,6 +43,23 @@ export function parseCreate(x: unknown, testSeconds?: number): { rules: RuleSet;
   const allowed: readonly unknown[] = testSeconds ? [...TURN_SECONDS, testSeconds] : TURN_SECONDS;
   if (!allowed.includes(turnSeconds)) return null;
   return { rules, hostSeat: seat, turnSeconds: turnSeconds as number };
+}
+
+/**
+ * POST /api/match の本文。phrase を正規化して検証し（net/phrase.ts）、ほかは parseCreate と同じ。
+ * 合言葉が不正なら bad_phrase、ルールなどが不正なら bad_rules
+ */
+export function parseMatch(
+  x: unknown,
+  testSeconds?: number,
+): { ok: true; phrase: string; rules: RuleSet; hostSeat: HostSeat; turnSeconds: number } | { ok: false; code: "bad_phrase" | "bad_rules" } {
+  if (!isObject(x)) return { ok: false, code: "bad_rules" };
+  const phrase = normalizePhrase(x.phrase);
+  if (!phrase.ok) return { ok: false, code: "bad_phrase" };
+  const { phrase: _, ...rest } = x;
+  const create = parseCreate(rest, testSeconds);
+  if (!create) return { ok: false, code: "bad_rules" };
+  return { ok: true, phrase: phrase.phrase, ...create };
 }
 
 export type Parsed = { ok: true; msg: ClientMessage } | { ok: false; code: WsErrorCode; message: string };

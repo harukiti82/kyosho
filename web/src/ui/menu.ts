@@ -1,4 +1,4 @@
-// メニュー画面: CPU対戦（強さを選ぶとそのまま始まる）・マルチ（この端末で 2 人・オンライン）・遊び方（チュートリアル）・
+// メニュー画面: CPU対戦（強さを選ぶとそのまま始まる）・マルチ（この端末で 2 人・オンラインの招待リンクと合言葉）・遊び方（チュートリアル）・
 // スキル練習（11 枚のカードの一覧から 1 枚を選んで練習する）・設定・このゲームについて（版・権利・プライバシー）。
 // どの対局も設定メニューで保存したルール（変えなければ標準）で始まる。表示と入力だけで、対局は App が始める。
 
@@ -12,6 +12,8 @@ export interface MenuActions {
   cpu: (level: CpuLevel) => void;
   pvp: () => void;
   online: () => void;
+  /** オンライン対戦を合言葉で（入力のダイアログを出す） */
+  phrase: () => void;
   /** 遊び方（チュートリアル）を前回の位置から始める */
   learn: () => void;
   /** スキル練習で id のカードの練習を始める */
@@ -32,6 +34,7 @@ export class Menu {
     note: byId("menu-note"),
     resume: byId("menu-resume"),
     online: byId("menu-online"),
+    phrase: byId("menu-phrase"),
     learn: byId("menu-learn"),
     learnState: byId("menu-learn-state"),
     skills: byId("menu-skills"),
@@ -53,6 +56,7 @@ export class Menu {
     this.el.resume.addEventListener("click", () => act.resume());
     byId("menu-pvp").addEventListener("click", () => act.pvp());
     this.el.online.addEventListener("click", () => act.online());
+    this.el.phrase.addEventListener("click", () => act.phrase());
     for (const b of this.el.root.querySelectorAll<HTMLElement>("[data-level]")) {
       const level = b.dataset.level as CpuLevel;
       if (CPU_LEVELS.includes(level)) b.addEventListener("click", () => act.cpu(level));
@@ -137,9 +141,10 @@ export class Menu {
     );
   }
 
-  /** オンライン対戦の入口を出す（サーバーに届く公開先だけ） */
+  /** オンライン対戦の入口（招待リンク・合言葉）を出す（サーバーに届く公開先だけ） */
   enableOnline() {
     this.el.online.hidden = false;
+    this.el.phrase.hidden = false;
   }
 
   private panel(p: Panel, focus = true) {

@@ -1,6 +1,10 @@
 // HTTP / WebSocket の小物（応答の組み立て・乱数の ID）
 
 import type { ErrorMessage, HttpErrorCode, ServerMessage, WsErrorCode } from "../../web/src/net/protocol";
+import type { Room } from "./room";
+
+/** 部屋 ID の Durable Object */
+export const roomStub = (env: Env, roomId: string) => (env.ROOMS as DurableObjectNamespace<Room>).get(env.ROOMS.idFromName(roomId));
 
 export function json(body: unknown, status = 200, headers: HeadersInit = {}): Response {
   return new Response(JSON.stringify(body), {
