@@ -1,4 +1,5 @@
 import { defineConfig, devices } from "@playwright/test";
+import { clearedState } from "./e2e/intro";
 
 // Node の環境変数（@types/node は入れていないので globalThis から読む）
 const env = (globalThis as unknown as { process: { env: Record<string, string | undefined> } }).process.env;
@@ -20,6 +21,8 @@ export default defineConfig({
     headless: true,
     // PWA の Service Worker は止める（キャッシュの入口・assets で前のテストの状態を持ち越さない）。SW を確かめる pwa.spec.ts だけ許す
     serviceWorkers: "block",
+    // 初めての人の遊び方の必須を解いておく（必須を確かめる intro.spec.ts は空にする）
+    storageState: clearedState([`http://localhost:${PORT}`, `http://localhost:${PORT + 1}`]),
   },
   webServer: [
     {

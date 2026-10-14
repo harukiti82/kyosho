@@ -97,6 +97,23 @@ for (const base of TARGETS) {
       await context.setOffline(false);
     });
 
+    test("初めての人はオフラインでも遊び方から。遊び方はオフラインで始められる", async ({ page, context }) => {
+      await install(page, base);
+      // e2e の既定の保存（必須を解いた印）を消して、初めての人として開き直す
+      await page.evaluate(() => localStorage.clear());
+      await context.setOffline(true);
+      await page.reload();
+      await expect(page.locator("#menu")).toBeVisible();
+      expect(await page.evaluate(() => !!navigator.serviceWorker.controller)).toBe(true);
+      await expect(page.locator("#menu-cpu")).toHaveClass(/\blocked\b/);
+      await page.locator("#menu-cpu").click();
+      await expect(page.locator("#menu-levels")).toBeHidden();
+      await page.locator("#menu-learn").click();
+      await expect(page.locator("#coach-num")).toHaveText("1/16");
+      await expect(page.locator(".board.acting")).toBeVisible();
+      await context.setOffline(false);
+    });
+
     test("オフラインではオンライン対戦の入口を出さず、招待リンクは接続できない案内になる", async ({ page, context }) => {
       await install(page, base);
       await context.setOffline(true);

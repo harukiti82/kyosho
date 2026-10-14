@@ -399,6 +399,31 @@ button {
 .menu-btn.fresh .menu-sub {
   color: #ffe58a;
 }
+/* 遊び方を終えるまで閉じた入口: 字を沈め、名前の右に錠（押すとトーストで知らせる） */
+.menu-btn.locked {
+  color: var(--ink-dim);
+}
+.menu-lock {
+  position: relative;
+  display: inline-block;
+  width: 0.62em;
+  height: 0.5em;
+  margin-left: 0.55em;
+  vertical-align: -0.02em;
+  background: currentColor;
+}
+.menu-lock::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: 100%;
+  width: 0.4em;
+  height: 0.34em;
+  transform: translateX(-50%);
+  border: 0.09em solid currentColor;
+  border-bottom: 0;
+  border-radius: 0.2em 0.2em 0 0;
+}
 .menu-back {
   padding: 0.55rem 1rem;
   font-size: 0.9rem;

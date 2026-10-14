@@ -1,4 +1,5 @@
 import { defineConfig, devices } from "@playwright/test";
+import { clearedState } from "./e2e/intro";
 
 // Node の環境変数（@types/node は入れていないので globalThis から読む）
 const env = (globalThis as unknown as { process: { env: Record<string, string | undefined> } }).process.env;
@@ -21,6 +22,8 @@ export default defineConfig({
   use: {
     baseURL: `http://localhost:${PORT}`,
     headless: true,
+    // 初めての人の遊び方の必須を解いておく（コンテキストを作る online/net.ts の newPlayer も同じ。必須を確かめるテストは空にする）
+    storageState: clearedState([`http://localhost:${PORT}`]),
   },
   webServer: {
     command: `npm run build && cd ../server && npx wrangler types && npx wrangler dev --port ${PORT} --persist-to .wrangler/e2e-state --var "ALLOWED_ORIGINS:http://localhost:*,http://127.0.0.1:*" --var "TEST_TURN_SECONDS:${TEST_TURN_SECONDS}" --var "TEST_MATCH_LIMIT:1000"`,

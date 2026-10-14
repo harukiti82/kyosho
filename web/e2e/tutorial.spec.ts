@@ -8,9 +8,11 @@ import { cellName, parseCell } from "../src/engine/board";
 import { lastMoveOf, playMove, useSkill } from "../src/engine/game";
 import type { PieceKind } from "../src/engine/rules";
 import { SKILLS, type SkillId } from "../src/engine/skills";
+import { INTRO_KEY, REQUIRED_STEPS } from "../src/ui/intro";
 import { FINISHED_TEXT, LESSONS, PICK_HINT, TUTORIAL_KEY, VICE_HINT, type Lesson, type LessonId } from "../src/ui/lessons";
 import { RECORD_KEY } from "../src/ui/record";
-import { cellAt, noHorizontalScroll, play, seedPage, stubDraws, waitHumanTurnOrEnd } from "./helpers";
+import { cellAt, noHorizontalScroll, play, seedPage, startGame, stubDraws, waitHumanTurnOrEnd } from "./helpers";
+import { EMPTY_STATE } from "./intro";
 
 const SHOT = "screenshots";
 const narrow = (page: Page) => (page.viewportSize()?.width ?? 1280) < 600;
@@ -197,74 +199,140 @@ async function pickInMatch(page: Page) {
   await expect(dialog).toBeHidden();
 }
 
-test("遊び方: メニューから始め、全ステップを違う手と正解で進み、標準の実戦を終局まで打って完了する", async ({ page }) => {
-  test.setTimeout(480_000);
-  const errors: string[] = [];
-  page.on("pageerror", (e) => errors.push(String(e)));
-  // 配るカード（配り直し・実戦）と CPU の手を決める
-  await stubDraws(page, [0.3, 0.7, 0.1]);
-  await seedPage(page, 7);
-  await page.goto("/");
-  // はじめて: メニューの「遊び方」に控えめなおすすめ（押し付けない。ほかの入口はそのまま）。メニューのルールは標準
-  await expect(page.locator("#menu-learn")).toHaveText("遊び方 おすすめ");
-  await expect(page.locator("#menu-learn")).toHaveClass(/\bfresh\b/);
-  await expect(page.locator("#menu-rule-name")).toHaveText("標準");
-  await page.screenshot({ path: `${SHOT}/${prefix(page)}-tutorial-menu.png` });
-  await openTutorial(page);
+/** 初めての人の遊び方の必須（ui/intro.ts）: CPU対戦・マルチに錠が付いているか */
+async function expectGate(page: Page, on: boolean) {
+  await expect(page.locator("#menu")).toBeVisible();
+  for (const id of ["menu-cpu", "menu-multi"]) {
+    const b = page.locator(`#${id}`);
+    await (on ? expect(b).toHaveClass(/\blocked\b/) : expect(b).not.toHaveClass(/\blocked\b/));
+  }
+}
 
-  for (const [i, l] of LESSONS.entries()) {
-    if (l.match) break;
-    if (l.pick) await solvePick(page);
-    else {
-      await solveStep(page, l, i);
-      // できたの 1 文が浮かび終わってから撮る
-      await page.waitForTimeout(400);
-      await page.screenshot({ path: `${SHOT}/${prefix(page)}-tutorial-${i + 1}-${l.id}-done.png` });
+const introOf = async (page: Page) => JSON.parse((await page.evaluate((k) => localStorage.getItem(k), INTRO_KEY)) ?? "null");
+
+test.describe("初めての人（何も保存していない）", () => {
+  test.use({ storageState: EMPTY_STATE });
+
+  test("遊び方: メニューから始め、全ステップを違う手と正解で進み、標準の実戦を終局まで打って完了する", async ({ page }) => {
+    test.setTimeout(480_000);
+    const errors: string[] = [];
+    page.on("pageerror", (e) => errors.push(String(e)));
+    // 配るカード（配り直し・実戦）と CPU の手を決める
+    await stubDraws(page, [0.3, 0.7, 0.1]);
+    await seedPage(page, 7);
+    await page.goto("/");
+    // はじめて: メニューの「遊び方」におすすめ。CPU対戦・マルチは遊び方の実戦の前まで終えるまで閉じている。メニューのルールは標準
+    await expectGate(page, true);
+    await expect(page.locator("#menu-learn")).toHaveText("遊び方 おすすめ");
+    await expect(page.locator("#menu-learn")).toHaveClass(/\bfresh\b/);
+    await expect(page.locator("#menu-rule-name")).toHaveText("標準");
+    await page.screenshot({ path: `${SHOT}/${prefix(page)}-tutorial-menu.png` });
+    await openTutorial(page);
+
+    for (const [i, l] of LESSONS.entries()) {
+      if (l.match) break;
+      if (l.pick) await solvePick(page);
+      else {
+        await solveStep(page, l, i);
+        // できたの 1 文が浮かび終わってから撮る
+        await page.waitForTimeout(400);
+        await page.screenshot({ path: `${SHOT}/${prefix(page)}-tutorial-${i + 1}-${l.id}-done.png` });
+      }
+      // コーチの文が盤と重ならない（スマホ幅でも、コーチは盤の外に置く）
+      await expectCoachClear(page);
+      // 体力 0 で勝つ手は決着の演出が覆うので、それが消えてから押す（Playwright が待つ）
+      await page.locator("#coach-next").click();
     }
-    // コーチの文が盤と重ならない（スマホ幅でも、コーチは盤の外に置く）
-    await expectCoachClear(page);
-    // 体力 0 で勝つ手は決着の演出が覆うので、それが消えてから押す（Playwright が待つ）
-    await page.locator("#coach-next").click();
-  }
 
-  // 実戦: 標準・CPU イージー・制限時間なし。カードを選んでから打つ
-  await expectStep(page, LAST);
-  await expect(page.locator("#rules4-name")).toHaveText("ルール 標準");
-  await expect(page.locator("#player-1")).toContainText("CPU");
-  await expect(page.locator("#coach-actions")).toBeHidden();
-  await pickInMatch(page);
-  await page.screenshot({ path: `${SHOT}/${prefix(page)}-tutorial-${LAST + 1}-match.png` });
-  let ended = false;
-  for (let n = 0; n < 100 && !ended; n++) {
-    ended = await waitHumanTurnOrEnd(page);
-    if (ended) break;
-    await expect(page.locator("#turn-clock")).toHaveCount(0);
-    const cell = page.locator(".cell.can-take").first();
-    const [r, c] = [Number(await cell.getAttribute("data-r")), Number(await cell.getAttribute("data-c"))];
-    await press(page, cellName(r, c));
-    await expect(page.locator(".board.acting")).toHaveCount(0);
-  }
-  expect(ended).toBe(true);
-  await expect(page.locator("#result")).toHaveAttribute("open", "");
-  await expect(page.locator("#coach-msg.ok")).toHaveText(FINISHED_TEXT);
-  // 最後なので「次へ」はない
-  await expect(page.locator("#coach-actions")).toBeHidden();
-  // 遊び方の実戦は通算に数えない（終局画面にも名札にも出さない）
-  expect(await page.evaluate((k) => localStorage.getItem(k), RECORD_KEY)).toBeNull();
-  await expect(page.locator("#result-detail .score th", { hasText: "通算" })).toHaveCount(0);
-  await page.screenshot({ path: `${SHOT}/${prefix(page)}-tutorial-${LAST + 1}-match-result.png` });
-  await page.locator("#result-view").click();
-  await page.screenshot({ path: `${SHOT}/${prefix(page)}-tutorial-${LAST + 1}-match-board.png` });
-  await page.locator("#btn-menu").click();
-  await expect(page.locator("#menu-learn")).toHaveText("遊び方 クリア済み");
-  await expect(page.locator("#menu-learn")).not.toHaveClass(/\bfresh\b/);
-  expect(JSON.parse((await page.evaluate((k) => localStorage.getItem(k), TUTORIAL_KEY))!)).toEqual({ v: 2, step: LAST, reached: LAST, done: true });
-  // 終えた後は最初から。どのステップへも石で移れる
-  await openTutorial(page);
-  await expectStep(page, 0);
-  await expect(page.locator(".coach-dot:not(:disabled)")).toHaveCount(LESSONS.length - 1);
-  await noHorizontalScroll(page, page.viewportSize()!.width);
-  expect(errors).toEqual([]);
+    // 実戦: 標準・CPU イージー・制限時間なし。カードを選んでから打つ
+    await expectStep(page, LAST);
+    await expect(page.locator("#rules4-name")).toHaveText("ルール 標準");
+    await expect(page.locator("#player-1")).toContainText("CPU");
+    await expect(page.locator("#coach-actions")).toBeHidden();
+    await pickInMatch(page);
+    await page.screenshot({ path: `${SHOT}/${prefix(page)}-tutorial-${LAST + 1}-match.png` });
+    let ended = false;
+    for (let n = 0; n < 100 && !ended; n++) {
+      ended = await waitHumanTurnOrEnd(page);
+      if (ended) break;
+      await expect(page.locator("#turn-clock")).toHaveCount(0);
+      const cell = page.locator(".cell.can-take").first();
+      const [r, c] = [Number(await cell.getAttribute("data-r")), Number(await cell.getAttribute("data-c"))];
+      await press(page, cellName(r, c));
+      await expect(page.locator(".board.acting")).toHaveCount(0);
+    }
+    expect(ended).toBe(true);
+    await expect(page.locator("#result")).toHaveAttribute("open", "");
+    await expect(page.locator("#coach-msg.ok")).toHaveText(FINISHED_TEXT);
+    // 最後なので「次へ」はない
+    await expect(page.locator("#coach-actions")).toBeHidden();
+    // 遊び方の実戦は通算に数えない（終局画面にも名札にも出さない）
+    expect(await page.evaluate((k) => localStorage.getItem(k), RECORD_KEY)).toBeNull();
+    await expect(page.locator("#result-detail .score th", { hasText: "通算" })).toHaveCount(0);
+    await page.screenshot({ path: `${SHOT}/${prefix(page)}-tutorial-${LAST + 1}-match-result.png` });
+    await page.locator("#result-view").click();
+    await page.screenshot({ path: `${SHOT}/${prefix(page)}-tutorial-${LAST + 1}-match-board.png` });
+    await page.locator("#btn-menu").click();
+    await expect(page.locator("#menu-learn")).toHaveText("遊び方 クリア済み");
+    await expect(page.locator("#menu-learn")).not.toHaveClass(/\bfresh\b/);
+    expect(JSON.parse((await page.evaluate((k) => localStorage.getItem(k), TUTORIAL_KEY))!)).toEqual({ v: 2, step: LAST, reached: LAST, done: true });
+    // 終えた後は最初から。どのステップへも石で移れる
+    await openTutorial(page);
+    await expectStep(page, 0);
+    await expect(page.locator(".coach-dot:not(:disabled)")).toHaveCount(LESSONS.length - 1);
+    await noHorizontalScroll(page, page.viewportSize()!.width);
+    // CPU対戦・マルチが開いている（再読み込みしても）
+    await page.locator("#btn-menu").click();
+    await expectGate(page, false);
+    expect(await introOf(page)).toEqual({ v: 1, state: "cleared" });
+    await page.reload();
+    await expectGate(page, false);
+    expect(errors).toEqual([]);
+  });
+
+  test("遊び方: 15 ステップ目の手前でやめて再読み込みしても閉じたまま。15 ステップ目を解けば実戦をしなくても開き、再読み込みしても開いたまま", async ({ page }) => {
+    test.setTimeout(240_000);
+    const errors: string[] = [];
+    page.on("pageerror", (e) => errors.push(String(e)));
+    expect(REQUIRED_STEPS).toBe(LAST);
+    // 初めての人が 14 ステップ目まで進めてある（最初に開いたときだけ入れる）
+    await page.addInitScript(
+      ([ik, tk, step]) => {
+        if (sessionStorage.getItem("seeded")) return;
+        sessionStorage.setItem("seeded", "1");
+        localStorage.setItem(ik, JSON.stringify({ v: 1, state: "new" }));
+        localStorage.setItem(tk, JSON.stringify({ v: 2, step, reached: step, done: false }));
+      },
+      [INTRO_KEY, TUTORIAL_KEY, REQUIRED_STEPS - 2] as const,
+    );
+    await page.goto("/");
+    await expectGate(page, true);
+    await expect(page.locator("#menu-learn")).toHaveText(`遊び方 つづき ${REQUIRED_STEPS - 1}/${LESSONS.length}`);
+    // 14 ステップ目を解いて 15 ステップ目を開き、解かずに再読み込み: 閉じたまま、15 ステップ目から
+    await openTutorial(page);
+    await solveStep(page, LESSONS[REQUIRED_STEPS - 2], REQUIRED_STEPS - 2);
+    await page.locator("#coach-next").click();
+    await expectStep(page, REQUIRED_STEPS - 1);
+    await page.reload();
+    await expectGate(page, true);
+    await expect(page.locator("#menu-learn")).toHaveText(`遊び方 つづき ${REQUIRED_STEPS}/${LESSONS.length}`);
+    expect(await introOf(page)).toEqual({ v: 1, state: "new" });
+    // 15 ステップ目を解く: 「実戦へ」を押さずにメニューへ戻ると開いている
+    await openTutorial(page);
+    await solveStep(page, LESSONS[REQUIRED_STEPS - 1], REQUIRED_STEPS - 1);
+    await expect(page.locator("#coach-next")).toHaveText("実戦へ");
+    await page.locator("#btn-menu").click();
+    await expectGate(page, false);
+    await page.screenshot({ path: `${SHOT}/${prefix(page)}-intro-cleared.png` });
+    expect(await introOf(page)).toEqual({ v: 1, state: "cleared" });
+    await page.reload();
+    await expectGate(page, false);
+    // 実戦は任意: 遊び方は 15 ステップ目のまま（クリア済みではない）
+    await expect(page.locator("#menu-learn")).toHaveText(`遊び方 つづき ${REQUIRED_STEPS}/${LESSONS.length}`);
+    await startGame(page, { preset: "std" });
+    await expect(page.locator(".board.acting")).toBeVisible();
+    expect(errors).toEqual([]);
+  });
 });
 
 /** コーチ（#coach）と盤（#board）が重ならない */
