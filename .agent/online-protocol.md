@@ -59,7 +59,7 @@
 - **同時**: 受付は要求を 1 件ずつ順に処理する（部屋への問い合わせ・作成は別の Durable Object への呼び出しで、その間は入力ゲートが開いて次の要求が割り込めるので、メモリの Promise の列で直列にする）。ほぼ同時に来た 2 人は、先の 1 人が部屋を作り、後の人はその部屋への `join` を受け取る
 - **参加の確認の間に席が埋まった・作成者がいなくなった**: 同じ部屋の `join` を受け取った人が複数いれば、先に join した人が座り、後の人は `room_full`（4003）。合言葉の部屋で作成者がいない（上の「待っている」でない）ときのトークンなしの join は `room_not_found`（4004）で断る（ひとりの部屋に座らせない）。画面はどちらも同じ合言葉で探し直す（最大 2 回）
 - **自分自身**: 同じブラウザの別のタブで同じ合言葉を入れるとつながる（トークンは sessionStorage でタブごとなので別人として参加する。招待リンクを自分で開いたときと同じ）。参加の確認に「このブラウザで待っている部屋」の注意（`#join-own`）を出す
-- **送りすぎ**: 接続元（`CF-Connecting-IP`）ごとに `MATCH_WINDOW_MS`（1 分）に `MATCH_LIMIT`（20）回まで。超えると 429 `too_many_requests`。合言葉が不正な要求も数える。Worker のインスタンスのメモリで数える軽い制限で、インスタンスをまたいだ合計は数えない（覚える接続元は 1 万まで）。`CF-Connecting-IP` がない（ローカル・テスト）なら数えない。受付・部屋の Durable Object は検証と制限を通った要求でだけ起こす
+- **送りすぎ**: 接続元（`CF-Connecting-IP`）ごとに `MATCH_WINDOW_MS`（1 分）に `MATCH_LIMIT`（20）回まで。超えると 429 `too_many_requests`。合言葉が不正な要求も数える。Worker のインスタンスのメモリで数える軽い制限で、インスタンスをまたいだ合計は数えない（覚える接続元は 1 万まで）。`CF-Connecting-IP` がない（テスト）なら数えない。wrangler dev ではどのブラウザも同じ接続元になるので、オンラインの e2e は `--var TEST_MATCH_LIMIT:1000` で上限を上げる（本番の `wrangler.jsonc` にはない）。受付・部屋の Durable Object は検証と制限を通った要求でだけ起こす
 - **合言葉を外に出さない**: 合言葉は本文だけで送り（URL に載せない）、サーバーはログ・storage・応答・WebSocket のメッセージに入れない（`server/test/phrase.test.ts` が検査する）。待っている本人の画面は合言葉を `sessionStorage` の `kyosho:phrase:<roomId>` に残して出す（再読み込みしても出る）
 
 ## WebSocket のメッセージ
@@ -265,7 +265,7 @@ state{phase:finished, view.result} ◀──────────────
 | `web/src/net/phrase.ts` | 合言葉の正規化と検証（画面・サーバー共通）。テストは `web/test/phrase.test.ts` |
 | `web/src/net/online.ts` | 画面の通信層（HTTP・WebSocket の接続・参加・トークン・つなぎ直し・ping）。テストは `web/test/online.test.ts` |
 | `web/src/ui/online.ts` | 案内のダイアログ（作成中・招待リンクと待機・参加の確認・合言葉の入力と待機・エラー） |
-| `web/e2e/online/` | 2 つのブラウザで作成 → 参加 → 終局・再読み込み・隠し王の秘匿・エラー・切断・制限時間（`timer.spec.ts`）・同じ部屋での再戦（`rematch.spec.ts`）・合言葉（`phrase.spec.ts`）の e2e（`cd web && npm run e2e:online`、設定 `web/playwright.online.config.ts` が wrangler dev を :8790（`E2E_ONLINE_PORT` で変更可）で、`TEST_TURN_SECONDS` 付きで起こす） |
+| `web/e2e/online/` | 2 つのブラウザで作成 → 参加 → 終局・再読み込み・隠し王の秘匿・エラー・切断・制限時間（`timer.spec.ts`）・同じ部屋での再戦（`rematch.spec.ts`）・合言葉（`phrase.spec.ts`）の e2e（`cd web && npm run e2e:online`、設定 `web/playwright.online.config.ts` が wrangler dev を :8790（`E2E_ONLINE_PORT` で変更可）で、`TEST_TURN_SECONDS`・`TEST_MATCH_LIMIT` 付きで起こす） |
 | `server/wrangler.jsonc` | Worker の設定: 静的アセット（`../web/dist`、`run_worker_first`）・Durable Object・`ALLOWED_ORIGINS`・独自ドメイン（`routes` の Custom Domain `kyosho.rukiharukichi.com`） |
 | `server/src/index.ts` | Worker: `/api` の下のルーティング・Origin・部屋の作成・合言葉（検証・送りすぎの制限・受付への振り分け） |
 | `server/src/lobby.ts` | Durable Object `Lobby`: 合言葉ごとの受付（待っている部屋を 1 つ覚え、1 件ずつ処理する） |

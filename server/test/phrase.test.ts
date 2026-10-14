@@ -186,6 +186,12 @@ describe("送りすぎの制限", () => {
     expect(allowMatch(ip, t + 1)).toBe(false);
     expect(allowMatch(ip, t + 60_000)).toBe(true);
   });
+
+  it("上限は引数で上げられる（e2e の TEST_MATCH_LIMIT）", () => {
+    const ip = "192.0.2.2";
+    for (let i = 0; i < MATCH_LIMIT + 5; i++) expect(allowMatch(ip, 2_000_000, MATCH_LIMIT + 5)).toBe(true);
+    expect(allowMatch(ip, 2_000_000, MATCH_LIMIT + 5)).toBe(false);
+  });
 });
 
 describe("合言葉を外に出さない", () => {

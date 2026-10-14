@@ -102,11 +102,11 @@ const matchHits = new Map<string, { count: number; resetAt: number }>();
 /** 覚えておく接続元の数の上限（メモリを使いすぎない） */
 const MATCH_HITS_MAX = 10_000;
 
-/** 接続元 ip の今回の POST /api/match を通すか。ip が分からない（ローカル・テスト）なら数えない */
-export function allowMatch(ip: string | null, now = Date.now()): boolean {
+/** 接続元 ip の今回の POST /api/match を通すか。ip が分からない（ローカル・テスト）なら数えない。limit は MATCH_WINDOW_MS ごとの上限 */
+export function allowMatch(ip: string | null, now = Date.now(), limit = MATCH_LIMIT): boolean {
   if (!ip) return true;
   const hit = matchHits.get(ip);
-  if (hit && now < hit.resetAt) return ++hit.count <= MATCH_LIMIT;
+  if (hit && now < hit.resetAt) return ++hit.count <= limit;
   if (matchHits.size >= MATCH_HITS_MAX) {
     for (const [k, v] of matchHits) if (now >= v.resetAt) matchHits.delete(k);
     if (matchHits.size >= MATCH_HITS_MAX) matchHits.clear();
@@ -121,9 +121,18 @@ export async function lobbyName(phrase: string): Promise<string> {
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
+/**
+ * e2e 用に POST /api/match の上限を上げる（wrangler dev の --var TEST_MATCH_LIMIT。本番の wrangler.jsonc にはない）。
+ * wrangler dev ではどのブラウザも同じ接続元になり、e2e を続けて流すと 1 分の上限を超えるため
+ */
+function matchLimit(env: Env): number {
+  const n = Number((env as unknown as { TEST_MATCH_LIMIT?: string }).TEST_MATCH_LIMIT);
+  return Number.isInteger(n) && n > MATCH_LIMIT ? n : MATCH_LIMIT;
+}
+
 /** POST /api/match: 合言葉で待っている部屋を探し、なければ作る */
 async function match(req: Request, env: Env): Promise<Response> {
-  if (!allowMatch(req.headers.get("CF-Connecting-IP"))) {
+  if (!allowMatch(req.headers.get("CF-Connecting-IP"), Date.now(), matchLimit(env))) {
     return httpError(429, "too_many_requests", "合言葉を続けて送りすぎです。少し待ってから試してください");
   }
   const read = await readBody(req);
