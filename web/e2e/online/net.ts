@@ -90,6 +90,26 @@ export async function saveOnlineSetup(p: Player, preset: PresetId | null, seat: 
   await expect(page.locator("#setup")).toBeHidden();
 }
 
+/** メニューのマルチ → オンライン 合言葉 で入力のダイアログを開く（トップを開くところから。open: false なら今の画面から） */
+export async function openPhrase(p: Player, open = true) {
+  const { page } = p;
+  if (open) await page.goto("/");
+  await page.locator("#menu-multi").click();
+  await expect(page.locator("#menu-phrase")).toBeVisible();
+  await page.locator("#menu-phrase").click();
+  await expect(page.locator("#online")).toHaveAttribute("data-view", "phrase");
+}
+
+/** 合言葉を入れて決める（Enter で送る）。待つ（phrase-wait）か参加の確認（join）になるまで待つ */
+export async function enterPhrase(p: Player, phrase: string, open = true): Promise<"phrase-wait" | "join"> {
+  await openPhrase(p, open);
+  await p.page.locator("#phrase-input").fill(phrase);
+  await p.page.locator("#phrase-input").press("Enter");
+  const online = p.page.locator("#online");
+  await expect(online).toHaveAttribute("data-view", /^(phrase-wait|join)$/, { timeout: 15_000 });
+  return (await online.getAttribute("data-view")) as "phrase-wait" | "join";
+}
+
 /** 招待リンクを開いて参加する */
 export async function joinFromInvite(guest: Player, url: string, shot?: string) {
   const { page } = guest;

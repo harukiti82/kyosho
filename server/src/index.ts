@@ -12,6 +12,7 @@ import {
   type CreateRoomResponse,
   type MatchResponse,
 } from "../../web/src/net/protocol";
+import { PHRASE_MAX } from "../../web/src/net/phrase";
 import type { Lobby } from "./lobby";
 import { httpError, json, randomId, rejectSocket, roomStub } from "./util";
 import { parseCreate, parseMatch } from "./validate";
@@ -130,7 +131,7 @@ async function match(req: Request, env: Env): Promise<Response> {
   const parsed = parseMatch(read.body, testTurnSeconds(env));
   if (!parsed.ok) {
     return parsed.code === "bad_phrase"
-      ? httpError(400, "bad_phrase", "合言葉は 1〜20 字で、制御文字などは使えません")
+      ? httpError(400, "bad_phrase", `合言葉は 1〜${PHRASE_MAX} 字で、制御文字などは使えません`)
       : httpError(400, "bad_rules", "rules（RuleSet）・preset・hostSeat・turnSeconds のどれかが不正です");
   }
   const lobbies = env.LOBBIES as DurableObjectNamespace<Lobby>;

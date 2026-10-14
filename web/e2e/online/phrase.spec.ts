@@ -5,7 +5,7 @@
 
 import { expect, test } from "@playwright/test";
 import { noHorizontalScroll } from "../helpers";
-import { newPlayer, playTurn, prefix, saveOnlineSetup, SHOT, waitPlaying, watch, type Player } from "./net";
+import { enterPhrase, newPlayer, openPhrase, playTurn, prefix, saveOnlineSetup, SHOT, waitPlaying, watch, type Player } from "./net";
 
 /** 実行ごと・テストごとに違う合言葉（前の実行やほかのテストの部屋とつながらない。20 字以内） */
 let n = 0;
@@ -16,26 +16,6 @@ const fresh = (tag: string) => `${tag}${run}${++n}`;
 const wide = (s: string) => s.replace(/[!-~]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) + 0xfee0));
 
 const roomOf = (p: Player) => new URL(p.page.url()).searchParams.get("room");
-
-/** メニューのマルチ → オンライン 合言葉 で入力のダイアログを開く（トップを開くところから。open: false なら今の画面から） */
-async function openPhrase(p: Player, open = true) {
-  const { page } = p;
-  if (open) await page.goto("/");
-  await page.locator("#menu-multi").click();
-  await expect(page.locator("#menu-phrase")).toBeVisible();
-  await page.locator("#menu-phrase").click();
-  await expect(page.locator("#online")).toHaveAttribute("data-view", "phrase");
-}
-
-/** 合言葉を入れて決める（Enter で送る）。待つ（phrase-wait）か参加の確認（join）になるまで待つ */
-async function enterPhrase(p: Player, phrase: string, open = true): Promise<"phrase-wait" | "join"> {
-  await openPhrase(p, open);
-  await p.page.locator("#phrase-input").fill(phrase);
-  await p.page.locator("#phrase-input").press("Enter");
-  const online = p.page.locator("#online");
-  await expect(online).toHaveAttribute("data-view", /^(phrase-wait|join)$/, { timeout: 15_000 });
-  return (await online.getAttribute("data-view")) as "phrase-wait" | "join";
-}
 
 /** 待っている（自分の部屋で相手を待つ表示と、state の waiting） */
 async function expectWaiting(p: Player) {
