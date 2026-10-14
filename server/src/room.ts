@@ -76,6 +76,11 @@ export interface RoomRecord {
   record?: Tally;
   /** 合言葉の受付が作った部屋（合言葉そのものは持たない）。招待リンクの部屋にはない */
   phrase?: boolean;
+  /**
+   * 人ごとの名前 [作成者, 参加者]（join で届いた検証済みの名前。名前なしは null）。その人が最初に名前を送った join で決め、
+   * 後の join（つなぎ直し）では変えない。再戦で席が入れ替わっても人に付いて回る。名前の入る前に作った部屋にはない（= 両方 null）
+   */
+  names?: [string | null, string | null];
 }
 
 /** 人ごとの勝ち数 [作成者, 参加者] と引き分けの数 */
@@ -211,7 +216,7 @@ export class Room extends DurableObject<Env> {
     };
     if (!parsed.ok) return reject(parsed.code, parsed.message);
     const msg = parsed.msg;
-    if (msg.type === "join") return this.join(ws, att, room, msg.token);
+    if (msg.type === "join") return this.join(ws, att, room, msg.token, msg.name);
     if (att.player === null) return reject("not_joined", "先に join を送ってください");
     if (msg.type === "rematch") return this.rematch(ws, att.player, room, msg);
     if (msg.type === "leave") return this.leave(att.player, room);
@@ -317,7 +322,7 @@ export class Room extends DurableObject<Env> {
     return { limitMs: room.turnMs ?? 0, remainingMs: Math.max(0, room.deadline - Date.now()) };
   }
 
-  private async join(ws: WebSocket, att: Attachment, room: RoomRecord, token: string | undefined): Promise<void> {
+  private async join(ws: WebSocket, att: Attachment, room: RoomRecord, token: string | undefined, name: string | undefined): Promise<void> {
     if (att.player !== null) return send(ws, errorMsg("already_joined", "すでに参加しています"));
     let player: Player;
     let mine: string;
@@ -355,8 +360,15 @@ export class Room extends DurableObject<Env> {
     // 抜けた人が同じトークンで戻った
     const returned = room.left?.[player] === true;
     if (returned) room.left![player] = false;
-    // 新しい参加・抜けた人の復帰なら保存する。復帰でも放置の期限は延ばす
-    if (token === undefined || returned) await this.save();
+    // 名前はその人が最初に送ったものに決める（つなぎ直しで別の名前を送っても変えない）
+    const person = personOf(room, player);
+    const named = name !== undefined && !room.names?.[person];
+    if (named) {
+      room.names = room.names ?? [null, null];
+      room.names[person] = name;
+    }
+    // 新しい参加・抜けた人の復帰・名前が決まったなら保存する。復帰でも放置の期限は延ばす
+    if (token === undefined || returned || named) await this.save();
     else await this.touch();
     send(ws, { type: "joined", roomId: room.roomId, you: player, token: mine });
     this.broadcast();
@@ -541,8 +553,14 @@ export class Room extends DurableObject<Env> {
         phase,
         gameNo: room.gameNo ?? 1,
         you,
+        name: room.names?.[personOf(room, you)] ?? null,
         view: viewFor(room.game, you),
-        opponent: { joined: room.tokens[opp] !== null, online: online[opp], left: room.left?.[opp] ?? false },
+        opponent: {
+          joined: room.tokens[opp] !== null,
+          online: online[opp],
+          left: room.left?.[opp] ?? false,
+          name: room.tokens[opp] !== null ? (room.names?.[personOf(room, opp)] ?? null) : null,
+        },
         rematch: phase === "finished" ? { you: room.rematch?.[you] ?? "none", opponent: room.rematch?.[opp] ?? "none" } : null,
         record: recordFor(room, you),
         clock,

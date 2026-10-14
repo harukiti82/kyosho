@@ -240,6 +240,8 @@ export class App {
     opponent: StateMessage["opponent"];
     rematch: StateMessage["rematch"];
     record: MatchRecord;
+    /** サーバーが受け付けた自分の名前（名前なし・古いサーバーは null） */
+    name: string | null;
   } | null = null;
   /** 手を送って、サーバーから state が届くのを待っている */
   private sending = false;
@@ -942,7 +944,7 @@ export class App {
     // 遊び方のカードを選ぶステップは、選ぶ画面に要点と課題を出す（コーチが画面の後ろに隠れるため）
     const step = this.inStep()?.lesson;
     this.pick.show({
-      who: s.mode === "pvp" ? PLAYER_NAME[p] : "あなた",
+      who: this.shortName(p),
       stone: s.mode === "pvp" ? p : null,
       offer: side.offer,
       rules: g.rules,
@@ -1705,9 +1707,10 @@ export class App {
       id,
       phase: "waiting",
       gameNo: 0,
-      opponent: { joined: false, online: false, left: false },
+      opponent: { joined: false, online: false, left: false, name: null },
       rematch: null,
       record: { wins: 0, losses: 0, draws: 0 },
+      name: null,
     };
     // 招待リンクから入ったとき（メニューを通らない）もメニューへ出られるように
     byId("btn-menu").hidden = false;
@@ -1742,6 +1745,8 @@ export class App {
         ended: (reason, message) => this.net === net && this.onEnded(reason, message),
       },
       browserDeps(),
+      // 部屋に入るときの保存した名前（部屋の中では変えない。設定で変えた名前は次の部屋から）
+      this.setup.current.name,
     );
     this.net = net;
     net.start();
@@ -1802,7 +1807,7 @@ export class App {
       this.gaugeQuiet = false;
       this.gaugeSnap = null;
     }
-    this.room = { id: m.roomId, phase: m.phase, gameNo: m.gameNo, opponent: m.opponent, rematch: m.rematch, record: m.record };
+    this.room = { id: m.roomId, phase: m.phase, gameNo: m.gameNo, opponent: m.opponent, rematch: m.rematch, record: m.record, name: m.name ?? null };
     s.human = m.you;
     s.rules = m.view.rules;
     const toss = !next && this.claimToss(m, prevRoom, first);
@@ -2227,9 +2232,22 @@ export class App {
 
   // ---- 表示 ----
 
+  /** 正式な名前（名札の title と読み上げ）。手番と呼び名（例: 先手（あなた）・後手（CPU）・先手（はる））。2 人対戦で名前がなければ手番だけ */
   private name(p: Player) {
-    if (this.settings?.mode === "pvp") return PLAYER_NAME[p];
-    return `${PLAYER_NAME[p]}（${p === this.settings?.human ? "あなた" : this.foe()}）`;
+    const short = this.shortName(p);
+    return short === PLAYER_NAME[p] ? short : `${PLAYER_NAME[p]}（${short}）`;
+  }
+
+  /**
+   * 席 p の人が決めた名前（なければ null）。CPU 対戦は人間の席に設定の名前、2 人対戦は先手・後手の名前、
+   * オンライン対戦はサーバーが受け付けた自分の名前と相手の名前（相手の画面から届いた外部入力。textContent でだけ出す）。CPU に名前はない
+   */
+  private playerName(p: Player): string | null {
+    const s = this.settings;
+    if (!s) return null;
+    if (s.mode === "pvp") return s.seatNames?.[p] || null;
+    if (this.online) return (p === s.human ? this.room?.name : this.room?.opponent.name) || null;
+    return p === s.human ? s.name || null : null;
   }
 
   /** 相手の呼び方（CPU 対戦は「CPU」、オンライン対戦は「相手」） */
@@ -2688,8 +2706,13 @@ export class App {
     return `CPU ${CPU_LEVEL_NAME[s.level ?? DEFAULT_CPU_LEVEL]}との対局`;
   }
 
-  /** 名札の短い名前（2 人対戦は先手・後手、それ以外は あなた／CPU・相手）。正式な名前は title と読み上げ */
+  /**
+   * 名札の短い名前。決めた名前があればその名前、なければ 2 人対戦は先手・後手、それ以外は あなた／CPU・相手。
+   * 正式な名前は title と読み上げ
+   */
   private shortName(p: Player) {
+    const named = this.playerName(p);
+    if (named) return named;
     if (this.settings?.mode === "pvp") return PLAYER_NAME[p];
     return p === this.settings?.human ? "あなた" : this.foe();
   }
@@ -3411,9 +3434,9 @@ export class App {
 
   private resultHeadline(r: GameResult): string {
     if (r.winner === null) return "引き分け";
-    if (this.settings?.mode === "cpu") return r.winner === this.settings.human ? "あなたの勝ち" : "CPU の勝ち";
-    if (this.online) return r.winner === this.settings!.human ? "あなたの勝ち" : "相手の勝ち";
-    return `${PLAYER_NAME[r.winner]}の勝ち`;
+    // 決めた名前があればその名前（なければ あなた・相手・先手・後手）
+    if (this.settings?.mode === "cpu" && r.winner !== this.settings.human) return "CPU の勝ち";
+    return `${this.shortName(r.winner)}の勝ち`;
   }
 
   private reasonShort(g: GameState): string {
@@ -3463,9 +3486,9 @@ export class App {
     const head = (p: Player) =>
       h("th", { class: `score-head${winner === p ? " won" : ""}`, attrs: { scope: "col" } }, [
         h("span", { class: `avatar p${p}`, attrs: { "aria-hidden": "true" } }),
-        h("span", { class: "score-name", text: this.shortName(p) }),
-        // 2 人対戦は名前が先手・後手なので、手番を重ねて書かない
-        this.settings?.mode === "pvp" ? null : h("span", { class: "score-seat", text: PLAYER_NAME[p] }),
+        h("span", { class: "score-name", text: this.shortName(p), attrs: { title: this.shortName(p) } }),
+        // 名前が先手・後手（名前のない 2 人対戦）なら、手番を重ねて書かない
+        this.shortName(p) === PLAYER_NAME[p] ? null : h("span", { class: "score-seat", text: PLAYER_NAME[p] }),
       ]);
     const row = (label: string, cells: [string, string]) =>
       h("tr", {}, [h("th", { text: label, attrs: { scope: "row" } }), h("td", { text: cells[0] }), h("td", { text: cells[1] })]);
@@ -3491,7 +3514,7 @@ export class App {
     byId("result-stats").replaceChildren(
       ...who.map((p) =>
         h("section", { class: `stats p${p}`, attrs: { "data-player": String(p) } }, [
-          h("h3", { class: "stats-title", text: cpu ? "あなたの成績" : `${PLAYER_NAME[p]}の成績` }),
+          h("h3", { class: "stats-title", text: `${this.shortName(p)}の成績` }),
           h(
             "dl",
             { class: "stats-list" },

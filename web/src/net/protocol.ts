@@ -138,6 +138,12 @@ export type HttpErrorCode =
 export interface JoinMessage {
   type: "join";
   token?: string;
+  /**
+   * 自分の名前（設定メニューで決めたもの。net/name.ts の normalizeName を通した 1〜NAME_MAX 字）。省略・空は名前なし。
+   * サーバーも normalizeName で検証し、不正な名前はエラーにせず名前なしとして扱う（名前を送らない古い画面もそのまま参加できる）。
+   * 部屋の中では人ごとに最初に届いた名前を使い、つなぎ直し・再戦で別の名前を送っても変えない（変えた名前は次の部屋から）
+   */
+  name?: string;
 }
 
 /** 手番の人が手を送る。サーバーは engine の playMove で検証して適用する */
@@ -229,6 +235,8 @@ export interface StateMessage {
   gameNo: number;
   /** 自分の手番。再戦で先手と後手が入れ替わると変わる（トークンは同じ） */
   you: Player;
+  /** サーバーが受け付けた自分の名前（相手の画面に出る名前）。名前なしは null */
+  name: string | null;
   /** viewFor(state, you)。相手の隠し王の場所は含まない。終局すると view.result が入る */
   view: PlayerView;
   opponent: {
@@ -238,6 +246,8 @@ export interface StateMessage {
     online: boolean;
     /** 相手が leave で部屋を抜けた（同じトークンで戻ると false）。切断（online: false）とは別 */
     left: boolean;
+    /** 相手の名前（検証済み）。名前なし・まだ参加していなければ null。画面は textContent でだけ出す */
+    name: string | null;
   };
   /** 終局後の再戦の申し込みの状態（自分・相手）。終局していなければ null */
   rematch: { you: RematchStatus; opponent: RematchStatus } | null;

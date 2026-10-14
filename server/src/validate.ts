@@ -5,6 +5,7 @@ import { cloneRules, PIECES, PRESETS, sameRules, type PieceKind, type RuleSet } 
 import { SKILLS, type SkillId } from "../../web/src/engine/skills";
 import type { ClientMessage, HostSeat, WsErrorCode } from "../../web/src/net/protocol";
 import { MAX_MESSAGE_BYTES, TOKEN_PATTERN, TURN_SECONDS } from "../../web/src/net/protocol";
+import { normalizeName } from "../../web/src/net/name";
 import { normalizePhrase } from "../../web/src/net/phrase";
 import { decodeRules, encodeRules } from "../../web/src/ui/query";
 
@@ -82,9 +83,14 @@ export function parseClientMessage(data: string | ArrayBuffer): Parsed {
   if (!isObject(x)) return { ok: false, code: "bad_message", message: "オブジェクトを送ってください" };
   const bad = (message: string): Parsed => ({ ok: false, code: "bad_message", message });
   switch (x.type) {
-    case "join":
+    case "join": {
       if (x.token !== undefined && (typeof x.token !== "string" || !TOKEN_PATTERN.test(x.token))) return bad("token の形式が違います");
-      return { ok: true, msg: x.token === undefined ? { type: "join" } : { type: "join", token: x.token } };
+      const msg: ClientMessage = x.token === undefined ? { type: "join" } : { type: "join", token: x.token };
+      // 名前は検証して通ったものだけ載せる。不正な名前（長すぎる・見えない文字・文字列でない）は参加を断らず、名前なしにする
+      const name = normalizeName(x.name);
+      if (name.ok && name.name !== "") msg.name = name.name;
+      return { ok: true, msg };
+    }
     case "move": {
       if (!isCoord(x.r) || !isCoord(x.c)) return bad(`r・c は 0〜${SIZE - 1} の整数です`);
       if (typeof x.kind !== "string" || !Object.hasOwn(PIECES, x.kind)) return bad("kind が駒の種類ではありません");

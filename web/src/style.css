@@ -3449,6 +3449,46 @@ button {
   font-size: 0.8rem;
   color: var(--ink);
 }
+/* 名前の欄（自分・2 人対戦の先手と後手）。長さの上限は検証で（maxlength は絵文字を 2 字に数えるので付けない） */
+.name-box {
+  display: grid;
+  gap: 0.2rem;
+  min-width: 0;
+}
+.name-pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.4rem;
+  min-width: 0;
+}
+.name-seat {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+.name-input {
+  width: 100%;
+  max-width: 14rem;
+  min-width: 0;
+  padding: 0.4rem 0.55rem;
+  border: 1px solid rgba(122, 230, 255, 0.4);
+  border-radius: 0;
+  background: var(--navy-950);
+  font: inherit;
+  font-size: 0.9rem;
+  color: var(--ink);
+}
+.name-input::placeholder {
+  color: var(--ink-dim);
+}
+.name-input[aria-invalid="true"] {
+  border-color: var(--danger);
+}
+.name-error {
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: var(--danger);
+}
 /* 長い設定画面でも「保存」が常に見えるよう、下端に固定する */
 .setup .modal-actions {
   position: sticky;
@@ -3545,6 +3585,7 @@ button {
   text-align: center;
 }
 .result-winner {
+  overflow-wrap: anywhere;
   margin: 0.2rem 0 0.25rem;
   font-size: 2.1rem;
   letter-spacing: 0.1em;
@@ -3575,8 +3616,13 @@ button {
 }
 .score {
   width: 100%;
+  /* 列の幅を名前の長さで広げない（長い名前は省略記号で切る） */
+  table-layout: fixed;
   border-collapse: collapse;
   font-variant-numeric: tabular-nums;
+}
+.score tr > :first-child {
+  width: 3.5rem;
 }
 .score th,
 .score td {
@@ -3608,6 +3654,11 @@ button {
 /* 名前の下に手番を小さく（括弧でつながない） */
 .score-name {
   display: block;
+  max-width: 100%;
+  margin: 0 auto;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
   font-size: 0.9rem;
   color: var(--ink);
 }
@@ -3643,6 +3694,7 @@ button {
   display: none;
 }
 .stats-title {
+  overflow-wrap: anywhere;
   margin: 0 0 0.25rem;
   font-size: 0.74rem;
   font-weight: 700;

@@ -18,6 +18,7 @@ import {
   type HttpErrorBody,
   type HttpErrorCode,
   type JoinedMessage,
+  type JoinMessage,
   type MatchRequest,
   type MatchResponse,
   type MoveMessage,
@@ -294,6 +295,8 @@ export class OnlineSession {
     private readonly url: string,
     private readonly events: SessionEvents,
     private readonly deps: SessionDeps,
+    /** join に付けて送る自分の名前（normalizeName を通したもの）。空なら送らない（名前なし） */
+    private readonly name = "",
   ) {}
 
   /** 接続を始める */
@@ -408,7 +411,9 @@ export class OnlineSession {
     this.ws = ws;
     ws.onopen = () => {
       const token = loadToken(this.deps.store, this.roomId);
-      ws.send(JSON.stringify(token ? { type: "join", token } : { type: "join" }));
+      const join: JoinMessage = token ? { type: "join", token } : { type: "join" };
+      if (this.name) join.name = this.name;
+      ws.send(JSON.stringify(join));
       this.schedulePing();
     };
     ws.onmessage = (e) => {

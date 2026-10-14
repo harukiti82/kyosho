@@ -40,10 +40,12 @@ test("上の帯は読みの「きょうしょう」だけ。メニューの「�
   await expect(about).toContainText("© 2026 rukiharukichi");
   await expect(about.locator(".rule-point")).toHaveText(["無断利用不可", "保存はこの端末だけ", "アクセス数の集計", "オンライン対戦の通信"]);
   await expect(about).toContainText("All rights reserved.");
-  await expect(about).toContainText("設定・遊び方の進み具合・通算はこのブラウザに保存");
+  await expect(about).toContainText("設定・名前・遊び方の進み具合・通算はこのブラウザに保存");
   await expect(about).toContainText("Cloudflare Web Analytics");
   await expect(about).toContainText("クッキーは使いません");
-  await expect(about).toContainText("サーバーに送ります");
+  await expect(about).toContainText("決めた名前をサーバーに送ります");
+  await expect(about).toContainText("名前は対局の相手の画面に出ます");
+  await expect(about).not.toContainText("名前やアカウントは使いません");
   const link = page.locator("#about-rules");
   await expect(link).toHaveText("ルールの全文");
   await expect(link).toHaveAttribute("href", "https://github.com/harukiti82/kyosho/blob/main/RULES.md");
