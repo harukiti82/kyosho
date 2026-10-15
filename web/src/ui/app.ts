@@ -84,6 +84,7 @@ import { clockLevel, clockText, cpuTurnSeconds, turnSecondsText, TurnClock } fro
 import { byId, h } from "./dom";
 import { finaleMs, Fx, fxTiming, skillCastMs, speakerIcon, TOSS_LAND_MS, tossMs, type FxTiming } from "./fx";
 import { animDone, gainText, gaugeGains, growDelay, GROW_MS, snapOf, zoneSources, type GaugeAnims, type GaugeGain, type GaugeSnap } from "./gauge";
+import { TurnWatch } from "./turncue";
 import { OnlineDialog } from "./online";
 import { hitOf, shownHp, statsOf, tierOf, tierText, type HitBreakdown, type PlayerStats, type Tier } from "./impact";
 import { flipRecord, outcomeOf, recordText, type Outcome } from "./outcome";
@@ -218,6 +219,10 @@ export class App {
   private gaugeSnap: GaugeSnap | null = null;
   /** 名札のゲージが伸びている演出（名札を描き直しても途中から続ける）。人ごと */
   private gaugeAnims: GaugeAnims = [null, null];
+  /** 手番の知らせ（「あなたの番」）を出す時 */
+  private readonly turnWatch = new TurnWatch();
+  /** 描いた後に手番の知らせを見直す予定がある（同じ処理の中の描き直しは 1 回にまとめる） */
+  private turnCueQueued = false;
   /** 再接続した後の最初の局面ではゲージを演出しない（切れている間に進んだ分をまとめて見せない） */
   private gaugeQuiet = false;
   /** 名札の時計（手番の人の名札に移す） */
@@ -591,6 +596,7 @@ export class App {
     this.seenEvents = 0;
     this.gaugeSnap = null;
     this.gaugeAnims = [null, null];
+    this.turnWatch.reset();
     this.undo = null;
     // 遊び方は start が lesson を渡したときだけ続ける（ほかの対局・オンラインの部屋では閉じる）
     this.lesson = null;
@@ -1541,8 +1547,9 @@ export class App {
 
   /** メニューを出す。対局は止めて残し、「対局に戻る」で続ける（新しい対局を始めたら捨てる） */
   private showMenu(panel: Panel = "main") {
-    // 抽選の演出は飛ばして結果のままにする（メニューの上に残さない）
+    // 抽選の演出は飛ばして結果のままにする（メニューの上に残さない）。手番の知らせも消す
     this.endToss();
+    this.fx.endTurnCue();
     window.clearTimeout(this.cpuTimer);
     window.clearTimeout(this.resultTimer);
     if (this.el.result.open) this.el.result.close();
@@ -1802,6 +1809,8 @@ export class App {
       this.renderNet();
       return;
     }
+    // 再読み込み・つなぎ直した後の最初の局面: 始まっていた手番は知らせない（対局の始まりは知らせる）
+    if (this.gaugeQuiet || (first && m.view.history.length > 0)) this.turnWatch.hush();
     // つなぎ直した後の最初の局面: 前回描いたゲージを忘れて、差を演出しない
     if (this.gaugeQuiet) {
       this.gaugeQuiet = false;
@@ -2370,6 +2379,43 @@ export class App {
     this.renderNet();
     this.syncClock();
     this.syncPick();
+    this.queueTurnCue();
+  }
+
+  /**
+   * 手番の知らせを見直す。描いた処理（抽選・決着の演出を始める処理を含む）が終わってから見るので、
+   * 演出・メニュー・カードを選ぶ画面の間は出さず、終わって描き直したときに出す
+   */
+  private queueTurnCue() {
+    if (this.turnCueQueued) return;
+    this.turnCueQueued = true;
+    queueMicrotask(() => {
+      this.turnCueQueued = false;
+      this.syncTurnCue();
+    });
+  }
+
+  /**
+   * 操作できる手番が新しく始まったら、盤に手番の知らせを短く出す（CPU 対戦・オンラインは自分の番、2 人対戦は両者の番）。
+   * 遊び方のステップ・連続行動の 2 手目・待ったと巻き戻しでは出さない
+   */
+  private syncTurnCue() {
+    const g = this.game;
+    if (!g || !this.settings) return;
+    const point = { game: this.gameNo, ply: g.ply, turn: g.turn, second: !!g.skills?.second, over: !!g.result };
+    if (this.turnWatch.see(point, this.isHuman(g.turn) && !this.inStep())) this.fx.endTurnCue();
+    const ready = this.canAct() && !this.finale && !this.tossing && !this.menu.visible && !this.el.game.hidden && !this.el.result.open;
+    if (!this.turnWatch.take(ready)) return;
+    const pvp = this.settings.mode === "pvp";
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    this.fx.turnCue({
+      text: pvp ? `${this.shortName(g.turn)}の番` : "あなたの番",
+      owner: g.turn,
+      board: this.el.frame,
+      // 2 人対戦は先手が下・後手が上の席（placeSeats）。CPU 対戦・オンラインの自分は下
+      top: pvp && g.turn === 1,
+      reduce,
+    });
   }
 
   /** 自分の欄を盤の下、相手の欄を盤の上に置く（2 人対戦は先手が下で固定。同じ端末を挟んで座る） */
