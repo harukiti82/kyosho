@@ -5,6 +5,7 @@
 import { FULL_FLASH_MS, GAIN_TEXT_MS, GROW_MS, ORB_MS, ORB_STAGGER_MS } from "./gauge";
 import { TIER_RANK, type Tier } from "./impact";
 import { h } from "./dom";
+import { turnCueMs } from "./turncue";
 import type { Outcome, OutcomeTone } from "./outcome";
 import type { Player } from "../engine/rules";
 
@@ -110,6 +111,18 @@ export interface SkillCastOptions {
   result?: { text: string; miss: boolean } | null;
 }
 
+export interface TurnCueOptions {
+  /** 「あなたの番」「〇〇の番」（名前は外部入力なので文字として入れる） */
+  text: string;
+  /** 手番の人（石の色） */
+  owner: Player;
+  /** 盤の枠（帯は盤の幅で、手番の人の席の側に出す） */
+  board: HTMLElement;
+  /** 手番の人の席が盤の上の側（2 人対戦の後手） */
+  top: boolean;
+  reduce: boolean;
+}
+
 export interface GaugeFxOptions {
   /** 溜まった人の名札のゲージ（.ps-gauge）と、カードの札（.plate-skill） */
   gauge: HTMLElement;
@@ -130,6 +143,7 @@ export class Fx {
   private timers: number[] = [];
   private finaleEl: HTMLElement | null = null;
   private tossEl: HTMLElement | null = null;
+  private turnEl: HTMLElement | null = null;
 
   constructor(private readonly layer: HTMLElement) {}
 
@@ -139,6 +153,7 @@ export class Fx {
     this.timers = [];
     this.finaleEl = null;
     this.tossEl = null;
+    this.turnEl = null;
     this.layer.replaceChildren();
   }
 
@@ -234,6 +249,34 @@ export class Fx {
       flare.style.animationDelay = `${o.growAt + GROW_MS}ms`;
       this.add(flare, o.growAt + GROW_MS + FULL_FLASH_MS + 100);
     }
+  }
+
+  /**
+   * 手番の知らせ: 盤の手番の人の席の側を斜めの帯が横切り、「あなたの番」を見せて消える。
+   * 入力は止めない（タップは盤に通す。fxLock とは無関係）。動きを減らす設定では動かさず、読める間だけ出す
+   */
+  turnCue(o: TurnCueOptions) {
+    this.endTurnCue();
+    const b = o.board.getBoundingClientRect();
+    // 席の側の 2 段目あたり（盤の中央の掛け声の帯と重ならない）。盤が画面外にはみ出していれば画面内に寄せる
+    const y = Math.min(Math.max(b.top + b.height * (o.top ? 0.2 : 0.8), 48), window.innerHeight - 48);
+    const ms = turnCueMs(o.reduce);
+    const root = h("div", { class: `fx-turn p${o.owner}${o.reduce ? " reduce" : ""}` }, [
+      h("span", { class: `fin-stone p${o.owner}`, attrs: { "aria-hidden": "true" } }),
+      h("span", { class: "turn-cue-text", text: o.text }),
+    ]);
+    root.style.left = `${Math.max(b.left, 0)}px`;
+    root.style.width = `${Math.min(b.right, window.innerWidth) - Math.max(b.left, 0)}px`;
+    root.style.top = `${y}px`;
+    root.style.setProperty("--turn-ms", `${ms}ms`);
+    this.turnEl = root;
+    this.add(root, ms);
+  }
+
+  /** 手番の知らせを消す（次の手番が始まった） */
+  endTurnCue() {
+    this.turnEl?.remove();
+    this.turnEl = null;
   }
 
   /** 抽選の演出を消す */

@@ -1904,6 +1904,62 @@ button {
     transform: translate(-50%, -80%) scale(1);
   }
 }
+/* 手番の知らせ（ui/fx.ts の turnCue）: 盤の幅の紺の斜めの帯が手番の人の席の側を横切り、石と「あなたの番」を見せて抜ける。
+   タップは盤に通す（演出層は pointer-events: none）。動くのは transform / opacity だけ */
+.fx-turn {
+  position: absolute;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  box-sizing: border-box;
+  height: 2.8rem;
+  margin-top: -1.4rem;
+  padding: 0 1.4rem;
+  background: rgba(4, 17, 46, 0.9);
+  clip-path: var(--slant);
+  /* 上下に手番のシアンの線 */
+  box-shadow: inset 0 2px 0 var(--go), inset 0 -2px 0 var(--go);
+  color: var(--ink);
+  font-family: var(--font-display);
+  font-size: 1.3rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  line-height: 1;
+  white-space: nowrap;
+  text-shadow: var(--soft-shadow);
+  animation: turn-cue var(--turn-ms, 1.2s) ease-out forwards;
+}
+.fx-turn .fin-stone {
+  flex: none;
+  width: 1.45rem;
+  height: 1.45rem;
+  box-shadow: 0 0 0 2px var(--navy-900), 0 0 0 3px var(--go);
+}
+.turn-cue-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+@keyframes turn-cue {
+  0% {
+    opacity: 0;
+    transform: translateX(-14%);
+  }
+  18% {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  78% {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(14%);
+  }
+}
 /* 光の粒 */
 .fx-spark {
   position: absolute;

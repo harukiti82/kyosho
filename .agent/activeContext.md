@@ -5,11 +5,11 @@
 
 ## 現在の対象
 
-- 何を / どこを: プレイヤーの名前（設定の「名前」→ 名札・終局画面・オンラインの相手の画面。`web/src/net/name.ts`・`ui/setup.ts`・`App.playerName` / `shortName`・`server/src/room.ts` の `names`）。依頼元セッション（master）経由
-- ステータス: PR #60 でマージ・本番で確認済み（合言葉でつないだ 2 つのブラウザに互いの名前、スマホ幅で横スクロールなし）
+- 何を / どこを: 手番の知らせ（自分の番が始まった瞬間に盤に「あなたの番」の帯。`web/src/ui/turncue.ts`・`fx.ts` の `turnCue`・`App.syncTurnCue`）。依頼元セッション（master）経由
+- ステータス: ブランチ `feat/turn-cue`（worktree `../kyosho-turncue`）で実装・テスト。PR → マージ → 本番で確認
 - 最終更新: 2026-10-15
-- 判断した点（ユーザーに報告する）: 不正な名前はサーバーでエラーにせず名前なしで参加させる。部屋の中の名前は人ごとに最初に届いたもので固定（設定で変えたら次の部屋から）。2 人対戦は先手・後手の名前を別の欄に。案内のダイアログ・抽選と決着の演出・「あなたの番」は名前にしない。NG ワードの辞書は入れていない
-- 前の対象: 初めての人は遊び方から（PR #59。本番で確認済み）。その前は合言葉（PR #57）、完全版の体裁（PR #56）、PWA（PR #54・#55。iOS Safari の実機は未検証）
+- 判断した点（ユーザーに報告する）: 帯は盤の中央（中段以上の掛け声）でなく手番の人の席の側（下の席は 7 段目あたり、2 人対戦の後手は上の 2 段目あたり）。相手のパスで続けて打つときも出す。遊び方の実戦は出し、遊び方のステップとスキル練習は出さない。オンラインは再読み込みの直後でも棋譜が空（対局の始め）なら出す。効果音は足していない（相手の手の音がすでに鳴る）
+- 前の対象: プレイヤーの名前（PR #60。本番で確認済み）。その前は初めての人は遊び方から（PR #59）、合言葉（PR #57）、完全版の体裁（PR #56）、PWA（PR #54・#55。iOS Safari の実機は未検証）
 - メインの遊び方の流れ: 挟む〜予測を読む（スキルなしの要素）→ カードを選ぶ（配り直し）→ ゲージ → 強打を使う → 副将を置く → 副将を裏返す → 標準の実戦。カードごとの効果はスキル練習で教える
 - 保存した設定: 旧標準のまま保存した設定は新しい標準に読み替える（保存の版 `v` のない保存だけ。PR #45、docs/RULES-history.md に記載）
 
@@ -35,9 +35,9 @@
 
 ## 未解決・次の一手
 
+- [ ] 手番の知らせ: ユーザーに見てもらう（帯の位置・長さ 1.2 秒・パスでも出すこと・効果音なし）
 - [ ] 名前: ユーザーに見てもらう（設定の「名前」の置き場所・2 人対戦の 2 つの欄・10 文字・終局画面の見出しを「〇〇の勝ち」にしたこと）。悪い言葉の対策（NG ワード・相手の名前を隠す設定）を足すかはユーザーの判断
 - [ ] 初めての人は遊び方から: ユーザーに見てもらう（錠の形・トーストの文・遊び方を主な項目にしたこと・15 ステップの長さ）
-
 - [ ] 合言葉: ユーザーに見てもらう（入口を「オンライン 招待リンク」「オンライン 合言葉」の 2 行にしたこと・同じブラウザの別のタブでも自分とつながること・待っている人が切断すると次の人は別の部屋になること）。送りすぎの制限は Worker のメモリの軽いもの（インスタンスをまたがない）
 - [ ] PWA: iOS Safari の実機でホーム画面に追加 → 機内モードで開いて CPU 対戦が打てるかをユーザーに見てもらう。Android の Chrome の「アプリをインストール」の出方も
 - [ ] RULES.md（ルール 1.0）で仮置きから正式として書いた項目（巻き戻しの王・副将の指定・副将の「いる」の見せ方・相手が選んだ後の配り直し・強打と鉄壁の重なり）をユーザーに確認する
@@ -46,7 +46,6 @@
 - [ ] スキル練習をユーザーに見てもらう（入口の置き場所・一覧の札の大きさ・1 枚 1 ステップで足りるか・運命の輪を補充に決めたこと）
 - [ ] 遊び方の 1 本の流れ（16 ステップ）をユーザーに見てもらう。長さ（16 は多いか）・章を選ぶ段をなくしたこと・カードを選ぶステップは配り直しを必須にしたことを確認
 - [ ] progress.md が 30 件を超えた: `progress-archive.md` への移送をユーザーに提案する
-
 - [ ] スキル PR B（#43）はマージ済み。副将の見せ方（期限の後に「いる」だけ）と巻き戻しの仮置き・回復系の長さ（sim の 32・160・48 より長い）をユーザーに確認。巻き戻しの長さ 30 は試遊で調整
 - [ ] ユーザーの試遊で待った（イージーだけ・3 回）と「!」の既定オフの手応えを聞く。既定オフで「ルールが一目で分かる」が損なわれていないか
 - [ ] ユーザーにスマホの実機で G 案の見た目（直立の見出しの読みやすさ・挟む石・盤の格子と星）と、要点を大きくした説明文の読みやすさ（言い回し・補足の小ささ・ルールカードの長さ）を見てもらう
@@ -58,9 +57,9 @@
 
 ## 現フェーズで Read すべき設計書
 
+- 手番の知らせ: AGENTS.md の「手番の知らせ」の項 → `web/src/ui/turncue.ts`, `web/src/ui/fx.ts`（`turnCue`）, `web/src/ui/app.ts`（`queueTurnCue` / `syncTurnCue`・`onState` の `hush`）, `web/test/turncue.test.ts`, `web/e2e/turncue.spec.ts`, `web/e2e/online/turncue.spec.ts`
 - 名前: AGENTS.md の「プレイヤーの名前」の項・`.agent/online-protocol.md`「名前」→ `web/src/net/name.ts`, `web/src/ui/setup.ts`（`Saved.name` / `pvpNames`・`checkName`）, `web/src/ui/app.ts`（`playerName` / `shortName` / `name`）, `server/src/room.ts`（`names`）, `server/test/name.test.ts`, `web/e2e/names.spec.ts`, `web/e2e/online/names.spec.ts`
 - 初めての人は遊び方から: AGENTS.md の「初めての人は遊び方から」の項 → `web/src/ui/intro.ts`, `web/src/ui/menu.ts`（`setGate`）, `web/src/ui/app.ts`（`setIntro` / `introLocked` / `lessonSolved` / `onState`）, `web/test/intro.test.ts`, `web/e2e/intro.spec.ts`, `web/e2e/tutorial.spec.ts`, `web/e2e/online/intro.spec.ts`, `web/e2e/intro.ts`
-
 - 合言葉: `.agent/online-protocol.md`「合言葉」→ `server/src/lobby.ts`, `server/src/room.ts`（`matchInfo` / `hostPresent`）, `server/src/index.ts`（`match` / `allowMatch`）, `web/src/net/phrase.ts`, `web/src/ui/app.ts`（`openPhrase` / `matchOnline` / `syncLobby`）, `web/src/ui/online.ts`（`phrase` / `phraseWait`）, `server/test/phrase.test.ts`, `web/e2e/online/phrase.spec.ts`
 - 完全版の体裁: AGENTS.md の「版の番号」「想定外のエラー」の項 → `web/src/ui/about.ts`, `web/src/ui/crash.ts`, `web/index.html`（`#about` / `#crash` / `noscript`）, `web/e2e/about.spec.ts`, `web/test/about.test.ts`
 - PWA: AGENTS.md の「PWA」の項 → `web/pwa/sw.ts`, `web/pwa/plugin.ts`, `web/src/pwa.ts`, `web/public/manifest.webmanifest`, `web/test/sw.test.ts`, `web/e2e/pwa.spec.ts`
