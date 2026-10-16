@@ -197,8 +197,20 @@ export class OnlineDialog {
     );
   }
 
-  /** 招待リンクから開いたとき・合言葉で待っている部屋が見つかったとき（phrase）の参加の確認 */
-  join(o: { rules: RuleSet; ruleName: string; turnSeconds: number; createdHere: boolean; phrase?: boolean; onJoin: () => void; onCancel: () => void }) {
+  /**
+   * 招待リンクから開いたとき・合言葉で待っている部屋が見つかったとき（phrase）の参加の確認。
+   * name は名前の欄（ui/namedialog.ts の nameField。名前のない人に 1 回だけ添える。入れなくても参加できる）
+   */
+  join(o: {
+    rules: RuleSet;
+    ruleName: string;
+    turnSeconds: number;
+    createdHere: boolean;
+    phrase?: boolean;
+    name?: HTMLElement;
+    onJoin: () => void;
+    onCancel: () => void;
+  }) {
     this.show(
       "join",
       o.phrase ? "合言葉の相手" : "対戦の招待",
@@ -216,6 +228,7 @@ export class OnlineDialog {
           ]),
         ]),
         h("p", { class: "online-lead", text: o.phrase ? "先手・後手は待っていた人が決めます" : "先手・後手は部屋を作った人が決めます" }),
+        o.name ? h("div", { class: "join-name" }, [h("label", { class: "label", attrs: { for: "join-name" }, text: "名前" }), o.name]) : null,
         o.createdHere
           ? h("p", {
               class: "setup-note",

@@ -456,6 +456,89 @@ button {
 .menu-rule:hover strong {
   color: var(--cyan-300);
 }
+/* 自分の名前の名札（押すとその場で変える）: 対局の名札と同じ紺の斜めの帯に黒の石と名前、右端に白の三角。
+   名前がなければ黄の字で「名前を決める」と控えめに誘う。合わせると白い板に紺の字へ反転する */
+.menu-name {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  max-width: 100%;
+  min-width: 0;
+  margin-bottom: -0.5rem;
+  padding: 0.45rem 1.9rem 0.45rem 1.1rem;
+  border: 0;
+  background: var(--navy-900);
+  color: var(--ink-muted);
+  font-size: 0.85rem;
+  cursor: pointer;
+  clip-path: var(--slant-sm);
+  animation: logo-in 0.6s var(--ease-out) both;
+}
+.menu-name .seg-stone {
+  flex: none;
+  width: 1.05rem;
+  height: 1.05rem;
+  margin: 0;
+}
+.menu-name-label {
+  flex: none;
+}
+.menu-name-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-display);
+  font-size: 1.15rem;
+  font-weight: 900;
+  color: #fff;
+}
+.menu-name.unset .menu-name-text {
+  color: #ffe58a;
+}
+.menu-name::after {
+  content: "";
+  position: absolute;
+  right: 0.8rem;
+  top: 50%;
+  border-left: 0.42rem solid #fff;
+  border-block: 0.3rem solid transparent;
+  transform: translateY(-50%);
+}
+.menu-name:focus-visible {
+  outline: none;
+}
+.menu-name:focus-visible,
+.menu-name:active {
+  background: #fff;
+  color: var(--navy-700);
+}
+.menu-name:focus-visible .menu-name-text,
+.menu-name:active .menu-name-text {
+  color: var(--navy-900);
+}
+.menu-name:focus-visible::after,
+.menu-name:active::after {
+  border-left-color: var(--navy-900);
+}
+@media (hover: hover) {
+  .menu-name:hover {
+    background: #fff;
+    color: var(--navy-700);
+  }
+  .menu-name:hover .menu-name-text {
+    color: var(--navy-900);
+  }
+  .menu-name:hover::after {
+    border-left-color: var(--navy-900);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .menu-name {
+    animation: none;
+  }
+}
 .menu-btn,
 .menu-btn.primary,
 .menu-small,
@@ -703,6 +786,22 @@ button {
   .menu-rule {
     grid-column: 1;
     grid-row: 2;
+  }
+  /* 名前の名札はロゴと同じ欄の上端（右の列の最初の項目の高さ） */
+  .menu-name {
+    grid-column: 1;
+    grid-row: 1;
+    align-self: start;
+    margin: 0;
+    padding: 0.55rem 2.2rem 0.55rem 1.3rem;
+    font-size: 1rem;
+  }
+  .menu-name .seg-stone {
+    width: 1.35rem;
+    height: 1.35rem;
+  }
+  .menu-name-text {
+    font-size: 1.6rem;
   }
   .logo-word {
     font-size: 6.5rem;
@@ -3659,6 +3758,30 @@ button {
   font-size: 0.74rem;
   font-weight: 700;
   color: var(--danger);
+}
+/* メニューから名前を変えるダイアログ・参加の確認の名前の欄: 欄を広く大きな字に */
+.name-modal .name-input,
+.join-name .name-input {
+  max-width: none;
+  padding: 0.55rem 0.7rem;
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+.name-modal .name-error,
+.join-name .name-error {
+  font-size: 0.8rem;
+}
+.join-name {
+  display: grid;
+  justify-items: start;
+  gap: 0.3rem;
+  margin: 0 0 0.75rem;
+}
+.join-name .label {
+  margin: 0;
+}
+.join-name .name-box {
+  width: 100%;
 }
 /* 長い設定画面でも「保存」が常に見えるよう、下端に固定する */
 .setup .modal-actions {

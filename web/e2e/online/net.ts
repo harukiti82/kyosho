@@ -5,7 +5,7 @@ import { legalCells, playableKinds, playMove, lastMoveOf, type GameState } from 
 import type { PieceKind, PresetId } from "../../src/engine/rules";
 import type { StateMessage } from "../../src/net/protocol";
 import { choosePreset, play } from "../helpers";
-import { EMPTY_STATE } from "../intro";
+import { EMPTY_STATE, introOnlyState } from "../intro";
 
 export const SHOT = "screenshots";
 
@@ -23,12 +23,14 @@ export interface Player {
 
 /**
  * プロジェクト（desktop / mobile）と同じ画面の大きさ・タッチでコンテキストを作り、届くメッセージを記録する。
- * 保存は設定ファイルの storageState（初めての人の遊び方の必須を解いた印）。fresh なら何も保存していない初めての人
+ * 保存は設定ファイルの storageState（初めての人の遊び方の必須を解いた印・名前の案内を出した印）。fresh なら何も保存していない初めての人、
+ * askName なら必須を解いただけ（名前のない人にオンライン対戦の前の名前の案内が出る）
  */
-export async function newPlayer(browser: Browser, info: TestInfo, name: string, opts: { fresh?: boolean } = {}): Promise<Player> {
+export async function newPlayer(browser: Browser, info: TestInfo, name: string, opts: { fresh?: boolean; askName?: boolean } = {}): Promise<Player> {
   const u = info.project.use;
   const context = await browser.newContext({
     ...(opts.fresh ? { storageState: EMPTY_STATE } : {}),
+    ...(opts.askName ? { storageState: introOnlyState([new URL(u.baseURL!).origin]) } : {}),
     baseURL: u.baseURL,
     viewport: u.viewport,
     hasTouch: u.hasTouch,
@@ -102,6 +104,10 @@ export async function openPhrase(p: Player, open = true) {
   await page.locator("#menu-multi").click();
   await expect(page.locator("#menu-phrase")).toBeVisible();
   await page.locator("#menu-phrase").click();
+  // 名前のない人に 1 回だけ出る名前の案内は「名前なし」で進む
+  const ask = page.locator("#name-dialog[open][data-mode=ask]");
+  await expect(ask.or(page.locator("#online[data-view=phrase]"))).toBeVisible();
+  if (await ask.isVisible()) await page.locator("#name-dialog-other").click();
   await expect(page.locator("#online")).toHaveAttribute("data-view", "phrase");
 }
 

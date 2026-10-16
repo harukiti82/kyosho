@@ -336,6 +336,15 @@ export class SetupDialog {
     return { mode, human: 0, rules, turnSeconds, threat, seatNames: pvpNames };
   }
 
+  /**
+   * 自分の名前だけを保存する（メニューの名札の鍵・オンライン対戦の前の案内。name は normalizeName を通したもの）。
+   * ほかの項目は保存してある値のまま書き直す（URL のクエリのルールで遊んでいても、保存のルールは書き換えない）
+   */
+  saveName(name: string) {
+    this.saved.name = name;
+    storeSaved(this.store, { ...loadSaved(this.store), name });
+  }
+
   /** 保存済みの設定をフォームに入れて開く */
   open() {
     this.writeForm(this.saved.rules);
