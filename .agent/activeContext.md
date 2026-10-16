@@ -5,13 +5,12 @@
 
 ## 現在の対象
 
-- 何を / どこを: 手番の知らせ（自分の番が始まった瞬間に盤に「あなたの番」の帯。`web/src/ui/turncue.ts`・`fx.ts` の `turnCue`・`App.syncTurnCue`）。依頼元セッション（master）経由
-- ステータス: PR #62 でマージ・本番で確認済み（PC とスマホ幅で CPU 対戦の始めと CPU の応手の後に「あなたの番」、横スクロールなし）
+- 何を / どこを: 画面をウィンドウ 1 枚に収める（ページの縦スクロールをなくす）。`web/src/style.css` の「レイアウト」節と末尾の「1 画面に収める」節・`ui/coach.ts` の `reveal`・`e2e/fit.spec.ts`。依頼元セッション（master）経由
+- ステータス: ブランチ `feat/fit-viewport`（worktree `../kyosho-fit`）で実装・検証中
 - 最終更新: 2026-10-16
-- 判断した点（ユーザーに報告する）: 帯は盤の中央（中段以上の掛け声）でなく手番の人の席の側（下の席は 7 段目あたり、2 人対戦の後手は上の 2 段目あたり）。相手のパスで続けて打つときも出す。遊び方の実戦は出し、遊び方のステップとスキル練習は出さない。オンラインは再読み込みの直後でも棋譜が空（対局の始め）なら出す。効果音は足していない（相手の手の音がすでに鳴る）
-- 前の対象: プレイヤーの名前（PR #60。本番で確認済み）。その前は初めての人は遊び方から（PR #59）、合言葉（PR #57）、完全版の体裁（PR #56）、PWA（PR #54・#55。iOS Safari の実機は未検証）
+- 判断した点（ユーザーに報告する）: PC（900px 以上）は盤を左・右の 1 列に名札・コーチ・タブと中身・自分の名札・駒台（盤が 1440×800 で 1 マス 61 → 84px）。スマホは引き出しの中身を駒台の上に開くシートに（盤の下側に重なる）。高さ 700px 以下のスマホは余白を詰め、遊び方・スキル練習の間はタブの列をしまい（ルールは「?」）、盤の下限を 1 マス 34px 程度に下げる。トーストは押しても素通りし、スマホの対局中は上の帯の下に出す
+- 前の対象: 手番の知らせ（PR #62）・名前（#60）・初めての人は遊び方から（#59）・合言葉（#57）・完全版の体裁（#56）・PWA（#54・#55。iOS Safari の実機は未検証）
 - メインの遊び方の流れ: 挟む〜予測を読む（スキルなしの要素）→ カードを選ぶ（配り直し）→ ゲージ → 強打を使う → 副将を置く → 副将を裏返す → 標準の実戦。カードごとの効果はスキル練習で教える
-- 保存した設定: 旧標準のまま保存した設定は新しい標準に読み替える（保存の版 `v` のない保存だけ。PR #45、docs/RULES-history.md に記載）
 
 ## スキルの要点
 
@@ -31,10 +30,11 @@
 - 体力の表示: エンジンの `hp` は決着の一手で負になる（sim と同じ。replay が突き合わせる）。画面に出す体力は `shownHp` を通す
 - server/ は vitest 4（pool-workers の要件）。npm 11.4 は install で落ちるので `npx npm@11.21.0 install`。`worker-configuration.d.ts` は生成物（`npm run typecheck` / `test` の前に `wrangler types`）
 - プリセット「拠点」は方向駒＋上乗せ、体力 125・130（docs/RULES-history.md「拠点」）。v0.4 / v1.0 / v2 案は `sim/*.py` と全手一致（`npm test` の replay）。数値は勝手に変えない
-- スマホ（幅 375px）で横スクロールなし・盤が最初の画面に収まる・タップ 2 回で確定。盤の左右端の列の着手演出は `.edge-l` / `.edge-r` で内側に寄せる
+- スマホ（幅 375px）で横スクロールなし・ページの縦スクロールなし（高さ 660px 以上）・タップ 2 回で確定。盤の左右端の列の着手演出は `.edge-l` / `.edge-r` で内側に寄せる
 
 ## 未解決・次の一手
 
+- [ ] 1 画面に収める: ユーザーに見てもらう（PC の右の列の配置・スマホのタブのシート・背の低いスマホで遊び方の間はタブをしまうこと・遊び方の盤 34px）
 - [ ] 手番の知らせ: ユーザーに見てもらう（帯の位置・長さ 1.2 秒・パスでも出すこと・効果音なし）
 - [ ] 名前: ユーザーに見てもらう（設定の「名前」の置き場所・2 人対戦の 2 つの欄・10 文字・終局画面の見出しを「〇〇の勝ち」にしたこと）。悪い言葉の対策（NG ワード・相手の名前を隠す設定）を足すかはユーザーの判断
 - [ ] 初めての人は遊び方から: ユーザーに見てもらう（錠の形・トーストの文・遊び方を主な項目にしたこと・15 ステップの長さ）
@@ -57,6 +57,7 @@
 
 ## 現フェーズで Read すべき設計書
 
+- 1 画面に収める: AGENTS.md の「1 画面に収める」の項 → `web/src/style.css`（「レイアウト」節・末尾の「1 画面に収める」節）, `web/e2e/fit.spec.ts`
 - 手番の知らせ: AGENTS.md の「手番の知らせ」の項 → `web/src/ui/turncue.ts`, `web/src/ui/fx.ts`（`turnCue`）, `web/src/ui/app.ts`（`queueTurnCue` / `syncTurnCue`・`onState` の `hush`）, `web/test/turncue.test.ts`, `web/e2e/turncue.spec.ts`, `web/e2e/online/turncue.spec.ts`
 - 名前: AGENTS.md の「プレイヤーの名前」の項・`.agent/online-protocol.md`「名前」→ `web/src/net/name.ts`, `web/src/ui/setup.ts`（`Saved.name` / `pvpNames`・`checkName`）, `web/src/ui/app.ts`（`playerName` / `shortName` / `name`）, `server/src/room.ts`（`names`）, `server/test/name.test.ts`, `web/e2e/names.spec.ts`, `web/e2e/online/names.spec.ts`
 - 初めての人は遊び方から: AGENTS.md の「初めての人は遊び方から」の項 → `web/src/ui/intro.ts`, `web/src/ui/menu.ts`（`setGate`）, `web/src/ui/app.ts`（`setIntro` / `introLocked` / `lessonSolved` / `onState`）, `web/test/intro.test.ts`, `web/e2e/intro.spec.ts`, `web/e2e/tutorial.spec.ts`, `web/e2e/online/intro.spec.ts`, `web/e2e/intro.ts`

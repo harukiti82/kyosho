@@ -84,6 +84,7 @@ export class Coach {
   /** 違う手のヒント（揺らして知らせる。盤は変えない） */
   hint(text: string) {
     this.message("hint", text);
+    this.reveal(this.el.msg);
   }
 
   /** 出ているヒントを消す（ヒントに従って操作したとき。できたの文は残す） */
@@ -110,9 +111,16 @@ export class Coach {
       this.el.next.textContent = next;
       this.el.next.focus({ preventScroll: true });
     }
-    // スマホはコーチが駒台の下にあり、できたの文と「次へ」が画面の下にはみ出ることがある。はみ出た分だけ寄せる（盤は画面に残る）
+    this.reveal(next === null ? this.el.msg : this.el.actions);
+  }
+
+  /**
+   * ヒント・できたの文・「次へ」を見える所に寄せる。背の低い画面ではコーチが中でスクロールするので、
+   * コーチの中で下まで送る（ページはスクロールしない。スクロールを許す背の低いウィンドウではページも寄せる）
+   */
+  private reveal(el: HTMLElement) {
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    this.el.root.scrollIntoView({ block: "nearest", behavior: reduce ? "auto" : "smooth" });
+    el.scrollIntoView({ block: "nearest", behavior: reduce ? "auto" : "smooth" });
   }
 
   hide() {

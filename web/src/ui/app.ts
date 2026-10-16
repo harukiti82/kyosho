@@ -416,6 +416,7 @@ export class App {
 
   /** 引き出しのタブ（押すと開く・選んでいるタブを押し直すと閉じる・左右キーで移る） */
   private bindTabs() {
+    this.bindSheet();
     const tabs = this.tabs();
     tabs.forEach((t, i) => {
       t.addEventListener("click", () => this.setTab(t.getAttribute("aria-selected") === "true" ? null : t.getAttribute("aria-controls")));
@@ -434,6 +435,27 @@ export class App {
     return [...document.querySelectorAll<HTMLButtonElement>("#drawer [role=tab]")];
   }
 
+  /**
+   * 狭い画面の引き出しの中身（タブの上に開くシート）の下端を駒台の上に合わせる（駒台とタブは覆わず、開いたまま打てる）。
+   * 駒台より下（駒台・コーチ・タブ）の高さを --sheet-bottom に、盤の枠の下から駒台の上までの高さを --sheet-room に入れ
+   * （打ちながら見る「予測」は盤に重ねずこの高さに収める）、駒台・コーチ・盤の枠・対局画面の大きさが変わるたびに測り直す。広い画面は CSS が右の列に置くので使わない
+   */
+  private bindSheet() {
+    const { game, hand, frame } = this.el;
+    const place = () => {
+      if (game.hidden) return;
+      const top = hand.getBoundingClientRect().top;
+      game.style.setProperty("--sheet-bottom", `${Math.max(0, game.getBoundingClientRect().bottom - top)}px`);
+      game.style.setProperty("--sheet-room", `${Math.max(0, top - frame.getBoundingClientRect().bottom)}px`);
+    };
+    this.placeSheet = place;
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(place);
+    for (const el of [game, hand, frame, byId("coach")]) ro.observe(el);
+  }
+
+  private placeSheet = () => {};
+
   /** 引き出しのタブを開く（null で閉じる）。予測の詳細は読み上げのため DOM に残し、見た目だけ外す */
   private setTab(id: string | null) {
     const tabs = this.tabs();
@@ -447,6 +469,7 @@ export class App {
       else panel.hidden = !on;
     }
     byId("drawer").classList.toggle("open", id !== null);
+    if (id !== null) this.placeSheet();
   }
 
   private bindControls() {
