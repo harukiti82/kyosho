@@ -5,12 +5,10 @@
 
 ## 現在の対象
 
-- 何を / どこを: 名前を見つけやすく・変えやすく。メニューの上の名札 `#menu-name`（`ui/menu.ts` の `setName`）・`ui/namedialog.ts`（`NameDialog`・案内の印 `kyosho:name-ask`）・`ui/app.ts`「名前」節（`editName` / `askName` / `joinNameField`）・`SetupDialog.saveName`・`OnlineDialog.join` の `name`。依頼元セッション（master）経由
-- ステータス: PR #66 でマージ・本番で確認済み（PC 1440×800・スマホ 375×667 で名札から決めた名前が CPU 対戦の名札に出る）
-- 最終更新: 2026-10-16
-- 判断した点（ユーザーに報告する）: 名札はロゴの上（PC はロゴの欄の上端＝ CPU対戦と同じ高さ）。名前がなければ黄の字の「名前を決める」。押すと小さなダイアログ（空で決めれば名前なし）。名前がないままオンライン（招待リンク・合言葉）を始めるときだけ、この端末で 1 回だけ同じダイアログで案内（「名前なし」で進む・Esc はやめて印も付けない）。招待リンクで来た人にはダイアログを挟まず、参加の確認に任意の名前の欄
-- 前の対象: 1 画面に収める（PR #64）・手番の知らせ（#62）・名前（#60）・初めての人は遊び方から（#59）・合言葉（#57）・完全版の体裁（#56）・PWA（#54・#55。iOS Safari の実機は未検証）
-- メインの遊び方の流れ: 挟む〜予測を読む（スキルなしの要素）→ カードを選ぶ（配り直し）→ ゲージ → 強打を使う → 副将を置く → 副将を裏返す → 標準の実戦。カードごとの効果はスキル練習で教える
+- 何を / どこを: 深く読む CPU（エンドレスマッチの準備）。`web/src/engine/deepcpu.ts` の `chooseDeep(view, { nodes }, rng)`・`web/test/deepcpu.test.ts`・`npm run balance -- deep`（`web/scripts/deep*.{ts,mjs}`）。画面・サーバーにはまだ組み込んでいない。依頼元セッション（master）経由
+- ステータス: PR でマージ（画面に出ないので本番の確認はデプロイの成功だけ）。最終更新 2026-10-17
+- 要点: 予算 10000 で対 hard 94.3%・対 normal 95.5%（各 400 局）、1 手番は workerd の中央値 107ms。直接対戦で強さが並ぶのは 1000 → 3000 → 10000 まで。30000・100000 は 10000 に負け越す（未解決。`.agent/deep-cpu.md`）
+- 前の対象: メニューの名前の名札（PR #66）・1 画面に収める（#64）・手番の知らせ（#62）・名前（#60）・初めての人は遊び方から（#59）・合言葉（#57）
 
 ## スキルの要点
 
@@ -34,6 +32,7 @@
 
 ## 未解決・次の一手
 
+- [ ] エンドレスマッチ: 深く読む CPU をサーバーの Durable Object で打つ段階の設計（何連勝目からどの予算か・待ち時間）。予算 10000 より上を強くするなら、先に `.agent/deep-cpu.md`「未解決」を直す。本番の DO の中で 1 手の時間を測り直す
 - [ ] 1 画面に収める: ユーザーに見てもらう（PC の右の列の配置・スマホのタブのシート・背の低いスマホで遊び方の間はタブをしまうこと・遊び方の盤 34px）
 - [ ] 手番の知らせ: ユーザーに見てもらう（帯の位置・長さ 1.2 秒・パスでも出すこと・効果音なし）
 - [ ] 名前: ユーザーに見てもらう（メニューの名札をロゴの上に・「名前を決める」の黄の字・オンラインの前の案内を 1 回だけ・招待された人は参加の確認の欄・設定の 2 人対戦の 2 つの欄・10 文字・終局画面の見出し「〇〇の勝ち」）。悪い言葉の対策（NG ワード・相手の名前を隠す設定）を足すかはユーザーの判断。エンドレスマッチのランキングの名前もこの `Saved.name` の前提
@@ -45,7 +44,7 @@
 - [ ] アクセス解析: ダッシュボードの Web Analytics（自動セットアップのサイト）に本番の PV が出るかをユーザーに見てもらう
 - [ ] スキル練習をユーザーに見てもらう（入口の置き場所・一覧の札の大きさ・1 枚 1 ステップで足りるか・運命の輪を補充に決めたこと）
 - [ ] 遊び方の 1 本の流れ（16 ステップ）をユーザーに見てもらう。長さ（16 は多いか）・章を選ぶ段をなくしたこと・カードを選ぶステップは配り直しを必須にしたことを確認
-- [ ] progress.md が 30 件を超えた: `progress-archive.md` への移送をユーザーに提案する
+- [ ] progress.md が 30 件・14 日を超えた: `progress-archive.md` への移送をユーザーに提案する
 - [ ] スキル PR B（#43）はマージ済み。副将の見せ方（期限の後に「いる」だけ）と巻き戻しの仮置き・回復系の長さ（sim の 32・160・48 より長い）をユーザーに確認。巻き戻しの長さ 30 は試遊で調整
 - [ ] ユーザーの試遊で待った（イージーだけ・3 回）と「!」の既定オフの手応えを聞く。既定オフで「ルールが一目で分かる」が損なわれていないか
 - [ ] ユーザーにスマホの実機で G 案の見た目（直立の見出しの読みやすさ・挟む石・盤の格子と星）と、要点を大きくした説明文の読みやすさ（言い回し・補足の小ささ・ルールカードの長さ）を見てもらう
@@ -57,6 +56,7 @@
 
 ## 現フェーズで Read すべき設計書
 
+- 深く読む CPU・エンドレスマッチ: `.agent/deep-cpu.md` → `web/src/engine/deepcpu.ts`, `web/test/deepcpu.test.ts`, `web/scripts/deep-run.mjs`, `web/src/engine/skillcpu.ts`（`chooseSkillUse` / `viceWith`）
 - 1 画面に収める: AGENTS.md の「1 画面に収める」の項 → `web/src/style.css`（「レイアウト」節・末尾の「1 画面に収める」節）, `web/e2e/fit.spec.ts`
 - 手番の知らせ: AGENTS.md の「手番の知らせ」の項 → `web/src/ui/turncue.ts`, `web/src/ui/fx.ts`（`turnCue`）, `web/src/ui/app.ts`（`queueTurnCue` / `syncTurnCue`・`onState` の `hush`）, `web/test/turncue.test.ts`, `web/e2e/turncue.spec.ts`, `web/e2e/online/turncue.spec.ts`
 - 名前: AGENTS.md の「プレイヤーの名前」の項・`.agent/online-protocol.md`「名前」→ `web/src/net/name.ts`, `web/src/ui/setup.ts`（`Saved.name` / `pvpNames`・`checkName`）, `web/src/ui/app.ts`（`playerName` / `shortName` / `name`）, `server/src/room.ts`（`names`）, `server/test/name.test.ts`, `web/e2e/names.spec.ts`, `web/e2e/online/names.spec.ts`。メニューの名札・オンラインの前の案内は `web/src/ui/namedialog.ts`, `web/src/ui/menu.ts`（`setName`）, `web/src/ui/app.ts`（「名前」節）, `web/e2e/name-menu.spec.ts`, `web/e2e/online/name-ask.spec.ts`
