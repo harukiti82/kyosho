@@ -86,6 +86,7 @@ import { finaleMs, Fx, fxTiming, skillCastMs, speakerIcon, TOSS_LAND_MS, tossMs,
 import { animDone, gainText, gaugeGains, growDelay, GROW_MS, snapOf, zoneSources, type GaugeAnims, type GaugeGain, type GaugeSnap } from "./gauge";
 import { TurnWatch } from "./turncue";
 import { OnlineDialog } from "./online";
+import { markNameAsked, NameDialog, nameAsked, nameField, type NameField } from "./namedialog";
 import { hitOf, shownHp, statsOf, tierOf, tierText, type HitBreakdown, type PlayerStats, type Tier } from "./impact";
 import { flipRecord, outcomeOf, recordText, type Outcome } from "./outcome";
 import { dirMark, endDetails, handText, hpText, kingPenaltyText, pieceLabel, ruleDetails, ruleLines, skillText, verb } from "./ruletext";
@@ -274,6 +275,10 @@ export class App {
   private readonly book = new RecordBook(this.local);
   /** 通算に数えた対局の通し番号（gameNo。同じ対局を二度数えない・名札の「2 局目から」をこの対局を除いて数える） */
   private countedGame = 0;
+  /** 自分の名前をメニューから変えるダイアログ・オンライン対戦の前の案内 */
+  private readonly nameDialog = new NameDialog();
+  /** オンライン対戦の前に名前の案内を出したか（この端末で 1 回。保存できなくても、この画面の間は出さない） */
+  private nameAskDone = nameAsked(this.local);
 
   // ---- 遊び方（チュートリアル） ----
   /** 開いているステップ（チュートリアル中でなければ null） */
@@ -317,11 +322,12 @@ export class App {
     this.menu = new Menu({
       cpu: (level) => this.start(this.setup.playSettings("cpu", level)),
       pvp: () => this.start(this.setup.playSettings("pvp")),
-      online: () => this.start(this.setup.playSettings("online")),
-      phrase: () => this.openPhrase(),
+      online: () => this.askName(() => this.start(this.setup.playSettings("online"))),
+      phrase: () => this.askName(() => this.openPhrase()),
       learn: () => this.openLesson(resumeStep(this.progress)),
       skillLesson: (id) => this.openSkillLesson(skillLessonIndex(id)),
       settings: () => this.setup.open(),
+      name: () => this.editName(),
       about: () => this.about.open(),
       rules: () => this.showRules(this.setup.current.rules),
       resume: () => this.resume(),
@@ -333,6 +339,7 @@ export class App {
       (r) => this.showRules(r),
       (s) => {
         this.menu.setRuleName(ruleName(s.rules));
+        this.menu.setName(s.name);
         this.showLevelTimes();
         // オンライン対戦の部屋にいる間は、アドレスを部屋の URL のままにする
         if (!this.room) this.setup.reflectUrl(s.rules);
@@ -340,6 +347,7 @@ export class App {
       (text) => this.menu.showNote(text),
     );
     this.menu.setRuleName(ruleName(this.setup.current.rules));
+    this.menu.setName(this.setup.current.name);
     this.showLevelTimes();
     this.coach = new Coach({
       next: () => this.nextLesson(),
@@ -1561,6 +1569,71 @@ export class App {
     return nextNeed(step.lesson, this.kindFor(g), this.kingOn, { viceOn: this.viceOn, skill: !!g.skills?.armed });
   }
 
+  // ---- 名前 ----
+
+  /** メニューの名札の鍵: 自分の名前をその場で変える（空で決めれば名前なし） */
+  private editName() {
+    this.nameDialog.open({
+      ask: false,
+      value: this.setup.current.name,
+      save: (name) => {
+        this.keepName(name);
+        byId("menu-name").focus();
+      },
+      cancel: () => byId("menu-name").focus(),
+    });
+  }
+
+  /** 名前のないままオンライン対戦を始めるときだけ、名前の案内を 1 回出してから go（決めても「名前なし」でも進む。Esc はやめる） */
+  private askName(go: () => void) {
+    if (this.setup.current.name || this.nameAskDone) {
+      go();
+      return;
+    }
+    this.nameDialog.open({
+      ask: true,
+      value: "",
+      save: (name) => {
+        this.markAsked();
+        this.keepName(name);
+        go();
+      },
+      skip: () => {
+        this.markAsked();
+        go();
+      },
+    });
+  }
+
+  /** 招待リンクの参加の確認に添える名前の欄（名前がなく、まだ案内していないときだけ。案内のダイアログを挟まない） */
+  private joinNameField(join: () => void): NameField | null {
+    return this.setup.current.name || this.nameAskDone ? null : nameField({ id: "join-name", value: "", onEnter: join });
+  }
+
+  /** 参加の確認の名前の欄を確かめて残す。通らなければ欄に理由を出して false（参加しない） */
+  private takeJoinName(field: NameField | null): boolean {
+    if (!field) return true;
+    const name = field.check();
+    if (name === null) {
+      field.input.focus();
+      return false;
+    }
+    this.markAsked();
+    this.keepName(name);
+    return true;
+  }
+
+  private markAsked() {
+    this.nameAskDone = true;
+    markNameAsked(this.local);
+  }
+
+  /** 自分の名前を保存して、メニューの名札に出す（設定メニューの欄・次の対局の名札・次に入る部屋もこの名前） */
+  private keepName(name: string) {
+    if (name !== this.setup.current.name) this.setup.saveName(name);
+    this.menu.setName(name);
+  }
+
   // ---- オンライン対戦 ----
 
   /** 対局がある（終局後も盤と「結果を見る」に戻れる）・オンラインの部屋にいる間は、メニューから戻れる */
@@ -1709,12 +1782,17 @@ export class App {
         return;
       }
       const name = ruleName(info.rules);
+      const join = () => {
+        if (this.takeJoinName(field)) this.enterRoom(id, { mode: "online", human: 0, rules: info.rules, turnSeconds: info.turnSeconds ?? 0 });
+      };
+      const field = this.joinNameField(join);
       this.lobby.join({
         rules: info.rules,
         ruleName: name,
         turnSeconds: info.turnSeconds ?? 0,
         createdHere: createdHere(this.local, id),
-        onJoin: () => this.enterRoom(id, { mode: "online", human: 0, rules: info.rules, turnSeconds: info.turnSeconds ?? 0 }),
+        name: field?.box,
+        onJoin: join,
         onCancel: () => this.leaveToMenu(),
       });
     } catch (e) {

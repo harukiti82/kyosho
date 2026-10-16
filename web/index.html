@@ -39,6 +39,8 @@
     <!-- メニュー（起動時の画面）。CPU対戦は強さを選ぶとそのまま始まる。ルールは「設定」で変えたもの（変えなければ標準） -->
     <main class="menu" id="menu" hidden>
       <div class="menu-inner">
+        <!-- 自分の名前（名札の形。押すとその場で変える。名前がなければ「名前を決める」。ui/menu.ts の setName・ui/namedialog.ts） -->
+        <button type="button" class="menu-name" id="menu-name" title="名前を変える"><i class="seg-stone p0" aria-hidden="true"></i><span class="menu-name-label" id="menu-name-label">名前</span><strong class="menu-name-text" id="menu-name-text"></strong></button>
         <!-- ロゴ: 斜めの盤の 2×2 マスに黒石・白石と白の駒（自作）・読みの帯・名前 -->
         <div class="menu-logo" aria-hidden="true">
           <svg class="logo-mark" viewBox="0 0 120 120"><g transform="skewX(-12) translate(12 0)"><rect class="board-sq" x="8" y="8" width="104" height="104" /><path class="grid" d="M60 8V112M8 60H112" /><circle class="black" cx="34" cy="34" r="20" /><circle class="white" cx="86" cy="34" r="20" /><circle class="black" cx="86" cy="86" r="20" /><polygon class="white" points="34,63 49.2,72.2 53,109 15,109 18.8,72.2" /></g></svg>
@@ -406,6 +408,19 @@
         <div id="skill-pick-body"></div>
         <div class="modal-actions" id="skill-pick-actions"></div>
       </div>
+    </dialog>
+
+    <!-- 自分の名前（メニューの名札の鍵・名前のないままオンライン対戦を始めるときの案内。ui/namedialog.ts）。欄は namedialog.ts が入れる -->
+    <dialog class="modal name-modal" id="name-dialog" aria-labelledby="name-dialog-title">
+      <form class="modal-body" id="name-dialog-form" novalidate>
+        <h2 class="modal-title" id="name-dialog-title">名前</h2>
+        <p class="online-lead" id="name-dialog-lead"></p>
+        <div id="name-dialog-field"></div>
+        <div class="modal-actions">
+          <button type="button" class="btn ghost" id="name-dialog-other">やめる</button>
+          <button type="submit" class="btn primary" id="name-dialog-ok">決定</button>
+        </div>
+      </form>
     </dialog>
 
     <!-- 終局 -->

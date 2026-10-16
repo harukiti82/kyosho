@@ -1,5 +1,6 @@
 // メニュー画面: CPU対戦（強さを選ぶとそのまま始まる）・マルチ（この端末で 2 人・オンラインの招待リンクと合言葉）・遊び方（チュートリアル）・
 // スキル練習（11 枚のカードの一覧から 1 枚を選んで練習する）・設定・このゲームについて（版・権利・プライバシー）。
+// 上には自分の名前の名札（押すとその場で変える。ui/namedialog.ts）。
 // どの対局も設定メニューで保存したルール（変えなければ標準）で始まる。表示と入力だけで、対局は App が始める。
 // 初めての人が遊び方を終えるまでは、CPU対戦・マルチの鍵に錠を添え、押すと act.locked（ui/intro.ts）。
 
@@ -20,6 +21,8 @@ export interface MenuActions {
   /** スキル練習で id のカードの練習を始める */
   skillLesson: (id: SkillId) => void;
   settings: () => void;
+  /** 自分の名前を変える（名札の鍵） */
+  name: () => void;
   /** このゲームについて（版・作者・権利・プライバシー） */
   about: () => void;
   rules: () => void;
@@ -56,6 +59,9 @@ export class Menu {
     skillList: byId("skill-lessons"),
     skillCount: byId("menu-skilllist-count"),
     ruleName: byId("menu-rule-name"),
+    name: byId("menu-name"),
+    nameLabel: byId("menu-name-label"),
+    nameText: byId("menu-name-text"),
     panels: { main: byId("menu-main"), levels: byId("menu-levels"), modes: byId("menu-modes"), skills: byId("menu-skilllist") } as Record<Panel, HTMLElement>,
   };
 
@@ -70,6 +76,7 @@ export class Menu {
     this.el.learn.addEventListener("click", () => act.learn());
     this.el.skills.addEventListener("click", () => this.panel("skills"));
     byId("menu-settings").addEventListener("click", () => act.settings());
+    this.el.name.addEventListener("click", () => act.name());
     byId("menu-about").addEventListener("click", () => act.about());
     byId("menu-rule").addEventListener("click", () => act.rules());
     this.el.resume.addEventListener("click", () => act.resume());
@@ -109,6 +116,14 @@ export class Menu {
   /** 次の対局のルールの名前 */
   setRuleName(name: string) {
     this.el.ruleName.textContent = name;
+  }
+
+  /** 自分の名前（空は名前なし: 「名前を決める」と誘う）。名前は外部入力にもなるので textContent でだけ入れる */
+  setName(name: string) {
+    this.el.nameLabel.hidden = !name;
+    this.el.nameText.textContent = name || "名前を決める";
+    this.el.name.classList.toggle("unset", !name);
+    this.el.name.title = name ? "名前を変える" : "名前を決める";
   }
 
   showNote(text: string) {
@@ -192,6 +207,8 @@ export class Menu {
 
   private panel(p: Panel, focus = true) {
     for (const [k, el] of Object.entries(this.el.panels)) el.hidden = k !== p;
+    // スキル練習の一覧（11 枚の札）は背が高いので、名前の名札をしまって 1 画面に収める
+    this.el.name.hidden = p === "skills";
     // 段を切り替えたら、その段の最初のボタンに移る（キーボード操作で迷わないように）
     if (focus) this.el.panels[p].querySelector<HTMLElement>("button:not([hidden])")?.focus();
   }

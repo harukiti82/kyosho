@@ -5,11 +5,11 @@
 
 ## 現在の対象
 
-- 何を / どこを: 画面をウィンドウ 1 枚に収める（ページの縦スクロールをなくす）。`web/src/style.css` の「レイアウト」節と末尾の「1 画面に収める」節・`ui/coach.ts` の `reveal`・`e2e/fit.spec.ts`。依頼元セッション（master）経由
-- ステータス: PR #64 でマージ・本番で確認済み（1440×800 は 1 マス 84px、390×844 は 39.7px で、どちらも縦横のスクロールなし）
+- 何を / どこを: 名前を見つけやすく・変えやすく。メニューの上の名札 `#menu-name`（`ui/menu.ts` の `setName`）・`ui/namedialog.ts`（`NameDialog`・案内の印 `kyosho:name-ask`）・`ui/app.ts`「名前」節（`editName` / `askName` / `joinNameField`）・`SetupDialog.saveName`・`OnlineDialog.join` の `name`。依頼元セッション（master）経由
+- ステータス: ブランチ `feat/name-menu` で実装・テスト済み、PR → マージ → 本番確認まで
 - 最終更新: 2026-10-16
-- 判断した点（ユーザーに報告する）: PC（900px 以上）は盤を左・右の 1 列に名札・コーチ・タブと中身・自分の名札・駒台（盤が 1440×800 で 1 マス 61 → 84px）。スマホは引き出しの中身を駒台の上に開くシートに（盤の下側に重なる）。高さ 700px 以下のスマホは余白を詰め、遊び方・スキル練習の間はタブの列をしまい（ルールは「?」）、盤の下限を 1 マス 34px 程度に下げる。トーストは押しても素通りし、スマホの対局中は上の帯の下に出す
-- 前の対象: 手番の知らせ（PR #62）・名前（#60）・初めての人は遊び方から（#59）・合言葉（#57）・完全版の体裁（#56）・PWA（#54・#55。iOS Safari の実機は未検証）
+- 判断した点（ユーザーに報告する）: 名札はロゴの上（PC はロゴの欄の上端＝ CPU対戦と同じ高さ）。名前がなければ黄の字の「名前を決める」。押すと小さなダイアログ（空で決めれば名前なし）。名前がないままオンライン（招待リンク・合言葉）を始めるときだけ、この端末で 1 回だけ同じダイアログで案内（「名前なし」で進む・Esc はやめて印も付けない）。招待リンクで来た人にはダイアログを挟まず、参加の確認に任意の名前の欄
+- 前の対象: 1 画面に収める（PR #64）・手番の知らせ（#62）・名前（#60）・初めての人は遊び方から（#59）・合言葉（#57）・完全版の体裁（#56）・PWA（#54・#55。iOS Safari の実機は未検証）
 - メインの遊び方の流れ: 挟む〜予測を読む（スキルなしの要素）→ カードを選ぶ（配り直し）→ ゲージ → 強打を使う → 副将を置く → 副将を裏返す → 標準の実戦。カードごとの効果はスキル練習で教える
 
 ## スキルの要点
@@ -36,7 +36,7 @@
 
 - [ ] 1 画面に収める: ユーザーに見てもらう（PC の右の列の配置・スマホのタブのシート・背の低いスマホで遊び方の間はタブをしまうこと・遊び方の盤 34px）
 - [ ] 手番の知らせ: ユーザーに見てもらう（帯の位置・長さ 1.2 秒・パスでも出すこと・効果音なし）
-- [ ] 名前: ユーザーに見てもらう（設定の「名前」の置き場所・2 人対戦の 2 つの欄・10 文字・終局画面の見出しを「〇〇の勝ち」にしたこと）。悪い言葉の対策（NG ワード・相手の名前を隠す設定）を足すかはユーザーの判断
+- [ ] 名前: ユーザーに見てもらう（メニューの名札をロゴの上に・「名前を決める」の黄の字・オンラインの前の案内を 1 回だけ・招待された人は参加の確認の欄・設定の 2 人対戦の 2 つの欄・10 文字・終局画面の見出し「〇〇の勝ち」）。悪い言葉の対策（NG ワード・相手の名前を隠す設定）を足すかはユーザーの判断。エンドレスマッチのランキングの名前もこの `Saved.name` の前提
 - [ ] 初めての人は遊び方から: ユーザーに見てもらう（錠の形・トーストの文・遊び方を主な項目にしたこと・15 ステップの長さ）
 - [ ] 合言葉: ユーザーに見てもらう（入口を「オンライン 招待リンク」「オンライン 合言葉」の 2 行にしたこと・同じブラウザの別のタブでも自分とつながること・待っている人が切断すると次の人は別の部屋になること）。送りすぎの制限は Worker のメモリの軽いもの（インスタンスをまたがない）
 - [ ] PWA: iOS Safari の実機でホーム画面に追加 → 機内モードで開いて CPU 対戦が打てるかをユーザーに見てもらう。Android の Chrome の「アプリをインストール」の出方も
@@ -59,7 +59,7 @@
 
 - 1 画面に収める: AGENTS.md の「1 画面に収める」の項 → `web/src/style.css`（「レイアウト」節・末尾の「1 画面に収める」節）, `web/e2e/fit.spec.ts`
 - 手番の知らせ: AGENTS.md の「手番の知らせ」の項 → `web/src/ui/turncue.ts`, `web/src/ui/fx.ts`（`turnCue`）, `web/src/ui/app.ts`（`queueTurnCue` / `syncTurnCue`・`onState` の `hush`）, `web/test/turncue.test.ts`, `web/e2e/turncue.spec.ts`, `web/e2e/online/turncue.spec.ts`
-- 名前: AGENTS.md の「プレイヤーの名前」の項・`.agent/online-protocol.md`「名前」→ `web/src/net/name.ts`, `web/src/ui/setup.ts`（`Saved.name` / `pvpNames`・`checkName`）, `web/src/ui/app.ts`（`playerName` / `shortName` / `name`）, `server/src/room.ts`（`names`）, `server/test/name.test.ts`, `web/e2e/names.spec.ts`, `web/e2e/online/names.spec.ts`
+- 名前: AGENTS.md の「プレイヤーの名前」の項・`.agent/online-protocol.md`「名前」→ `web/src/net/name.ts`, `web/src/ui/setup.ts`（`Saved.name` / `pvpNames`・`checkName`）, `web/src/ui/app.ts`（`playerName` / `shortName` / `name`）, `server/src/room.ts`（`names`）, `server/test/name.test.ts`, `web/e2e/names.spec.ts`, `web/e2e/online/names.spec.ts`。メニューの名札・オンラインの前の案内は `web/src/ui/namedialog.ts`, `web/src/ui/menu.ts`（`setName`）, `web/src/ui/app.ts`（「名前」節）, `web/e2e/name-menu.spec.ts`, `web/e2e/online/name-ask.spec.ts`
 - 初めての人は遊び方から: AGENTS.md の「初めての人は遊び方から」の項 → `web/src/ui/intro.ts`, `web/src/ui/menu.ts`（`setGate`）, `web/src/ui/app.ts`（`setIntro` / `introLocked` / `lessonSolved` / `onState`）, `web/test/intro.test.ts`, `web/e2e/intro.spec.ts`, `web/e2e/tutorial.spec.ts`, `web/e2e/online/intro.spec.ts`, `web/e2e/intro.ts`
 - 合言葉: `.agent/online-protocol.md`「合言葉」→ `server/src/lobby.ts`, `server/src/room.ts`（`matchInfo` / `hostPresent`）, `server/src/index.ts`（`match` / `allowMatch`）, `web/src/net/phrase.ts`, `web/src/ui/app.ts`（`openPhrase` / `matchOnline` / `syncLobby`）, `web/src/ui/online.ts`（`phrase` / `phraseWait`）, `server/test/phrase.test.ts`, `web/e2e/online/phrase.spec.ts`
 - 完全版の体裁: AGENTS.md の「版の番号」「想定外のエラー」の項 → `web/src/ui/about.ts`, `web/src/ui/crash.ts`, `web/index.html`（`#about` / `#crash` / `noscript`）, `web/e2e/about.spec.ts`, `web/test/about.test.ts`
