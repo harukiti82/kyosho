@@ -235,9 +235,10 @@ describe("隠し王: 候補（公開情報）と CPU の視点", () => {
     expect(viewFor(b, 1).myKing.cell).toEqual(at("e3"));
   });
 
-  it("UI と CPU のコードは GameState.kings を直接読まない（kingInfo / viewFor を通す）", () => {
-    const sources = import.meta.glob(["../src/ui/*.ts", "../src/engine/cpu.ts"], { query: "?raw", import: "default", eager: true });
+  it("UI と CPU（cpu.ts・skillcpu.ts・deepcpu.ts）のコードは GameState.kings を直接読まない（kingInfo / viewFor を通す）", () => {
+    const sources = import.meta.glob(["../src/ui/*.ts", "../src/engine/cpu.ts", "../src/engine/skillcpu.ts", "../src/engine/deepcpu.ts"], { query: "?raw", import: "default", eager: true });
     expect(Object.keys(sources).length).toBeGreaterThanOrEqual(6);
+    expect(Object.keys(sources)).toContain("../src/engine/deepcpu.ts");
     for (const [f, src] of Object.entries(sources)) expect(src as string, f).not.toMatch(/[\w)\]]\.kings\b/);
   });
 });
