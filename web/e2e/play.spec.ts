@@ -41,6 +41,11 @@ async function ruleCardIs(page: Page, rules: RuleSet) {
     await openTab(page, "rules4");
   }
   await expect(page.locator("#rules4")).toBeVisible();
+  // スマホのルールは駒台の上に開くシートで盤の下側を覆うので、確かめたらタブを押して閉じる（駒台とタブは開いたままでも押せる）
+  if (page.viewportSize()!.width < 900) {
+    await page.locator("#tab-rules4").click();
+    await expect(page.locator("#rules4")).toBeHidden();
+  }
 }
 
 const boardSnapshot = (page: Page) =>
