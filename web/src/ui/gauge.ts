@@ -3,6 +3,7 @@
 
 import type { Cell } from "../engine/board";
 import type { MoveEvent } from "../engine/game";
+import type { RuleSet } from "../engine/rules";
 import { gaugeMax, GAUGE_UNIT, isZone, type SkillsState } from "../engine/skills";
 
 /** 光の粒が溜めマスからゲージへ飛ぶ時間（ミリ秒） */
@@ -59,6 +60,7 @@ export function gaugeGains(
   ply: number,
   sk: SkillsState | undefined,
   ready: [boolean, boolean],
+  rules: Pick<RuleSet, "gauge">,
 ): [GaugeGain | null, GaugeGain | null] {
   if (!snap || !sk?.ready || snap.key !== key || ply !== snap.ply + 1) return [null, null];
   return ([0, 1] as const).map((p) => {
@@ -67,7 +69,7 @@ export function gaugeGains(
     const from = snap.gauge[p];
     const full = !snap.ready[p] && ready[p];
     if (!card || to < from || (to === from && !full)) return null;
-    return { from, to, max: gaugeMax(card), full };
+    return { from, to, max: gaugeMax(card, rules), full };
   }) as [GaugeGain | null, GaugeGain | null];
 }
 

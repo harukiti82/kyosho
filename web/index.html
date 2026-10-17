@@ -65,6 +65,9 @@
           <button type="button" class="btn menu-btn menu-level" data-level="easy" title="1 手先だけを見て、ときどき適当に打つ"><span class="lv-stars" aria-hidden="true"><i class="on"></i><i></i><i></i></span>イージー</button>
           <button type="button" class="btn menu-btn menu-level" data-level="normal" title="相手の次の 1 手まで読む"><span class="lv-stars" aria-hidden="true"><i class="on"></i><i class="on"></i><i></i></span>ノーマル</button>
           <button type="button" class="btn menu-btn menu-level" data-level="hard" title="さらに先まで読み、決着を狙う"><span class="lv-stars" aria-hidden="true"><i class="on"></i><i class="on"></i><i class="on"></i></span>ハード</button>
+          <!-- エンドレスマッチ（勝つたびに CPU が強くなる。サーバーの機能フラグが on のときだけ出す。ui/menu.ts の enableEndless） -->
+          <button type="button" class="btn menu-btn menu-endless" id="menu-endless" hidden title="勝つたびに CPU が強くなる。負けたら終わり">エンドレス<span class="menu-sub" id="menu-endless-state"></span></button>
+          <button type="button" class="btn menu-btn menu-ranking" id="menu-ranking" hidden>ランキング</button>
           <button type="button" class="btn ghost menu-btn menu-back">戻る</button>
         </div>
         <!-- スキル練習: 11 枚のカードの一覧（押すとそのカードの練習。終えたカードに印。ui/menu.ts の setSkillLessons） -->
@@ -477,11 +480,15 @@
           </li>
           <li>
             <span class="rule-point">保存はこの端末だけ</span>
-            <span class="rule-note">設定・名前・遊び方の進み具合・通算はこのブラウザに保存します。名前のほかは外へ送りません</span>
+            <span class="rule-note">設定・名前・遊び方の進み具合・通算はこのブラウザに保存します。下に書いた通信のほかは外へ送りません</span>
           </li>
           <li>
             <span class="rule-point">アクセス数の集計</span>
             <span class="rule-note">kyosho.rukiharukichi.com では Cloudflare Web Analytics でアクセス数を数えます。クッキーは使いません</span>
+          </li>
+          <li id="about-endless" hidden>
+            <span class="rule-point">エンドレスの記録</span>
+            <span class="rule-note">この端末を見分ける番号と、対局の手・連勝数・決めた名前をサーバーに送ります。連勝数と名前はランキングで全員に見えます</span>
           </li>
           <li>
             <span class="rule-point">オンライン対戦の通信</span>
@@ -491,6 +498,19 @@
         <div class="modal-actions">
           <a class="btn ghost" id="about-rules" href="https://github.com/harukiti82/kyosho/blob/main/RULES.md" target="_blank" rel="noopener">ルールの全文</a>
           <button type="button" class="btn primary" id="about-close">閉じる</button>
+        </div>
+      </div>
+    </dialog>
+
+    <!-- エンドレスマッチのランキング（上位・自分の順位・自分の最高。ui/ranking.ts） -->
+    <dialog class="modal" id="ranking" aria-labelledby="ranking-title">
+      <div class="modal-body ranking-body">
+        <h2 class="modal-title" id="ranking-title" tabindex="-1" autofocus>ランキング</h2>
+        <p class="rank-me" id="ranking-me" role="status"></p>
+        <ol class="rank-list" id="ranking-list"></ol>
+        <div class="modal-actions">
+          <button type="button" class="btn ghost" id="ranking-retry" hidden>再試行</button>
+          <button type="button" class="btn primary" id="ranking-close">閉じる</button>
         </div>
       </div>
     </dialog>

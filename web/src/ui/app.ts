@@ -56,9 +56,10 @@ import {
 } from "../engine/rules";
 import { chooseSkillPick, chooseSkillUse, viceWith, wantsReroll } from "../engine/skillcpu";
 import { gaugeMax, GAUGE_UNIT, isZone, SKILLS, VICE_PENALTY, type SkillBlock, type SkillId, type SkillNote, type SkillUse } from "../engine/skills";
+import { endlessRules, isEndlessRules } from "../engine/endless";
+import { dropDevice, EndlessSession, endlessWsUrl, getRanking, loadDevice, registerDevice, saveDevice } from "../net/endless";
 import {
   browserDeps,
-  checkHealth,
   createdHere,
   createRoom,
   getRoomInfo,
@@ -73,11 +74,24 @@ import {
   safeStore,
   savePhrase,
   saveToken,
+  serverInfo,
   wsUrl,
   type EndReason,
 } from "../net/online";
 import { normalizePhrase, PHRASE_MAX, type PhraseProblem } from "../net/phrase";
-import { TURN_SECONDS, type ErrorMessage, type MatchRecord, type RematchAction, type RoomPhase, type StateMessage } from "../net/protocol";
+import {
+  ENDLESS_TURN_SECONDS,
+  TURN_SECONDS,
+  type EndlessCpuName,
+  type EndlessRunInfo,
+  type EndlessStageInfo,
+  type EndlessStateMessage,
+  type ErrorMessage,
+  type MatchRecord,
+  type RematchAction,
+  type RoomPhase,
+  type StateMessage,
+} from "../net/protocol";
 import { AboutDialog } from "./about";
 import { dirIcon } from "./diricon";
 import { clockLevel, clockText, cpuTurnSeconds, turnSecondsText, TurnClock } from "./clock";
@@ -110,6 +124,7 @@ import {
   type Progress,
 } from "./lessons";
 import { LOCKED_TITLE, Menu, type Panel } from "./menu";
+import { RankingDialog } from "./ranking";
 import { loadSkillDone, saveSkillDone, SKILL_LESSONS, skillLessonIndex, skillProgressLabel, wheelRng } from "./skilllessons";
 import { gamesOf, recordFor, RecordBook, recordViewer, type RecordKey } from "./record";
 import { introRequired, REQUIRED_STEPS, saveIntro, startIntro, tutorialCleared, type IntroState } from "./intro";
@@ -150,7 +165,30 @@ interface LessonRun {
 }
 
 const idx = ([y, x]: Cell) => y * SIZE + x;
-const ruleName = (r: RuleSet) => matchPreset(r)?.name ?? "カスタム";
+const ruleName = (r: RuleSet) => (isEndlessRules(r) ? "エンドレス" : (matchPreset(r)?.name ?? "カスタム"));
+
+/** エンドレスマッチの CPU の強さの呼び名（名札の Lv の title と読み上げ） */
+const ENDLESS_CPU_NAME: Record<EndlessCpuName, string> = {
+  easy: "イージー",
+  normal: "ノーマル",
+  hard: "ハード",
+  d300: "深読み1",
+  d1000: "深読み2",
+  d3000: "深読み3",
+  d10000: "深読み4",
+};
+
+/** 段階の CPU の説明（例: 「イージー 体力−36」「イージーとノーマル」） */
+function stageText(st: EndlessStageInfo): string {
+  const who = st.mix > 0 && st.base !== st.next ? `${ENDLESS_CPU_NAME[st.base]}と${ENDLESS_CPU_NAME[st.next]}` : ENDLESS_CPU_NAME[st.base];
+  return st.hp === 0 ? who : `${who} 体力${st.hp > 0 ? "+" : "−"}${Math.abs(st.hp)}`;
+}
+
+/** e2e 用の挑戦の上書き（体力・CPU。window.kyoshoEndlessTest）。サーバーの var TEST_ENDLESS のときだけ効き、本番では捨てられる */
+const endlessTestHook = (): object | undefined => (window as unknown as { kyoshoEndlessTest?: object }).kyoshoEndlessTest;
+
+/** 終局後の操作（オンライン対戦の再戦・新しい部屋、エンドレスマッチの次の対局・新しい挑戦・ランキング） */
+type ResultAction = RematchAction | "new" | "next" | "restart" | "ranking";
 
 /** 合言葉が通らなかったときの、入力の欄の下の一言 */
 const PHRASE_PROBLEM: Record<PhraseProblem, string> = {
@@ -262,6 +300,13 @@ export class App {
   private phraseJoin: { phrase: string; settings: PlaySettings; tries: number } | null = null;
   /** 最後に入れた合言葉（入力の欄に残す。この画面のメモリだけ） */
   private lastPhrase = "";
+  /**
+   * エンドレスマッチ（net は EndlessSession、room は届いた状態を部屋の形に直したもの）。挑戦していなければ null。
+   * seq は画面の上の対局の通し番号（次の対局・新しい挑戦で増やす。部屋の gameNo の代わり）。fresh はメニューから入った直後
+   * （届いた挑戦が負けで終わっていれば、新しい挑戦を始める）
+   */
+  private endless: { device: string; run: EndlessRunInfo | null; best: number; seq: number; fresh: boolean; starting: boolean } | null = null;
+  private readonly ranking = new RankingDialog();
   /** 最後に届いたサーバーの時計（seq はその局面の棋譜の長さ、deadline はこの端末の時刻で数えたサーバーの締め切り） */
   private netClock: { seq: number; gameNo: number; limitMs: number; deadline: number } | null = null;
   private readonly lobby = new OnlineDialog();
@@ -324,6 +369,8 @@ export class App {
       pvp: () => this.start(this.setup.playSettings("pvp")),
       online: () => this.askName(() => this.start(this.setup.playSettings("online"))),
       phrase: () => this.askName(() => this.openPhrase()),
+      endless: () => void this.openEndless(),
+      ranking: () => void this.openRanking(),
       learn: () => this.openLesson(resumeStep(this.progress)),
       skillLesson: (id) => this.openSkillLesson(skillLessonIndex(id)),
       settings: () => this.setup.open(),
@@ -364,10 +411,14 @@ export class App {
     if (roomId === undefined) this.showMenu();
     else void this.openRoom(roomId);
     // オンライン対戦の入口は、サーバーに届く公開先でだけ出す（GitHub Pages・vite preview では出さない）
-    void checkHealth().then((ok) => {
-      if (!ok) return;
+    void serverInfo().then((info) => {
+      if (!info) return;
       this.menu.enableOnline();
       this.setup.enableOnline();
+      // エンドレスマッチは機能フラグが on のサーバーだけ（オフラインの PWA ではここに来ないので入口は出ない）
+      if (!info.endless) return;
+      this.menu.enableEndless();
+      byId("about-endless").hidden = false;
     });
   }
 
@@ -513,7 +564,7 @@ export class App {
     // オンライン対戦の再戦（申し込む・受ける・断る・取り消す）は、終局画面と駒台のどちらのボタンでも同じ
     document.addEventListener("click", (e) => {
       const b = (e.target as Element | null)?.closest<HTMLButtonElement>("button[data-rematch]");
-      if (b && !b.disabled) this.onRematchClick(b.dataset.rematch as RematchAction | "new");
+      if (b && !b.disabled) this.onRematchClick(b.dataset.rematch as ResultAction);
     });
     // オンライン対戦: 画面に戻った・ネットにつながったら、つなぎ直しの待ち時間を飛ばす
     // 制限時間: 裏に回したタブではタイマーが間引かれるので、戻ったらすぐ時計を見直す（経過した分は時刻の差で減っている）
@@ -1049,7 +1100,7 @@ export class App {
     switch (b) {
       case "charging": {
         const side = g.skills!.sides[g.turn];
-        return `満タンまであと ${gaugeLeft(side)}`;
+        return `満タンまであと ${gaugeLeft(side, g.rules)}`;
       }
       case "used":
         return g.skills?.second ? "連続行動の 2 手目" : "この手番で使った";
@@ -1235,7 +1286,7 @@ export class App {
    * 打った人は溜めマスの光が着いてから、受けた人は着手の演出（特大の溜め）が弾けてから伸ばす。動きを減らす設定では値だけ変える
    */
   private startGaugeAnims(g: GameState, m: MoveEvent, plan: ImpactPlan): { m: MoveEvent; gains: [GaugeGain | null, GaugeGain | null]; delays: [number, number] } | null {
-    const gains = gaugeGains(this.gaugeSnap, this.gameNo, g.ply, g.skills, [this.cardReady(g, 0), this.cardReady(g, 1)]);
+    const gains = gaugeGains(this.gaugeSnap, this.gameNo, g.ply, g.skills, [this.cardReady(g, 0), this.cardReady(g, 1)], g.rules);
     if (!gains[0] && !gains[1]) return null;
     if (plan.reduce) return null;
     const now = Date.now();
@@ -1310,7 +1361,7 @@ export class App {
     if (!sk || !card || !sk.ready) return null;
     const side = sk.sides[p];
     const spec = SKILLS[card];
-    const full = side.gauge >= gaugeMax(card);
+    const full = side.gauge >= gaugeMax(card, g.rules);
     const armed = sk.armed && g.turn === p && !g.result ? sk.armed : null;
     // 連続行動の 2 手目
     const second = !!sk.second && g.turn === p && !g.result;
@@ -1332,7 +1383,7 @@ export class App {
         : guard
           ? "鉄壁中"
           : !full
-            ? `あと${gaugeLeft(side)}`
+            ? `あと${gaugeLeft(side, g.rules)}`
             : held
               ? this.blockShort(g, p, held)
               : "満タン";
@@ -1344,7 +1395,7 @@ export class App {
     const children = [
       h("span", { class: "ps-num", text: spec.numeral, attrs: { "aria-hidden": "true" } }),
       h("span", { class: "ps-name", text: spec.name }),
-      h("span", { class: "ps-gauge", attrs: { "aria-hidden": "true", style: `--g:${gaugeRatio(side)}${grow ? `;--g0:${grow.from / grow.max}` : ""}` } }, [
+      h("span", { class: "ps-gauge", attrs: { "aria-hidden": "true", style: `--g:${gaugeRatio(side, g.rules)}${grow ? `;--g0:${grow.from / grow.max}` : ""}` } }, [
         h("i"),
         h("b", { class: "ps-tip" }),
       ]),
@@ -1870,6 +1921,7 @@ export class App {
     this.rematchSending = false;
     this.queued = null;
     this.netClock = null;
+    this.endless = null;
     this.lobby.close();
     this.renderNet();
   }
@@ -1992,13 +2044,19 @@ export class App {
     this.renderLegend(m.view.rules);
     this.render();
     this.syncLobby();
-    this.showToast(`再戦開始　あなたは${PLAYER_NAME[m.you]}`);
+    const run = this.endless?.run;
+    this.showToast(run ? `Lv ${run.stage.no}　あなたは${PLAYER_NAME[m.you]}` : `再戦開始　あなたは${PLAYER_NAME[m.you]}`);
   }
 
   /** 待機中は招待リンクの案内（合言葉で作った部屋は合言葉と待機の表示）、それ以外は案内を閉じる */
   private syncLobby() {
     const room = this.room;
     if (!room || !this.settings || this.menu.visible) return;
+    // エンドレスマッチは待つ相手がいない。局面が届いたら「接続中…」を閉じる
+    if (this.endless) {
+      if (this.game && this.lobby.view === "busy") this.lobby.close();
+      return;
+    }
     if (room.phase === "waiting") {
       const phrase = loadPhrase(this.tokens, room.id);
       if (phrase !== null) {
@@ -2045,6 +2103,12 @@ export class App {
   private notifyRoom(prev: App["room"], first: boolean, toss = false) {
     const now = this.room!;
     const seat = toss ? "" : `　あなたは${PLAYER_NAME[this.settings!.human]}`;
+    // エンドレスマッチは挑戦の始めだけ（次の対局は startNextGame が知らせる）
+    if (this.endless) {
+      const run = this.endless.run;
+      if (first && run && now.phase === "playing" && this.game?.ply === 0) this.showToast(`Lv ${run.stage.no}${seat}`);
+      return;
+    }
     if (first || !prev) {
       // 招待リンクから参加した人
       if (now.phase === "playing" && this.game?.ply === 0 && !toss) this.showToast(`対局開始${seat}`);
@@ -2072,13 +2136,15 @@ export class App {
     this.rematchSending = false;
     // 時間切れの自動の手と入れ違った手・再戦の二重押し（成立した後に届いた古い申し込み）。
     // 自動の手の知らせ（棋譜の timeout）・次の対局の state が先に届いているので、重ねて出さない
-    if (m.code === "stale_move" || m.code === "stale_rematch") {
+    if (m.code === "stale_move" || m.code === "stale_rematch" || m.code === "stale_next") {
       if (this.game) this.render();
       this.renderResultActions();
       return;
     }
     const text: Partial<Record<ErrorMessage["code"], string>> = {
-      not_your_turn: "相手の手番です",
+      not_your_turn: this.endless ? "CPU の手番です" : "相手の手番です",
+      no_game: "対局中ではありません",
+      run_active: "挑戦の途中です",
       waiting_opponent: "相手の参加を待っています",
       game_over: "対局はもう終わっています",
       illegal_move: `その手は打てません。${m.message}`,
@@ -2150,6 +2216,14 @@ export class App {
   private renderNet() {
     const el = this.el.net;
     const room = this.room;
+    // エンドレスマッチは相手の接続を見せない。自分の接続が切れているときだけ
+    if (this.endless) {
+      const closed = this.net?.connState === "closed";
+      el.hidden = !this.game || !!this.game.result || (!!this.net?.ready && !closed);
+      el.className = `net ${closed ? "bad" : "warn"}`;
+      el.textContent = closed ? "未接続" : "再接続中…";
+      return;
+    }
     el.hidden = !this.online || !room || !this.game;
     if (el.hidden || !room) return;
     let state: "ok" | "warn" | "bad";
@@ -2175,6 +2249,173 @@ export class App {
     }
     el.className = `net ${state}`;
     el.textContent = text;
+  }
+
+  // ---- エンドレスマッチ ----
+  // 端末の Durable Object につなぎ、届いた状態をオンライン対戦の state の形に直して同じ描き方で出す（盤は届いた view で描く）。
+  // CPU の手もサーバーが打つ（届くまで「CPU 思考中…」）。連勝数・段階はサーバーの値をそのまま見せる
+
+  /** メニューの「エンドレス」: 端末がなければ発行してもらい、つなぐ（挑戦の途中なら続きから、なければ新しい挑戦） */
+  private async openEndless() {
+    this.menu.hide();
+    byId("btn-menu").hidden = false;
+    this.leaveOnline();
+    this.resetPlay();
+    this.game = null;
+    this.settings = null;
+    this.el.game.hidden = true;
+    window.history.replaceState(null, "", window.location.pathname);
+    this.lobby.busy("接続中…");
+    let dev = loadDevice(this.local);
+    if (!dev) {
+      try {
+        dev = await registerDevice();
+        saveDevice(this.local, dev);
+      } catch (e) {
+        const busy = e instanceof OnlineHttpError && e.code === "too_many_requests";
+        this.lobby.error("エンドレスを始められません", busy ? "少し待ってから試してください。" : "サーバーにつながりません。時間をおいて試してください。", [
+          { label: "メニューへ", onClick: () => this.leaveToMenu() },
+          { label: "再試行", primary: true, onClick: () => void this.openEndless() },
+        ]);
+        return;
+      }
+    }
+    this.enterEndless(dev);
+  }
+
+  private enterEndless(dev: { device: string; token: string }) {
+    this.settings = { ...this.setup.playSettings("online"), human: 0, rules: endlessRules(1), turnSeconds: ENDLESS_TURN_SECONDS };
+    this.initThreat(this.settings.threat);
+    this.room = {
+      id: `endless:${dev.device}`,
+      phase: "waiting",
+      gameNo: 0,
+      opponent: { joined: true, online: true, left: false, name: null },
+      rematch: null,
+      record: { wins: 0, losses: 0, draws: 0 },
+      name: null,
+    };
+    this.endless = { device: dev.device, run: null, best: 0, seq: 0, fresh: true, starting: false };
+    this.sending = false;
+    this.rematchSending = false;
+    this.queued = null;
+    this.netClock = null;
+    const net = new EndlessSession(
+      dev,
+      endlessWsUrl(dev.device, window.location),
+      {
+        endless: (m) => this.net === net && this.onEndless(m),
+        error: (m) => this.net === net && this.onNetError(m),
+        conn: (st, attempt) => {
+          if (this.net !== net) return;
+          if (st === "reconnecting" && !this.game) this.lobby.busy("接続中…", `サーバーにつながりません。再接続 ${attempt} 回目`);
+          if (st === "reconnecting") this.gaugeQuiet = true;
+          if (this.game) this.render();
+          this.renderResultActions();
+        },
+        ended: (reason, message) => this.net === net && this.onEndlessEnded(reason, message),
+      },
+      // 端末は localStorage（別の日・別のタブでも同じ端末）
+      { ...browserDeps(), store: this.local },
+      this.setup.current.name,
+      () => dropDevice(this.local),
+    );
+    this.net = net;
+    net.start();
+  }
+
+  /** エンドレスマッチの状態が届いた */
+  private onEndless(m: EndlessStateMessage) {
+    const e = this.endless!;
+    e.best = m.best;
+    const run = m.run;
+    this.menu.setEndlessState(run && run.phase !== "lost" && run.wins > 0 ? `${run.wins}連勝中` : m.best > 0 ? `最高 ${m.best}` : "");
+    // メニューから入ったときに挑戦がない・負けで終わっていた: 新しい挑戦を始める（終わった対局は見せない）
+    if (!run || (run.phase === "lost" && e.fresh && !this.game)) {
+      if (!e.starting && this.net instanceof EndlessSession) e.starting = this.net.sendStart(endlessTestHook());
+      return;
+    }
+    e.fresh = false;
+    e.starting = false;
+    const prev = e.run;
+    // 次の対局・新しい挑戦は画面の上では別の対局（部屋の再戦と同じく gameNo を増やす）
+    if (!prev || prev.game !== run.game || (prev.phase === "lost" && run.phase === "playing")) e.seq++;
+    e.run = run;
+    this.onState({
+      type: "state",
+      roomId: this.room!.id,
+      phase: run.phase === "playing" ? "playing" : "finished",
+      gameNo: e.seq,
+      you: run.you,
+      name: m.name,
+      view: run.view,
+      opponent: { joined: true, online: true, left: false, name: null },
+      rematch: null,
+      record: { wins: 0, losses: 0, draws: 0 },
+      clock: run.clock,
+      seatDraw: false,
+    });
+  }
+
+  /** つなぎ直さない終わり方。端末のトークンが合わない（保存が壊れた・別の端末の値）なら、新しい端末で始め直せる */
+  private onEndlessEnded(reason: EndReason, message: string) {
+    if (reason !== "invalid_token") {
+      this.showEnded(reason, reason === "rejected" ? message : undefined);
+      return;
+    }
+    this.lobby.error("この端末の記録が見つかりません", "サーバーの記録と合いませんでした。新しく始めると連勝数は 0 からです。", [
+      { label: "メニューへ", onClick: () => this.leaveToMenu() },
+      { label: "新しく始める", primary: true, onClick: () => void this.openEndless() },
+    ]);
+  }
+
+  /** ランキングを開く（メニュー・終局画面）。自分の順位はこの端末の端末 ID で引く */
+  private async openRanking() {
+    const device = loadDevice(this.local)?.device ?? null;
+    const load = async () => {
+      this.ranking.loading(() => void load());
+      try {
+        this.ranking.show(await getRanking(device), this.endless?.best ?? null);
+      } catch {
+        this.ranking.failed();
+      }
+    };
+    await load();
+  }
+
+  /** エンドレスマッチの終局後のボタンと一文（勝ち: 次の対局 / 引き分け: もう一度 / 負け: 新しく挑戦） */
+  private endlessControls(): { note: string | null; buttons: HTMLButtonElement[] } | null {
+    const run = this.endless?.run;
+    if (!run || run.phase === "playing") return null;
+    const key = (action: ResultAction, text: string, primary = false) =>
+      h("button", { class: `btn ${primary ? "primary" : "ghost"}`, text, attrs: { type: "button", "data-rematch": action } });
+    let note: string;
+    let buttons: HTMLButtonElement[];
+    if (run.phase === "won") {
+      note = `${run.wins}連勝　次は Lv ${run.wins + 1}`;
+      buttons = [key("ranking", "ランキング"), key("next", "次の対局", true)];
+    } else if (run.phase === "drawn") {
+      note = `引き分け　Lv ${run.stage.no} をもう一度`;
+      buttons = [key("next", "もう一度", true)];
+    } else {
+      const best = this.endless!.best;
+      note = `記録 ${run.wins}連勝${best > run.wins ? `　最高 ${best}連勝` : ""}`;
+      buttons = [key("ranking", "ランキング"), key("restart", "新しく挑戦", true)];
+    }
+    // 送った返事を待つ間・つながっていない間は押せない（ランキングは見られる）
+    const off = this.rematchSending || !this.net?.ready;
+    for (const b of buttons) if (b.dataset.rematch !== "ranking") b.disabled = off;
+    return { note, buttons };
+  }
+
+  /** エンドレスマッチの名札の添え書き（自分は連勝数、CPU は Lv と強さ） */
+  private endlessPlate(p: Player): HTMLElement | null {
+    const run = this.endless!.run;
+    if (!run) return null;
+    if (p === this.settings!.human) {
+      return run.wins > 0 ? h("span", { class: "plate-record", text: `${run.wins}連勝`, attrs: { title: `エンドレス ${run.wins}連勝` } }) : null;
+    }
+    return h("span", { class: "plate-record", text: `Lv ${run.stage.no}`, attrs: { title: `Lv ${run.stage.no}　${stageText(run.stage)}` } });
   }
 
   // ---- 入力 ----
@@ -2363,6 +2604,8 @@ export class App {
   /** 相手の呼び方（CPU 対戦は「CPU」、オンライン対戦は「相手」） */
   /** CPU 対戦の強さ（終局画面の下の行。CPU 対戦でなければ空） */
   private levelText() {
+    const run = this.endless?.run;
+    if (run) return `・Lv ${run.stage.no}`;
     return this.settings?.mode === "cpu" ? `・CPU ${CPU_LEVEL_NAME[this.settings.level ?? DEFAULT_CPU_LEVEL]}` : "";
   }
 
@@ -2373,7 +2616,7 @@ export class App {
   }
 
   private foe() {
-    return this.online ? "相手" : "CPU";
+    return this.online && !this.endless ? "相手" : "CPU";
   }
 
   /** 持ち駒・警告マークを見せる側（人間の手番ならその人、CPU の手番なら人間） */
@@ -2828,6 +3071,8 @@ export class App {
    */
   private recordOf(p: Player): MatchRecord | null {
     const room = this.room;
+    // エンドレスマッチは通算でなく連勝数（名札の endlessPlate・終局画面の一文）
+    if (this.endless) return null;
     if (this.online) return room ? (p === this.settings!.human ? room.record : flipRecord(room.record)) : null;
     const key = this.recordKey();
     if (!key) return null;
@@ -2839,6 +3084,7 @@ export class App {
 
   /** 名札の通算（オンライン対戦は同じ部屋の 2 局目から。CPU 対戦・2 人対戦は recordOf のとおり 2 局目から） */
   private plateRecord(p: Player): HTMLElement | null {
+    if (this.endless) return this.endlessPlate(p);
     const rec = this.recordOf(p);
     if (!rec || (this.online && this.room!.gameNo < 2)) return null;
     const text = recordText(rec);
@@ -2984,10 +3230,10 @@ export class App {
       text = `${this.shortName(g.turn)}は${SKILLS[g.skills.armed.id].name}${result ? `　${result.text}` : ""}`;
     } else if (g.skills?.second) {
       // 連続行動の 2 手目
-      if (!this.isHuman(g.turn)) text = this.online ? "相手の 2 手目" : "CPU 2 手目を思考中…";
+      if (!this.isHuman(g.turn)) text = this.online && !this.endless ? "相手の 2 手目" : "CPU 2 手目を思考中…";
       else text = this.settings?.mode === "pvp" ? `${PLAYER_NAME[g.turn]}はもう 1 手` : "もう 1 手";
     } else if (!this.isHuman(g.turn)) {
-      text = this.online ? (away ? "相手の接続が切れています" : "相手の番") : "CPU 思考中…";
+      text = this.online && !this.endless ? (away ? "相手の接続が切れています" : "相手の番") : "CPU 思考中…";
     } else {
       text = this.settings?.mode === "pvp" ? `${PLAYER_NAME[g.turn]}の番` : "あなたの番";
     }
@@ -3519,11 +3765,12 @@ export class App {
    * 相手が退室したら同じ部屋では申し込めないので、新しい部屋を作る
    */
   private rematchControls(): { note: string | null; buttons: HTMLButtonElement[] } | null {
+    if (this.endless) return this.endlessControls();
     const room = this.room;
     const g = this.game;
     if (!this.online || !room || !g?.result || room.phase !== "finished") return null;
     const urge = this.outcome(g).urgeRematch;
-    const key = (action: RematchAction | "new", text: string, primary = false) =>
+    const key = (action: ResultAction, text: string, primary = false) =>
       h("button", {
         class: `btn ${primary ? "primary" : "ghost"}${primary && urge ? " urge" : ""}`,
         text,
@@ -3565,10 +3812,24 @@ export class App {
   }
 
   /** 再戦のボタンを押した（終局画面・駒台） */
-  private onRematchClick(action: RematchAction | "new") {
+  private onRematchClick(action: ResultAction) {
     if (action === "new") {
       if (this.el.result.open) this.el.result.close();
       this.rematch();
+      return;
+    }
+    if (action === "ranking") {
+      void this.openRanking();
+      return;
+    }
+    if (action === "next" || action === "restart") {
+      const net = this.net;
+      const run = this.endless?.run;
+      if (!(net instanceof EndlessSession) || !run) return;
+      if (!(action === "next" ? net.sendNext(run.game) : net.sendStart(endlessTestHook()))) return;
+      this.rematchSending = true;
+      if (this.game) this.renderHand(this.game);
+      this.renderResultActions();
       return;
     }
     const net = this.net;

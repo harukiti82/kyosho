@@ -32,7 +32,7 @@ import {
 } from "./game";
 import { other, type PieceKind, type Player } from "./rules";
 import { chooseSkillUse, viceWith } from "./skillcpu";
-import { GAUGE_UNIT, gaugeMax, secondDamage, shieldDamage, SKILL_HEAL, SKILLS, strongDamage, VICE_DEADLINE, VICE_PENALTY, type SkillId, type SkillUse } from "./skills";
+import { gaugeMax, secondDamage, shieldDamage, SKILL_HEAL, strongDamage, VICE_DEADLINE, VICE_PENALTY, type SkillId, type SkillUse } from "./skills";
 import type { Choice } from "./cpu";
 
 /** 読みの予算と形 */
@@ -338,7 +338,7 @@ function treeUses(s: GameState): SkillUse[] {
   if (!sk || !sk.ready || sk.armed || sk.second || s.result) return [];
   const p = s.turn;
   const card = sk.sides[p].card;
-  if (!card || sk.sides[p].gauge < gaugeMax(card)) return [];
+  if (!card || sk.sides[p].gauge < gaugeMax(card, s.rules)) return [];
   switch (card) {
     case "strong":
     case "omni":
@@ -531,7 +531,7 @@ function leaf(s: GameState, mask: number, acc: number, ctx: Ctx): number {
 function gaugeValue(s: GameState, p: Player): number {
   const side = s.skills!.sides[p];
   if (!side.card) return 0;
-  return (CARD_VALUE[side.card] * side.gauge) / (SKILLS[side.card].length * GAUGE_UNIT);
+  return (CARD_VALUE[side.card] * side.gauge) / gaugeMax(side.card, s.rules);
 }
 
 /** 手番の人が次の 1 手で取れる最大の得点（ダメージ ＋ 回復 ＋ 王・副将の罰。自分なら相手の罰の見込み） */

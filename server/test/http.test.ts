@@ -130,7 +130,7 @@ describe("パス・メソッド", () => {
   });
 
   it("末尾のスラッシュはあってもなくても同じ", async () => {
-    expect(await (await call("/health/")).json()).toEqual({ ok: true });
+    expect(await (await call("/health/")).json()).toMatchObject({ ok: true });
     expect((await call("/rooms/")).status).toBe(405);
     const res = await call("/rooms/", { method: "POST", body: JSON.stringify({ preset: "v10" }), headers: { "Content-Type": "application/json" } });
     expect(res.status).toBe(201);

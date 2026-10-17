@@ -55,7 +55,7 @@ function game(
 /** p のゲージを満タンにする */
 function full(s: GameState, p: Player = s.turn): GameState {
   const sides: SkillsState["sides"] = [s.skills!.sides[0], s.skills!.sides[1]];
-  sides[p] = { ...sides[p], gauge: gaugeMax(sides[p].card!) };
+  sides[p] = { ...sides[p], gauge: gaugeMax(sides[p].card!, s.rules) };
   return { ...s, skills: { ...s.skills!, sides } };
 }
 
@@ -231,7 +231,7 @@ describe("ゲージ", () => {
   });
   it("満タンで止まり、使うと 0 から溜め直す", () => {
     let s = full(game({ a8: [0, "fu"], b8: [1, "fu"], c8: [1, "fu"], d8: [1, "fu"], e8: [1, "fu"], h1: [1, "fu"], g1: [0, "fu"] }, ["wall", null]));
-    expect(play(s, "f8").skills!.sides[0].gauge).toBe(gaugeMax("wall"));
+    expect(play(s, "f8").skills!.sides[0].gauge).toBe(gaugeMax("wall", s.rules));
     s = useSkill(s, { id: "wall" });
     expect(s.skills!.sides[0].gauge).toBe(0);
     expect(skillBlock(viewFor(s, 0))).toBe("used");
@@ -468,7 +468,7 @@ describe("CPU のスキル", () => {
         const ch = chooseMove(viewFor(s, p), level, rng)!;
         expect(isLegal(s, ch.r, ch.c, ch.kind)).toBe(true);
         s = playMove(s, ch.r, ch.c, ch.kind, { king: ch.king });
-        for (const side of s.skills!.sides) expect(side.gauge).toBeLessThanOrEqual(gaugeMax(side.card!));
+        for (const side of s.skills!.sides) expect(side.gauge).toBeLessThanOrEqual(gaugeMax(side.card!, s.rules));
         expect(s.skills!.armed).toBeNull();
       }
       expect(s.history.filter((e) => e.type === "move" && e.skill).length).toBe(uses);
@@ -488,7 +488,7 @@ describe("補充（作り直し）", () => {
       while (!s.result) {
         const p = s.turn;
         const side = s.skills!.sides[p];
-        if (side.card === "refill" && side.gauge >= gaugeMax("refill")) {
+        if (side.card === "refill" && side.gauge >= gaugeMax("refill", s.rules)) {
           fullTurns++;
           if (skillBlock(viewFor(s, p)) === "noRefill") blocked++;
         }

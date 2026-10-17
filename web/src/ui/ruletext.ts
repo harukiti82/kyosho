@@ -2,8 +2,8 @@
 // 各行を要点と補足に分けて返し、DOM への流し込みは呼び出し側（ui/setup.ts の fillSentences）が textContent で行う。
 
 import { kindsByValue, kindsInRules, KIND_ORDER, PIECES, REACH_MARK, type PieceKind, type RuleSet } from "../engine/rules";
-import { wheelPool } from "../engine/game";
-import { FLIP_POINTS, KINGMOVE_RANGE, SKILL_HEAL, SKILL_ORDER, SKILLS, VICE_DEADLINE, VICE_PENALTY, type SkillId } from "../engine/skills";
+import { skillPool, wheelPool } from "../engine/game";
+import { FLIP_POINTS, KINGMOVE_RANGE, SKILL_HEAL, skillLength, SKILLS, VICE_DEADLINE, VICE_PENALTY, type SkillId } from "../engine/skills";
 
 /**
  * ルールの 1 行: 要点の一言（大きく太く。1 行に 1 か所だけ）と、その下に小さく添える補足（括弧で囲まず、薄い字）。
@@ -227,11 +227,10 @@ export function skillDetails(r: RuleSet): Sentence[] {
       },
     );
   }
-  for (const id of SKILL_ORDER) {
-    if (!r.king.on && (id === "scout" || id === "kingmove")) continue;
+  for (const id of skillPool(r)) {
     const t = skillText(id, r);
     const s = SKILLS[id];
-    out.push({ point: `${s.name}: ${t.point}`, note: `${t.note}。タロットの${s.tarot}。ゲージ ${s.length}・溜めマス ${s.zone}` });
+    out.push({ point: `${s.name}: ${t.point}`, note: `${t.note}。タロットの${s.tarot}。ゲージ ${skillLength(id, r)}・溜めマス ${s.zone}` });
   }
   return out;
 }

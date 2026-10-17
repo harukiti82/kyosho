@@ -16,7 +16,7 @@ import {
   type MoveEvent,
   type PlayerView,
 } from "./game";
-import { other, type PieceKind, type Player } from "./rules";
+import { other, type PieceKind, type Player, type RuleSet } from "./rules";
 import {
   FLIP_POINTS,
   gaugeMax,
@@ -25,6 +25,7 @@ import {
   secondDamage,
   shieldDamage,
   SKILL_HEAL,
+  skillLength,
   SKILLS,
   strongDamage,
   VICE_PENALTY,
@@ -69,7 +70,7 @@ export const wantsReroll = (offer: readonly SkillId[]): boolean => offer.length 
 export const chooseSkillPick = (offer: readonly SkillId[], rng: () => number): SkillId => offer[Math.min(offer.length - 1, Math.floor(rng() * offer.length))];
 
 /** ゲージ 1 点の価値（点） */
-const gaugeWeight = (id: SkillId) => (id === "firstaid" || id === "bigheal" ? SKILL_HEAL[id] : GAUGE_VALUE[id]) / SKILLS[id].length;
+const gaugeWeight = (id: SkillId, rules: RuleSet) => (id === "firstaid" || id === "bigheal" ? SKILL_HEAL[id] : GAUGE_VALUE[id]) / skillLength(id, rules);
 
 interface Opt {
   designate?: boolean;
@@ -234,7 +235,7 @@ function currentOpt(view: PlayerView): Opt {
   const sk = view.skills!;
   const p = view.turn;
   const card = sk.sides[p].card!;
-  const o: Opt = { gaugeW: gaugeWeight(card), room: (gaugeMax(card) - sk.sides[p].gauge) / GAUGE_UNIT };
+  const o: Opt = { gaugeW: gaugeWeight(card, view.rules), room: (gaugeMax(card, view.rules) - sk.sides[p].gauge) / GAUGE_UNIT };
   if (sk.shielded[p]) o.ownHalf = true;
   if (sk.second) o.secondHalf = true;
   switch (armedEffect(sk)) {
@@ -336,10 +337,10 @@ export function chooseSkillUse(view: PlayerView, rng: () => number): SkillUse | 
   if (skillBlock(view)) return null;
   const p = view.turn;
   const id = sk!.sides[p].card!;
-  const gw = gaugeWeight(id);
+  const gw = gaugeWeight(id, view.rules);
   const normal = lookahead(view, { gaugeW: gw, room: 0 });
   if (normal.cands.length === 0) return null;
-  const room = SKILLS[id].length;
+  const room = skillLength(id, view.rules);
   const wo: Opt = sk!.shielded[p] ? { ownHalf: true } : {};
   const withRoom = (o: Opt): Opt => ({ ...wo, ...o, gaugeW: gw, room });
   const better = (o: Opt, th: number) => lookahead(view, withRoom(o)).best - normal.best >= th;
@@ -379,8 +380,8 @@ export function chooseSkillUse(view: PlayerView, rng: () => number): SkillUse | 
 function wheelAim(view: PlayerView, rng: () => number): SkillUse {
   const card = view.skills!.sides[view.turn].card!;
   if (view.skills!.armed!.effect === "refill") {
-    const gw = gaugeWeight(card);
-    const best = bestRefill(view, (o) => ({ ...o, gaugeW: gw, room: SKILLS[card].length }));
+    const gw = gaugeWeight(card, view.rules);
+    const best = bestRefill(view, (o) => ({ ...o, gaugeW: gw, room: skillLength(card, view.rules) }));
     return { id: "wheel", kind: best!.kind };
   }
   return { id: "wheel", to: kingMoveTarget(view, rng)!.to };

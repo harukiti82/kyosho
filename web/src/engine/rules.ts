@@ -1,5 +1,7 @@
 // 挟将のルール設定。各項目を独立に組み合わせられる（標準・スキルなしのプリセットと、カスタムで組み合わせる項目）。UI に依存しない。
 
+import type { SkillId } from "./skills";
+
 export type Player = 0 | 1;
 export type PieceKind = "fu" | "yoko" | "gin" | "kaku" | "kin" | "hi";
 
@@ -92,6 +94,13 @@ export interface RuleSet {
   king: HiddenKing;
   /** スキル（対局の前に配られた 3 枚から 1 枚を選び、ゲージが満タンになるたびに使う。engine/skills.ts） */
   skills: boolean;
+  /**
+   * スキルのゲージの長さの倍率（百分率）。カードごとの長さ × gauge ÷ 100 を四捨五入（1 未満は 1。skills.ts の skillLength）。ないのは 100。
+   * エンドレスの短い対局（engine/endless.ts）だけが使い、URL・設定・プリセットには載せない（ui/query.ts は読まない）
+   */
+  gauge?: number;
+  /** 配らないカード（運命の輪も引かない）。ないのは なし。エンドレスの短い対局だけが使う（URL・設定には載せない） */
+  omit?: SkillId[];
 }
 
 /** 設定値の範囲（設定画面・URL の検証で使う） */
@@ -255,6 +264,7 @@ export const cloneRules = (r: RuleSet): RuleSet => ({
   hand: { ...r.hand },
   values: { ...r.values },
   king: { ...r.king },
+  ...(r.omit ? { omit: [...r.omit] } : {}),
 });
 
 /** 隠し王の設定が同じか（どちらも「なし」なら追加設定の違いは問わない） */
@@ -262,6 +272,9 @@ function sameKing(a: HiddenKing, b: HiddenKing): boolean {
   if (!a.on || !b.on) return a.on === b.on;
   return a.penalty === b.penalty && a.deadline === b.deadline && (a.penalty === "lose" || a.amount === b.amount);
 }
+
+/** 配らないカードが同じか（並びは問わない） */
+const sameOmit = (a: readonly SkillId[], b: readonly SkillId[]) => a.length === b.length && a.every((id) => b.includes(id));
 
 export const defaultRules = (): RuleSet => cloneRules(presetById(DEFAULT_PRESET).rules);
 
@@ -278,6 +291,8 @@ export function sameRules(a: RuleSet, b: RuleSet): boolean {
     a.maxPlies === b.maxPlies &&
     sameKing(a.king, b.king) &&
     a.skills === b.skills &&
+    (a.gauge ?? 100) === (b.gauge ?? 100) &&
+    sameOmit(a.omit ?? [], b.omit ?? []) &&
     KIND_ORDER.every((k) => a.hand[k] === b.hand[k] && a.values[k] === b.values[k])
   );
 }

@@ -373,18 +373,18 @@ export function gameFrom(rules: RuleSet, pos: Position): GameState {
     result: null,
     kings,
   };
-  if (r.skills) g.skills = pos.skills ? skillsFrom(pos.skills) : newSkills();
+  if (r.skills) g.skills = pos.skills ? skillsFrom(pos.skills, r) : newSkills();
   else if (pos.skills) throw new Error("スキルなしのルールでカードを指定しています");
   return settleTurn(g, g.turn);
 }
 
 /** 指定したカード・ゲージのスキルの状態。両者が選び終えていれば（カードを選んだか、配られていなければ）打てる */
-function skillsFrom(spec: [PositionSkill, PositionSkill]): SkillsState {
+function skillsFrom(spec: [PositionSkill, PositionSkill], rules: RuleSet): SkillsState {
   const sides = spec.map((s) => {
     const card = s.card ?? null;
     const offer = [...(s.offer ?? (card ? [card] : []))];
     if (card && !offer.includes(card)) throw new Error(`${card} は配られていません`);
-    return { offer, card, gauge: card ? Math.max(0, Math.min(gaugeMax(card), s.gauge ?? 0)) : 0 };
+    return { offer, card, gauge: card ? Math.max(0, Math.min(gaugeMax(card, rules), s.gauge ?? 0)) : 0 };
   }) as [SkillSide, SkillSide];
   return { ...newSkills(), sides, ready: sides.every((s) => s.card !== null || s.offer.length === 0) };
 }
@@ -936,9 +936,9 @@ function skillsFor(sk: SkillsState, viewer: Player): SkillsState {
   return out;
 }
 
-/** 配れるカード（隠し王なしのルールでは偵察・王の移し替えを除く） */
+/** 配れるカード（隠し王なしのルールでは偵察・王の移し替えを除く。RuleSet.omit のカードも除く） */
 export const skillPool = (rules: RuleSet): SkillId[] =>
-  SKILL_ORDER.filter((id) => rules.king.on || (id !== "scout" && id !== "kingmove"));
+  SKILL_ORDER.filter((id) => (rules.king.on || (id !== "scout" && id !== "kingmove")) && !rules.omit?.includes(id));
 
 /** 運命の輪が引く効果（運命の輪を除く 10 枚。隠し王なしのルールでは偵察・王の移し替えも除く） */
 export const wheelPool = (rules: RuleSet): WheelEffect[] => skillPool(rules).filter((id): id is WheelEffect => id !== "wheel");
@@ -1092,15 +1092,15 @@ export function skillBlock(view: PlayerView): SkillBlock | null {
   if (!card) return "off";
   if (view.result) return "over";
   if (sk.armed || sk.second) return "used";
-  if (sk.sides[p].gauge < gaugeMax(card)) return "charging";
+  if (sk.sides[p].gauge < gaugeMax(card, view.rules)) return "charging";
   // 運命の輪は引いた効果が使えなければ不発（使うことはできる）
   return card === "wheel" ? null : effectBlock(view, card);
 }
 
 /** 手番の人のゲージが満タンか（使えるかは skillBlock） */
-export function gaugeFull(sk: SkillsState, p: Player): boolean {
+export function gaugeFull(sk: SkillsState, p: Player, rules: RuleSet): boolean {
   const card = sk.sides[p].card;
-  return card !== null && sk.sides[p].gauge >= gaugeMax(card);
+  return card !== null && sk.sides[p].gauge >= gaugeMax(card, rules);
 }
 
 /**
@@ -1268,7 +1268,7 @@ function skillsAfterMove(before: GameState, move: MoveEvent, lost: number): Skil
   const add = (who: Player, n: number) => {
     const card = sides[who].card;
     if (!card || n <= 0) return;
-    sides[who] = { ...sides[who], gauge: Math.min(gaugeMax(card), sides[who].gauge + n) };
+    sides[who] = { ...sides[who], gauge: Math.min(gaugeMax(card, before.rules), sides[who].gauge + n) };
   };
   const card = sides[p].card;
   if (card) add(p, moverGain(card, [move.r, move.c], move.targets));

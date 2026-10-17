@@ -255,7 +255,7 @@ test("スキルありの部屋: 両者が選ぶ（先に選んだ側は相手待
   for (const p of [host, guest]) await expect(p.page.locator("#skill-use")).toHaveCount(0);
   const full = [host, guest].filter((p) => {
     const side = p.last!.view.skills!.sides[p.last!.you];
-    return side.gauge >= gaugeMax(side.card!);
+    return side.gauge >= gaugeMax(side.card!, p.last!.view.rules);
   });
   info.annotations.push({ type: "満タンのまま終局", description: full.map((p) => p.name).join(",") || "なし" });
   await host.page.screenshot({ path: `${SHOT}/${pre}-online-skill-result.png` });

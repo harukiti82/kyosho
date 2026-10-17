@@ -38,7 +38,9 @@ test("上の帯は読みの「きょうしょう」だけ。メニューの「�
   expect(pkg.version).toBe("1.0.0");
   await expect(page.locator("#about-version")).toHaveText(`版 ${shown}`);
   await expect(about).toContainText("© 2026 rukiharukichi");
-  await expect(about.locator(".rule-point")).toHaveText(["無断利用不可", "保存はこの端末だけ", "アクセス数の集計", "オンライン対戦の通信"]);
+  await expect(about.locator("li:not([hidden]) .rule-point")).toHaveText(["無断利用不可", "保存はこの端末だけ", "アクセス数の集計", "オンライン対戦の通信"]);
+  // エンドレスマッチの通信の説明は、サーバーが使えるとき（/api/health の endless）だけ出す
+  await expect(page.locator("#about-endless")).toBeHidden();
   await expect(about).toContainText("All rights reserved.");
   await expect(about).toContainText("設定・名前・遊び方の進み具合・通算はこのブラウザに保存");
   await expect(about).toContainText("Cloudflare Web Analytics");

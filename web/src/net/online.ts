@@ -138,7 +138,7 @@ export function wsUrl(roomId: string, loc: Pick<Location, "protocol" | "host">):
 
 // ---- HTTP ----
 
-type FetchFn = (input: string, init?: RequestInit) => Promise<Response>;
+export type FetchFn = (input: string, init?: RequestInit) => Promise<Response>;
 
 /** HTTP のエラー。code は応答の本文（読めなければ network / bad_response） */
 export class OnlineHttpError extends Error {
@@ -159,7 +159,7 @@ async function readJson(res: Response): Promise<unknown> {
   }
 }
 
-async function request<T>(fetchFn: FetchFn, path: string, init: RequestInit, ok: (body: unknown) => body is T): Promise<T> {
+export async function request<T>(fetchFn: FetchFn, path: string, init: RequestInit, ok: (body: unknown) => body is T): Promise<T> {
   let res: Response;
   try {
     res = await fetchFn(`${API_PATH}${path}`, init);
@@ -178,13 +178,18 @@ async function request<T>(fetchFn: FetchFn, path: string, init: RequestInit, ok:
  * 404 や画面の HTML が返るので false（入口を出さない）
  */
 export async function checkHealth(fetchFn: FetchFn = fetch, timeoutMs = HEALTH_TIMEOUT_MS): Promise<boolean> {
+  return (await serverInfo(fetchFn, timeoutMs)) !== null;
+}
+
+/** サーバーに届けば使える機能（endless: エンドレスマッチの機能フラグが on）。届かなければ null */
+export async function serverInfo(fetchFn: FetchFn = fetch, timeoutMs = HEALTH_TIMEOUT_MS): Promise<{ endless: boolean } | null> {
   try {
     const res = await fetchFn(`${API_PATH}/health`, { signal: AbortSignal.timeout(timeoutMs), cache: "no-store" });
-    if (!res.ok) return false;
-    const body = (await readJson(res)) as { ok?: unknown } | undefined;
-    return body?.ok === true;
+    if (!res.ok) return null;
+    const body = (await readJson(res)) as { ok?: unknown; endless?: unknown } | undefined;
+    return body?.ok === true ? { endless: body.endless === true } : null;
   } catch {
-    return false;
+    return null;
   }
 }
 
@@ -278,15 +283,15 @@ const FATAL_CODES: readonly WsErrorCode[] = ["room_not_found", "room_full", "inv
  * close() を呼ぶまで、つなぎ直さない終わり方（EndReason）以外ではつなぎ直し続ける
  */
 export class OnlineSession {
-  private ws: SocketLike | null = null;
+  protected ws: SocketLike | null = null;
   private state: ConnState = "connecting";
   /** 失敗が続いた回数（参加が通ったら 0） */
-  private attempt = 0;
+  protected attempt = 0;
   private retryTimer: unknown;
   private pingTimer: unknown;
   private pongTimer: unknown;
   /** 閉じる前に届いた参加の失敗（close code 4003 の理由） */
-  private fatal: ErrorMessage | null = null;
+  protected fatal: ErrorMessage | null = null;
   /** 参加して受け取った自分の手番 */
   you: 0 | 1 | null = null;
 
@@ -294,9 +299,9 @@ export class OnlineSession {
     readonly roomId: string,
     private readonly url: string,
     private readonly events: SessionEvents,
-    private readonly deps: SessionDeps,
+    protected readonly deps: SessionDeps,
     /** join に付けて送る自分の名前（normalizeName を通したもの）。空なら送らない（名前なし） */
-    private readonly name = "",
+    protected readonly name = "",
   ) {}
 
   /** 接続を始める */
@@ -381,7 +386,7 @@ export class OnlineSession {
    * つながっていれば leave を送り、相手に退室を知らせて再戦の申し込みを取り下げる（同じトークンで戻れば取り消される）
    */
   close() {
-    const leaving = this.ready;
+    const leaving = this.ready && this.leaveOnClose;
     this.stopTimers();
     this.state = "closed";
     const ws = this.ws;
@@ -391,6 +396,52 @@ export class OnlineSession {
       if (leaving) ws.send(JSON.stringify({ type: "leave" }));
       if (ws.readyState <= OPEN) ws.close(1000, "leave");
     }
+  }
+
+  /** close() で leave を送るか（エンドレスマッチは送らない） */
+  protected readonly leaveOnClose: boolean = true;
+
+  /** つながったら送る join */
+  protected joinMessage(): object {
+    const token = loadToken(this.deps.store, this.roomId);
+    const join: JoinMessage = token ? { type: "join", token } : { type: "join" };
+    if (this.name) join.name = this.name;
+    return join;
+  }
+
+  /** 部屋に入れた（参加が通った）。つなぎ直しの回数を戻して open にする */
+  protected joinedNow() {
+    this.attempt = 0;
+    this.setState("open");
+  }
+
+  /** error 以外のメッセージ（joined / state）を受ける。継承したクラスは自分のメッセージをここで受ける */
+  protected handle(m: { type: string }) {
+    const msg = m as ServerMessage;
+    switch (msg.type) {
+      case "joined":
+        if (msg.roomId !== this.roomId) return;
+        saveToken(this.deps.store, this.roomId, msg.token);
+        this.you = msg.you;
+        this.joinedNow();
+        this.events.joined?.(msg);
+        return;
+      case "state":
+        if (msg.roomId === this.roomId) this.events.state?.(msg);
+        return;
+    }
+  }
+
+  /** 参加の失敗で閉じられた（4003）。invalid_token なら保存したトークンを捨てる */
+  protected dropCredentials() {
+    dropToken(this.deps.store, this.roomId);
+  }
+
+  /** 手などを送る（つながっていなければ false） */
+  protected sendRaw(msg: object): boolean {
+    if (!this.ready) return false;
+    this.ws!.send(JSON.stringify(msg));
+    return true;
   }
 
   private setState(s: ConnState) {
@@ -410,10 +461,7 @@ export class OnlineSession {
     }
     this.ws = ws;
     ws.onopen = () => {
-      const token = loadToken(this.deps.store, this.roomId);
-      const join: JoinMessage = token ? { type: "join", token } : { type: "join" };
-      if (this.name) join.name = this.name;
-      ws.send(JSON.stringify(join));
+      ws.send(JSON.stringify(this.joinMessage()));
       this.schedulePing();
     };
     ws.onmessage = (e) => {
@@ -434,29 +482,16 @@ export class OnlineSession {
     // 何か届いた = 生きている
     this.deps.clearTimeout(this.pongTimer);
     if (data === PONG_TEXT) return;
-    let m: ServerMessage;
+    let m: { type: string };
     try {
-      m = JSON.parse(data) as ServerMessage;
+      m = JSON.parse(data) as { type: string };
     } catch {
       return;
     }
-    switch (m.type) {
-      case "joined":
-        if (m.roomId !== this.roomId) return;
-        saveToken(this.deps.store, this.roomId, m.token);
-        this.you = m.you;
-        this.attempt = 0;
-        this.setState("open");
-        this.events.joined?.(m);
-        return;
-      case "state":
-        if (m.roomId === this.roomId) this.events.state?.(m);
-        return;
-      case "error":
-        if (FATAL_CODES.includes(m.code)) this.fatal = m;
-        else this.events.error?.(m);
-        return;
-    }
+    if (m?.type !== "error") return this.handle(m);
+    const e = m as ErrorMessage;
+    if (FATAL_CODES.includes(e.code)) this.fatal = e;
+    else this.events.error?.(e);
   }
 
   private onClose(code: number) {
@@ -472,7 +507,7 @@ export class OnlineSession {
     if (code === CLOSE.expired) return end("expired", "部屋の期限が切れました");
     if (code === CLOSE.rejected || fatal) {
       const why = fatal?.code;
-      if (why === "invalid_token") dropToken(this.deps.store, this.roomId);
+      if (why === "invalid_token") this.dropCredentials();
       const reason: EndReason =
         why === "room_full" ? "room_full" : why === "invalid_token" ? "invalid_token" : why === "room_not_found" ? "room_not_found" : "rejected";
       return end(reason, fatal?.message ?? "参加できませんでした");

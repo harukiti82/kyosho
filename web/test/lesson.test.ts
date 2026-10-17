@@ -373,9 +373,9 @@ describe("遊び方: スキルの仕組みと副将", () => {
   it("ゲージを溜める: 3 つ裏返すと 4 溜まって満タン。もう一方は 1 つで 1 しか溜まらずヒント", () => {
     const l = lesson("skillGauge");
     const { g, next, m } = solve(l);
-    expect(g.skills!.sides[0]).toMatchObject({ card: "strong", gauge: gaugeMax("strong") - 4 * GAUGE_UNIT });
+    expect(g.skills!.sides[0]).toMatchObject({ card: "strong", gauge: gaugeMax("strong", g.rules) - 4 * GAUGE_UNIT });
     expect(m.targets).toHaveLength(3);
-    expect(next.skills!.sides[0].gauge).toBe(gaugeMax("strong"));
+    expect(next.skills!.sides[0].gauge).toBe(gaugeMax("strong", next.rules));
     expect(l.done(m, g, next)).toBe("歩で 3 つ裏返して、ゲージが 4 溜まった。満タンになったので、次の自分の手番で使える。");
     expect(judgeMove(l, g, { r: 5, c: 1, kind: "fu", king: false })).toBe("そこで裏返せるのは 1 つで、ゲージは 1 しか溜まらない。多く裏返せるマスに置く");
     const b6 = playMove(g, 5, 1, "fu");
@@ -453,7 +453,7 @@ describe("gameFrom の副将とスキル", () => {
   it("副将は王を決めた人の駒にだけ置け、スキルのカード・ゲージを指定して始められる", () => {
     const g = gameFrom(r, { stones: [fu("a1", 0), fu("a2", 0), fu("h8", 1)], kings: [parseCell("a1"), null], vices: [parseCell("a2"), null], skills: [{ card: "wall", gauge: 99999 }, {}] });
     expect(viceInfo(g, 0)).toMatchObject({ status: "set", cell: [1, 0] });
-    expect(g.skills).toMatchObject({ ready: true, sides: [{ card: "wall", gauge: gaugeMax("wall") }, { card: null, offer: [] }] });
+    expect(g.skills).toMatchObject({ ready: true, sides: [{ card: "wall", gauge: gaugeMax("wall", r) }, { card: null, offer: [] }] });
     expect(() => gameFrom(r, { stones: [fu("a1", 0), fu("a2", 0)], vices: [parseCell("a2"), null] })).toThrow();
     expect(() => gameFrom(r, { stones: [fu("a1", 0)], kings: [parseCell("a1"), null], vices: [parseCell("a1"), null] })).toThrow();
     expect(() => gameFrom(r, { stones: [fu("a1", 0), fu("a2", 1)], kings: [parseCell("a1"), null], vices: [parseCell("a2"), null] })).toThrow();

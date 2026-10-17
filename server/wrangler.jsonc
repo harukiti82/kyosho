@@ -17,22 +17,29 @@
   },
   "durable_objects": {
     // 1 部屋 = 1 Durable Object（部屋 ID から idFromName で引く）。
-    // 合言葉の受付は合言葉ごとに 1 つ（正規化した合言葉の SHA-256 から idFromName で引く。src/lobby.ts）
+    // 合言葉の受付は合言葉ごとに 1 つ（正規化した合言葉の SHA-256 から idFromName で引く。src/lobby.ts）。
+    // エンドレスマッチは 1 端末 = 1 つ（端末 ID から idFromName。src/endless.ts）と、全員のランキングが 1 つ（名前 "global"。src/ranking.ts）
     "bindings": [
       { "name": "ROOMS", "class_name": "Room" },
-      { "name": "LOBBIES", "class_name": "Lobby" }
+      { "name": "LOBBIES", "class_name": "Lobby" },
+      { "name": "ENDLESS", "class_name": "Endless" },
+      { "name": "RANKING", "class_name": "Ranking" }
     ]
   },
   // 無料プランで使える SQLite 版の Durable Object
   "migrations": [
     { "tag": "v1", "new_sqlite_classes": ["Room"] },
-    { "tag": "v2", "new_sqlite_classes": ["Lobby"] }
+    { "tag": "v2", "new_sqlite_classes": ["Lobby"] },
+    { "tag": "v3", "new_sqlite_classes": ["Endless", "Ranking"] }
   ],
   "vars": {
     // 同一オリジン（独自ドメイン・workers.dev）からの接続は常に許可する。
     // ここには、それに加えて許可するオリジンをカンマ区切りで書く（末尾 :* は任意のポート）。本番は公開ドメインだけ
     // （同一オリジンの判定でも通るが、公開先として明示する）。ローカル開発の localhost は npm run dev が --var で足す
-    "ALLOWED_ORIGINS": "https://kyosho.rukiharukichi.com"
+    "ALLOWED_ORIGINS": "https://kyosho.rukiharukichi.com",
+    // エンドレスマッチの機能フラグ。"1" のときだけ /api/endless の下を受け、/api/health に endless: true を返す（画面は入口を出す）。
+    // 深く読む CPU が 1 手 約 0.1 秒の CPU を使うので、Workers の有料プランにしてから "1" にする（.agent/online-protocol.md「エンドレスマッチ」）
+    "ENDLESS_ENABLED": "0"
   },
   // 独自ドメイン（Custom Domain）: https://kyosho.rukiharukichi.com で配信する。次の本番デプロイで反映され、
   // Cloudflare が DNS レコードと証明書を自動で作る（ゾーン rukiharukichi.com が同じアカウントにあること）。

@@ -207,6 +207,67 @@ state{phase:finished, view.result} ◀──────────────
 - **隠し情報**: 偵察で分かった相手の王は `GameState.kings[相手].seen` に、王の移し替えで移した先は `kings[自分].cell` に持つだけで、`viewFor` が使った本人にだけ見せる（偵察した人の `view.oppKing` は `{ candidates: [王のマス], scouted: true }`）。王の移し替えの棋譜・`armed` には移す先を入れない（`cands` は使った時点の自分の駒すべて = 公開されている盤の情報）。`server/test/skill.test.ts` が、移す先だけ違う 2 部屋で相手に届くバイト列が一致することを検査する
 - **再戦**: 次の対局は配り直す（カード・ゲージは持ち越さない）
 
+## エンドレスマッチ
+
+CPU に勝つたびに CPU が強くなり、負けたら終わる 1 人用のモード。CPU の手もサーバーが打ち（権威サーバー）、連勝数はサーバーだけが数える（画面から連勝数は受け取らない）。ルールと段階は `web/src/engine/endless.ts`（短い対局・`ENDLESS_STAGES`）、段階の値の測定は `.agent/endless.md`。
+
+- **機能フラグ**: `server/wrangler.jsonc` の var `ENDLESS_ENABLED` が `"1"` のときだけ `/api/endless` の下を受ける。それ以外（本番の既定は `"0"`）はほかの存在しないパスと同じ 404 で、Durable Object も起こさない。`GET /api/health` はフラグが on のときだけ `{"ok":true,"endless":true}`（off は今までどおり `{"ok":true}`）。画面は `endless: true` のときだけメニューに入口を出す（オフラインの PWA は health に届かないので出ない）。深く読む CPU が 1 手 約 0.1 秒の CPU を使うので、Workers の有料プランにしてから on にする
+- **1 端末 = 1 Durable Object**（`server/src/endless.ts` の `Endless`、binding `ENDLESS`、migration `v3`）。端末 ID から `idFromName`。端末のトークン・名前・最高の連勝数・今の挑戦を storage の `"device"` に 1 件で持ち、消さない（別の日に続きから）
+- **ランキング**: 全員で 1 つの Durable Object（`server/src/ranking.ts` の `Ranking`、binding `RANKING`、名前 `"global"`）の SQLite（`scores`: 端末 ID・名前・最高・達した時刻、`blocked`）。書くのは端末の Durable Object だけ（勝って最高を超えたとき `report`、名前を変えて join したとき `rename`）。上位は最高の大きい順・同じなら先に達した順、順位は「より大きい最高の端末の数 + 1」（同じ連勝数は同じ順位）。外部のリソース（D1 など）は作らない
+
+### エンドポイント（`/api/endless` の下。`protocol.ts` の `ENDLESS_PATH`）
+
+| メソッドとパス | 用途 | 成功 | 失敗 |
+|---|---|---|---|
+| `POST /api/endless/devices` | 端末を発行する（本文なし） | 201 `DeviceResponse`（`device`: 16 バイトの base64url 22 文字、`token`: 32 バイトの base64url 43 文字） | 429 `too_many_requests`（接続元ごとに `DEVICE_WINDOW_MS` 10 分に `DEVICE_LIMIT` 10 回。合言葉と同じ Worker のメモリの軽い制限。e2e は `--var TEST_DEVICE_LIMIT:1000`） |
+| `GET /api/endless/devices/:device/ws` | WebSocket | 101 | 形の違う ID は 101 で受けて `invalid_token` を送り 4003 で閉じる（ない端末・トークン違いと同じ答え） |
+| `GET /api/endless/ranking?device=…` | 上位 `RANKING_TOP`（50）件と、`device` の順位 | 200 `RankingResponse`（`top`・`me`（載っていなければ null）・`total`）。形の違う `device` は無視 | |
+| `GET /api/endless/admin/scores?q=…` | 管理用: 名前に `q` を含む行（空なら上位）を端末 ID つきで | 200 `AdminScore[]` | Secret `ENDLESS_ADMIN_TOKEN` がなければ 404、`Authorization: Bearer` が違えば 401 `unauthorized` |
+| `DELETE /api/endless/admin/scores/:device[?block=1]` | 管理用: 行を消す（`block=1` なら以後の記録も載せない） | 200 `{ removed }` | 同上 |
+| `POST /api/endless/admin/scores/:device?unblock=1` | 管理用: block を外す | 200 `{ unblocked: true }` | 同上 |
+
+- 端末 ID は秘密ではない（WebSocket のパスとランキングの自分の行に使う）。トークンが鍵で、WebSocket の本文でだけ送る（比較は `timingSafeEqual`）
+- 管理: `cd server && npx wrangler secret put ENDLESS_ADMIN_TOKEN` で入れ、`curl -H "Authorization: Bearer <token>" https://kyosho.rukiharukichi.com/api/endless/admin/scores?q=名前` で探し、`curl -X DELETE -H … …/api/endless/admin/scores/<device>?block=1` で消す。Secret を入れなければ管理用の API は存在しない（404）
+
+### WebSocket のメッセージ
+
+クライアント → サーバー（型は `EndlessClientMessage`。1 メッセージ 1024 バイトまで。ping は対局の部屋と同じ）:
+
+| type | フィールド | いつ |
+|---|---|---|
+| `join` | `token`（必須）, `name?` | 接続直後に 1 回。名前は `normalizeName` で検証し、不正なら名前なし（エラーにしない）。join のたびに最新の名前にする（ランキングの名前も替える） |
+| `start` | （e2e だけ `test`） | 挑戦がない・前の挑戦が負けで終わったとき。挑戦の途中は `run_active` |
+| `next` | `game`（終わった対局の番号 = `run.game`） | 勝った・引き分けの後。違えば `stale_next`（二重押し） |
+| `move` / `pick` / `reroll` / `skill` | 対局の部屋と同じ | プレイヤーの手番・カードを選ぶ前。対局中でなければ `no_game`、CPU の手番は `not_your_turn` |
+
+- ほかの type（`rematch` / `leave` や、連勝数を送るような知らないもの）は `bad_message`。知らないキー（`wins` など）は捨てる
+- `test`（`{ hp?: [プレイヤー, CPU], cpu?: EndlessCpuName, turnSeconds? }`）はサーバーの var `TEST_ENDLESS` が `"1"` のときだけ読み、その挑戦の全部の対局に効く（本番の設定にはなく、送っても捨てる）。画面は `window.kyoshoEndlessTest` があれば `start` に付ける（e2e の `addInitScript` だけが入れる）
+
+サーバー → クライアント（`EndlessServerMessage`）: `endless`（`EndlessStateMessage`: `run`（`EndlessRunInfo` か null）・`best`・`name`）と `error`（対局の部屋と同じ形。新しい code は `no_game` / `run_active` / `stale_next`）。join・手・CPU の手・時間切れ・次の対局のたびに届く。
+
+- `run.phase`: `playing` / `won`（勝った。`wins` は勝ちを含む）/ `drawn`（引き分け。`wins` はそのまま）/ `lost`（負け。挑戦の終わり）
+- `run.stage`: この対局の段階（`no` = 何戦目 = Lv、`base` / `next` / `mix` / `hp`）。始めたときの `stageOf(wins)` を挑戦の記録に写すので、表を変えても対局の途中では変わらない
+- `run.you`: 1 局ごとに入れ替える（奇数局はプレイヤーが先手）。引き分けの次の局も入れ替わる
+- `run.view`: `viewFor(対局, プレイヤー)`。CPU の王・副将の場所・巻き戻しの局面は入らない（`server/test/endless.test.ts` が届いたバイト列に `"kings"` / `"undo"` がないことを確かめる）
+- `run.thinking`: CPU の手番（`ENDLESS_CPU_DELAY_MS` 0.7 秒の後に CPU の手の入った状態が届く）
+- `run.clock`: プレイヤーの手番の残り。CPU の手番・カードを選ぶ間・切断中・対局中でなければ null
+
+### 流れとサーバーの処理
+
+1. 画面は localStorage `kyosho:endless`（`{ v: 1, device, token }`）がなければ `POST /api/endless/devices` で発行してもらって保存する
+2. WebSocket で `join`。挑戦がない・負けで終わっていれば（メニューから入った直後だけ）`start`。挑戦の途中なら届いた局面から続ける（終局していれば終局画面）
+3. 対局を作るときに CPU のカードを CPU の決まり（`wantsReroll` / `chooseSkillPick`）で選び、プレイヤーは配られた 3 枚から選ぶ（選ぶ間は時計を止める）。巻き戻しは配らない（`RuleSet.omit`）
+4. プレイヤーの手を `playMove` で検証して適用し、CPU の手番なら alarm を 0.7 秒後に張る。alarm で `cpuTurn`（段階の CPU。混ぜる段階は手番ごとに `cpuOf` で選ぶ）を **1 手番だけ**打って配り、まだ CPU の手番（連続行動の 2 手目・プレイヤーのパス）なら次の alarm を張る。読みが例外になったら置ける手から 1 つ（止まらないように）
+5. 終局したら `settle`: 勝ちは `wins + 1`（最高を超えたらランキングに `report`）、引き分けはそのまま、負けは挑戦の終わり。`next` で次の対局（勝ちの後は段階が上がる）
+- **1 手の制限時間**（`ENDLESS_TURN_SECONDS` 45 秒 + `TURN_GRACE_MS`）: プレイヤーの手番で、WebSocket がつながっている間だけ数える。最後の接続が切れたら残りを `left` に覚えて止め、join で残りから数え直す（中断で時間が増えず、中断している間に時間切れにもならない）。切れたら `playTimeout`。alarm は CPU の手の時刻と締め切りの早い方に張る（どちらもなければ消す）
+- **改ざん**: 手・カード・スキルは engine が検証し、連勝数・段階・体力はサーバーの記録だけから決まる。トークンが違えば参加できない。`server/test/endless.test.ts` が反則手・他人のトークン・終わった挑戦への手と `next`・連勝数を送るメッセージ・`test` の形を確かめる
+
+### 画面（`web/src`）
+
+- 通信層 `net/endless.ts`（DOM なし）: 端末の保存・発行・ランキングの取得と `EndlessSession`（`OnlineSession` を継承。join の中身と受けるメッセージだけ替え、`leave` は送らない。`invalid_token` で閉じたら保存した端末を捨てる）
+- 画面は届いた状態をオンライン対戦の `state` の形に直して同じ描き方で出す（`App.onEndless` → `onState`。盤は届いた view、時計はサーバーの値）。名札は自分に「N連勝」、CPU に「Lv N」（title に CPU の強さ）。状態の行は CPU の手番に「CPU 思考中…」。終局画面と駒台のボタンは勝ち「次の対局」・引き分け「もう一度」・負け「新しく挑戦」と「ランキング」（`App.endlessControls`）
+- 入口はメニューの CPU対戦 → 強さの段の「エンドレス」（続きがあれば「N連勝中」、なければ最高）と「ランキング」（`ui/ranking.ts` の `RankingDialog`）。初めての人の遊び方の錠は CPU 対戦と同じ
+
 ## 1 手の制限時間
 
 部屋を作った人の `turnSeconds` で、手番が来るたびに（対局開始・どちらかの手・自動の手の後）サーバーが計り直す。
@@ -275,11 +336,14 @@ state{phase:finished, view.result} ◀──────────────
 | `web/src/net/phrase.ts` | 合言葉の正規化と検証（画面・サーバー共通）。テストは `web/test/phrase.test.ts` |
 | `web/src/net/name.ts` | 名前の正規化と検証（画面・サーバー共通）。テストは `web/test/name.test.ts`・`server/test/name.test.ts`・`web/e2e/online/names.spec.ts` |
 | `web/src/net/online.ts` | 画面の通信層（HTTP・WebSocket の接続・参加・トークン・つなぎ直し・ping）。テストは `web/test/online.test.ts` |
+| `web/src/net/endless.ts` | エンドレスマッチの通信層（端末の保存と発行・ランキング・`EndlessSession`）。テストは `web/test/endless-net.test.ts` |
 | `web/src/ui/online.ts` | 案内のダイアログ（作成中・招待リンクと待機・参加の確認・合言葉の入力と待機・エラー） |
 | `web/e2e/online/` | 2 つのブラウザで作成 → 参加 → 終局・再読み込み・隠し王の秘匿・エラー・切断・制限時間（`timer.spec.ts`）・同じ部屋での再戦（`rematch.spec.ts`）・合言葉（`phrase.spec.ts`）の e2e（`cd web && npm run e2e:online`、設定 `web/playwright.online.config.ts` が wrangler dev を :8790（`E2E_ONLINE_PORT` で変更可）で、`TEST_TURN_SECONDS`・`TEST_MATCH_LIMIT` 付きで起こす） |
 | `server/wrangler.jsonc` | Worker の設定: 静的アセット（`../web/dist`、`run_worker_first`）・Durable Object・`ALLOWED_ORIGINS`・独自ドメイン（`routes` の Custom Domain `kyosho.rukiharukichi.com`） |
 | `server/src/index.ts` | Worker: `/api` の下のルーティング・Origin・部屋の作成・合言葉（検証・送りすぎの制限・受付への振り分け） |
 | `server/src/lobby.ts` | Durable Object `Lobby`: 合言葉ごとの受付（待っている部屋を 1 つ覚え、1 件ずつ処理する） |
+| `server/src/endless.ts` | Durable Object `Endless`: エンドレスマッチの 1 端末（参加・挑戦・手の検証・CPU の手・制限時間・段階） |
+| `server/src/ranking.ts` | Durable Object `Ranking`: エンドレスマッチのランキング（SQLite）と管理用の一覧・削除 |
 | `server/src/room.ts` | Durable Object `Room`: 参加・手の検証・配信・再接続・1 手の制限時間（締め切りと自動の手）・再戦（申し込み・成立で席の入れ替え）・退室・alarm |
 | `server/src/validate.ts` | 外部入力の検証（ルールは `ui/query.ts` の `encodeRules` / `decodeRules` を再利用） |
 | `server/test/` | Workers ランタイム上のテスト（`@cloudflare/vitest-pool-workers`） |

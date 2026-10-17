@@ -5,19 +5,28 @@
 import {
   API_PATH,
   CLOSE,
+  DEVICE_ID_PATTERN,
+  DEVICE_LIMIT,
+  DEVICE_WINDOW_MS,
   MATCH_LIMIT,
   MATCH_WINDOW_MS,
   MAX_CREATE_BYTES,
   ROOM_ID_PATTERN,
   type CreateRoomResponse,
+  type DeviceResponse,
+  type HealthResponse,
   type MatchResponse,
 } from "../../web/src/net/protocol";
 import { PHRASE_MAX } from "../../web/src/net/phrase";
+import type { Endless } from "./endless";
 import type { Lobby } from "./lobby";
+import type { Ranking } from "./ranking";
 import { httpError, json, randomId, rejectSocket, roomStub } from "./util";
 import { parseCreate, parseMatch } from "./validate";
 
+export { Endless } from "./endless";
 export { Lobby } from "./lobby";
+export { Ranking } from "./ranking";
 export { Room } from "./room";
 
 /** Origin が許可リスト（ALLOWED_ORIGINS）にあるか。"http://localhost:*" のように末尾 :* は任意のポート */
@@ -94,26 +103,37 @@ async function createRoom(req: Request, env: Env): Promise<Response> {
   return httpError(500, "internal", "部屋を作れませんでした");
 }
 
-/**
- * 接続元ごとの POST /api/match の回数（MATCH_WINDOW_MS ごとに数え直す）。合言葉を次々に試す行為への軽い制限で、
- * この Worker のインスタンスのメモリだけで数える（インスタンスをまたいだ合計は数えない）。合言葉はここにも残さない
- */
-const matchHits = new Map<string, { count: number; resetAt: number }>();
 /** 覚えておく接続元の数の上限（メモリを使いすぎない） */
-const MATCH_HITS_MAX = 10_000;
+const HITS_MAX = 10_000;
 
-/** 接続元 ip の今回の POST /api/match を通すか。ip が分からない（ローカル・テスト）なら数えない。limit は MATCH_WINDOW_MS ごとの上限 */
-export function allowMatch(ip: string | null, now = Date.now(), limit = MATCH_LIMIT): boolean {
-  if (!ip) return true;
-  const hit = matchHits.get(ip);
-  if (hit && now < hit.resetAt) return ++hit.count <= limit;
-  if (matchHits.size >= MATCH_HITS_MAX) {
-    for (const [k, v] of matchHits) if (now >= v.resetAt) matchHits.delete(k);
-    if (matchHits.size >= MATCH_HITS_MAX) matchHits.clear();
-  }
-  matchHits.set(ip, { count: 1, resetAt: now + MATCH_WINDOW_MS });
-  return true;
+/**
+ * 接続元ごとの回数の制限（window ミリ秒ごとに数え直す）。この Worker のインスタンスのメモリだけで数える軽い制限で、
+ * インスタンスをまたいだ合計は数えない。ip が分からない（ローカル・テスト）なら数えない
+ */
+function limiter(window: number): (ip: string | null, now: number, limit: number) => boolean {
+  const hits = new Map<string, { count: number; resetAt: number }>();
+  return (ip, now, limit) => {
+    if (!ip) return true;
+    const hit = hits.get(ip);
+    if (hit && now < hit.resetAt) return ++hit.count <= limit;
+    if (hits.size >= HITS_MAX) {
+      for (const [k, v] of hits) if (now >= v.resetAt) hits.delete(k);
+      if (hits.size >= HITS_MAX) hits.clear();
+    }
+    hits.set(ip, { count: 1, resetAt: now + window });
+    return true;
+  };
 }
+
+/** POST /api/match（合言葉を次々に試す行為への制限。合言葉はここにも残さない） */
+const matchHits = limiter(MATCH_WINDOW_MS);
+/** POST /api/endless/devices（端末を作りまくってランキングを埋める行為への制限） */
+const deviceHits = limiter(DEVICE_WINDOW_MS);
+
+/** 接続元 ip の今回の POST /api/match を通すか。limit は MATCH_WINDOW_MS ごとの上限 */
+export const allowMatch = (ip: string | null, now = Date.now(), limit = MATCH_LIMIT): boolean => matchHits(ip, now, limit);
+/** 接続元 ip の今回の POST /api/endless/devices を通すか。limit は DEVICE_WINDOW_MS ごとの上限 */
+export const allowDevice = (ip: string | null, now = Date.now(), limit = DEVICE_LIMIT): boolean => deviceHits(ip, now, limit);
 
 /** 正規化した合言葉から受付の Durable Object の名前（SHA-256。合言葉そのものを名前にしない） */
 export async function lobbyName(phrase: string): Promise<string> {
@@ -149,9 +169,93 @@ async function match(req: Request, env: Env): Promise<Response> {
   return json(res, res.status === "wait" ? 201 : 200);
 }
 
+/** エンドレスマッチを使えるか（機能フラグ。var ENDLESS_ENABLED が "1"） */
+export const endlessOn = (env: Env): boolean => (env as unknown as { ENDLESS_ENABLED?: string }).ENDLESS_ENABLED === "1";
+
+const endlessStub = (env: Env, device: string) => {
+  const ns = env.ENDLESS as DurableObjectNamespace<Endless>;
+  return ns.get(ns.idFromName(device));
+};
+const rankingStub = (env: Env) => {
+  const ns = env.RANKING as DurableObjectNamespace<Ranking>;
+  return ns.get(ns.idFromName("global"));
+};
+
+/** e2e 用に端末の発行の上限を上げる（wrangler dev の --var TEST_DEVICE_LIMIT。本番の wrangler.jsonc にはない） */
+function deviceLimit(env: Env): number {
+  const n = Number((env as unknown as { TEST_DEVICE_LIMIT?: string }).TEST_DEVICE_LIMIT);
+  return Number.isInteger(n) && n > DEVICE_LIMIT ? n : DEVICE_LIMIT;
+}
+
+/** 管理用のトークン（Secret ENDLESS_ADMIN_TOKEN）と Authorization: Bearer が一致するか。Secret がなければ常に false */
+function adminAuthorized(req: Request, env: Env): boolean | null {
+  const secret = (env as unknown as { ENDLESS_ADMIN_TOKEN?: string }).ENDLESS_ADMIN_TOKEN;
+  if (!secret) return null;
+  const got = req.headers.get("Authorization")?.match(/^Bearer (.+)$/)?.[1] ?? "";
+  const enc = new TextEncoder();
+  const a = enc.encode(got);
+  const b = enc.encode(secret);
+  return a.byteLength === b.byteLength && crypto.subtle.timingSafeEqual(a, b);
+}
+
+/**
+ * /api/endless の下。parts は endless を除いたパスの区切り。
+ * POST devices（端末の発行）/ GET devices/:id/ws（WebSocket）/ GET ranking（上位と自分の順位）/ admin/scores（管理用）
+ */
+async function endless(req: Request, env: Env, parts: string[]): Promise<Response> {
+  const [head, id, tail] = parts;
+  if (head === "devices" && parts.length === 1) {
+    if (req.method !== "POST") return httpError(405, "method_not_allowed", "POST だけを受け付けます");
+    if (!allowDevice(req.headers.get("CF-Connecting-IP"), Date.now(), deviceLimit(env))) {
+      return httpError(429, "too_many_requests", "端末の登録が多すぎます。少し待ってから試してください");
+    }
+    for (let i = 0; i < 3; i++) {
+      const device = randomId(16);
+      const token = randomId(32);
+      if (await endlessStub(env, device).register(device, token)) return json({ device, token } satisfies DeviceResponse, 201);
+    }
+    return httpError(500, "internal", "端末を登録できませんでした");
+  }
+  if (head === "devices" && parts.length === 3 && tail === "ws") {
+    if (req.method !== "GET") return httpError(405, "method_not_allowed", "GET だけを受け付けます");
+    if (req.headers.get("Upgrade")?.toLowerCase() !== "websocket") return httpError(426, "upgrade_required", "WebSocket で接続してください");
+    // 形式の違う ID では Durable Object を作らない。端末がないのとトークン違いは同じ答え
+    if (!DEVICE_ID_PATTERN.test(id)) return rejectSocket("invalid_token", "端末のトークンが合いません", CLOSE.rejected);
+    return endlessStub(env, id).fetch(req);
+  }
+  if (head === "ranking" && parts.length === 1) {
+    if (req.method !== "GET") return httpError(405, "method_not_allowed", "GET だけを受け付けます");
+    const device = new URL(req.url).searchParams.get("device");
+    return json(await rankingStub(env).top(device !== null && DEVICE_ID_PATTERN.test(device) ? device : null));
+  }
+  if (head === "admin" && id === "scores" && parts.length <= 3) {
+    const auth = adminAuthorized(req, env);
+    if (auth === null) return httpError(404, "not_found", "そのパスはありません");
+    if (!auth) return httpError(401, "unauthorized", "管理用のトークンが違います");
+    if (parts.length === 2 && req.method === "GET") {
+      return json(await rankingStub(env).adminList(new URL(req.url).searchParams.get("q") ?? ""));
+    }
+    if (parts.length === 3 && req.method === "DELETE" && DEVICE_ID_PATTERN.test(tail)) {
+      const removed = await rankingStub(env).remove(tail, new URL(req.url).searchParams.get("block") === "1");
+      return json({ removed });
+    }
+    if (parts.length === 3 && req.method === "POST" && DEVICE_ID_PATTERN.test(tail) && new URL(req.url).searchParams.get("unblock") === "1") {
+      await rankingStub(env).unblock(tail);
+      return json({ unblocked: true });
+    }
+    return httpError(405, "method_not_allowed", "GET（一覧）・DELETE（消す）だけを受け付けます");
+  }
+  return httpError(404, "not_found", "そのパスはありません");
+}
+
 /** /api の下のルーティング。parts は /api を除いたパスの区切り（末尾スラッシュの有無は同じ扱い） */
 async function route(req: Request, env: Env, parts: string[]): Promise<Response> {
-  if (parts.length === 1 && parts[0] === "health") return json({ ok: true });
+  if (parts.length === 1 && parts[0] === "health") return json((endlessOn(env) ? { ok: true, endless: true } : { ok: true }) satisfies HealthResponse);
+  // エンドレスマッチ。機能フラグが off なら、ほかの存在しないパスと同じ 404（Durable Object は起こさない）
+  if (parts[0] === "endless") {
+    if (!endlessOn(env)) return httpError(404, "not_found", "そのパスはありません");
+    return endless(req, env, parts.slice(1));
+  }
   // POST /api/match（合言葉）
   if (parts.length === 1 && parts[0] === "match") {
     if (req.method !== "POST") return httpError(405, "method_not_allowed", "POST だけを受け付けます");

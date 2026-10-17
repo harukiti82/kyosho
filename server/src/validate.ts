@@ -3,7 +3,9 @@
 import { SIZE } from "../../web/src/engine/board";
 import { cloneRules, PIECES, PRESETS, sameRules, type PieceKind, type RuleSet } from "../../web/src/engine/rules";
 import { SKILLS, type SkillId } from "../../web/src/engine/skills";
-import type { ClientMessage, HostSeat, WsErrorCode } from "../../web/src/net/protocol";
+import { ENDLESS_CPUS, type EndlessCpu } from "../../web/src/engine/endless";
+import { LIMITS } from "../../web/src/engine/rules";
+import type { ClientMessage, EndlessClientMessage, HostSeat, WsErrorCode } from "../../web/src/net/protocol";
 import { MAX_MESSAGE_BYTES, TOKEN_PATTERN, TURN_SECONDS } from "../../web/src/net/protocol";
 import { normalizeName } from "../../web/src/net/name";
 import { normalizePhrase } from "../../web/src/net/phrase";
@@ -129,5 +131,76 @@ export function parseClientMessage(data: string | ArrayBuffer): Parsed {
       return { ok: true, msg: { type: "leave" } };
     default:
       return bad("type は join / move / pick / reroll / skill / rematch / leave です");
+  }
+}
+
+/** e2e 用の上書き（var TEST_ENDLESS のときだけ start で受ける）。hp: [プレイヤー, CPU] の体力 / cpu: 段階の CPU の代わり / turnSeconds: 1 手の秒数 */
+export interface EndlessTest {
+  hp?: [number, number];
+  cpu?: EndlessCpu;
+  turnSeconds?: number;
+}
+
+export type ParsedEndless = { ok: true; msg: EndlessClientMessage; test?: EndlessTest } | { ok: false; code: WsErrorCode; message: string };
+
+function parseTest(x: unknown): EndlessTest | null {
+  if (!isObject(x)) return null;
+  const t: EndlessTest = {};
+  if (x.hp !== undefined) {
+    const ok = (n: unknown) => Number.isInteger(n) && (n as number) >= 1 && (n as number) <= LIMITS.hp.max;
+    if (!Array.isArray(x.hp) || x.hp.length !== 2 || !ok(x.hp[0]) || !ok(x.hp[1])) return null;
+    t.hp = [x.hp[0], x.hp[1]];
+  }
+  if (x.cpu !== undefined) {
+    if (!ENDLESS_CPUS.includes(x.cpu as EndlessCpu)) return null;
+    t.cpu = x.cpu as EndlessCpu;
+  }
+  if (x.turnSeconds !== undefined) {
+    if (!Number.isInteger(x.turnSeconds) || (x.turnSeconds as number) < 1 || (x.turnSeconds as number) > 90) return null;
+    t.turnSeconds = x.turnSeconds as number;
+  }
+  return t;
+}
+
+/**
+ * エンドレスマッチの WebSocket の 1 メッセージを読む。手・スキル・カードは対局の部屋と同じ形（parseClientMessage）。
+ * join は token が必須。連勝数などほかのキーは捨てる（受け取らない）。test は allowTest（var TEST_ENDLESS）のときの start だけ
+ */
+export function parseEndlessMessage(data: string | ArrayBuffer, allowTest = false): ParsedEndless {
+  const base = parseClientMessage(data);
+  if (!base.ok) {
+    // join / move / pick / reroll / skill 以外の type はここで読み直す
+    if (base.code !== "bad_message" || typeof data !== "string") return base;
+    let x: unknown;
+    try {
+      x = JSON.parse(data);
+    } catch {
+      return base;
+    }
+    if (!isObject(x)) return base;
+    const bad = (message: string): ParsedEndless => ({ ok: false, code: "bad_message", message });
+    if (x.type === "start") {
+      if (x.test === undefined || !allowTest) return { ok: true, msg: { type: "start" } };
+      const test = parseTest(x.test);
+      return test ? { ok: true, msg: { type: "start" }, test } : bad("test の形が違います");
+    }
+    if (x.type === "next") {
+      if (!Number.isInteger(x.game) || (x.game as number) < 1) return bad("game は 1 以上の整数です");
+      return { ok: true, msg: { type: "next", game: x.game as number } };
+    }
+    return base.message.startsWith("type は") ? bad("type は join / start / next / move / pick / reroll / skill です") : base;
+  }
+  const msg = base.msg;
+  switch (msg.type) {
+    case "join":
+      if (msg.token === undefined) return { ok: false, code: "bad_message", message: "token が要ります" };
+      return { ok: true, msg: { type: "join", token: msg.token, ...(msg.name !== undefined ? { name: msg.name } : {}) } };
+    case "move":
+    case "pick":
+    case "reroll":
+    case "skill":
+      return { ok: true, msg };
+    default:
+      return { ok: false, code: "bad_message", message: "type は join / start / next / move / pick / reroll / skill です" };
   }
 }
