@@ -42,7 +42,7 @@ import {
   SKILL_ORDER,
   strongDamage,
   VICE_DEADLINE,
-  VICE_PENALTY,
+  vicePenalty,
   victimGain,
   type EffectBlock,
   type SkillBlock,
@@ -107,7 +107,7 @@ export interface ViceHit {
   r: number;
   c: number;
   kind: PieceKind;
-  /** 減らした体力（VICE_PENALTY） */
+  /** 減らした体力（vicePenalty） */
   penalty: number;
   /** 偵察で特定していた副将。そうでなければキー自体がない */
   scouted?: true;
@@ -611,7 +611,7 @@ export function playMove(
   const live = liveVice(qv);
   if (qv && live && targets.some((t) => t.r === live.cell[0] && t.c === live.cell[1])) {
     const [y, x] = live.cell;
-    viceHit = { r: y, c: x, kind: state.board[y][x]!.kind, penalty: VICE_PENALTY };
+    viceHit = { r: y, c: x, kind: state.board[y][x]!.kind, penalty: vicePenalty(state.rules) };
     if (live.seen) viceHit.scouted = true;
     kings[q] = { ...kings[q], vice: { ...qv, list: [...qv.list.slice(0, -1), { ...live, hit: true }] } };
   }
@@ -1017,7 +1017,7 @@ export function knownPenalties(view: Pick<PlayerView, "rules" | "oppKing" | "opp
   const ok = view.oppKing;
   const kingHit = ok.scouted && !ok.revealed && has(ok.candidates[0]);
   const king = kingHit ? (view.rules.king.penalty === "lose" ? "lose" : view.rules.king.amount) : null;
-  const vice = view.oppVice.scouted && view.oppVice.cell && has(view.oppVice.cell) ? VICE_PENALTY : null;
+  const vice = view.oppVice.scouted && view.oppVice.cell && has(view.oppVice.cell) ? vicePenalty(view.rules) : null;
   return { king, vice };
 }
 

@@ -32,7 +32,7 @@ import {
 } from "./game";
 import { other, type PieceKind, type Player } from "./rules";
 import { chooseSkillUse, viceWith } from "./skillcpu";
-import { gaugeMax, secondDamage, shieldDamage, SKILL_HEAL, strongDamage, VICE_DEADLINE, VICE_PENALTY, type SkillId, type SkillUse } from "./skills";
+import { gaugeMax, secondDamage, shieldDamage, SKILL_HEAL, strongDamage, VICE_DEADLINE, vicePenalty, type SkillId, type SkillUse } from "./skills";
 import type { Choice } from "./cpu";
 
 /** 読みの予算と形 */
@@ -243,13 +243,13 @@ function makeCtx(view: PlayerView, budget: DeepBudget, w: DeepWeights): Ctx {
   }
   if (vicesOn(rules)) {
     const ov = view.oppVice;
-    if (ov.scouted && ov.cell) add(ov.cell[0], ov.cell[1], VICE_PENALTY);
+    if (ov.scouted && ov.cell) add(ov.cell[0], ov.cell[1], vicePenalty(rules));
     else {
       const started = ok.revealed || oppMoves >= rules.king.deadline;
       const pv = ov.set ? 1 : started ? 0.5 : 0;
       const known = ok.scouted ? ok.candidates[0] : null;
       const cells = pv > 0 ? viceCandidates(view, q, known) : [];
-      for (const [y, x] of cells) add(y, x, (VICE_PENALTY * pv) / cells.length);
+      for (const [y, x] of cells) add(y, x, (vicePenalty(rules) * pv) / cells.length);
     }
   }
   // 自分の王・副将: エンジンは真の場所の罰を付ける。相手が知らない分（1 − own）は真の場所から戻し、相手から見える候補に等分する
@@ -264,8 +264,8 @@ function makeCtx(view: PlayerView, budget: DeepBudget, w: DeepWeights): Ctx {
   const mv = view.myVice;
   if (doubt > 0 && mv.cell && !mv.seen) {
     const cells = viceCandidates(view, p, mk.cell);
-    add(mv.cell[0], mv.cell[1], doubt * VICE_PENALTY, 1);
-    for (const [y, x] of cells) add(y, x, (-doubt * VICE_PENALTY) / cells.length, 1);
+    add(mv.cell[0], mv.cell[1], doubt * vicePenalty(rules), 1);
+    for (const [y, x] of cells) add(y, x, (-doubt * vicePenalty(rules)) / cells.length, 1);
   }
   return {
     root: p,
@@ -413,7 +413,7 @@ function scanMoves(
           }
           if (!mine) {
             if (myKing && myKing[0] === y && myKing[1] === x) order += from.rules.king.amount;
-            if (myVice && myVice[0] === y && myVice[1] === x) order += VICE_PENALTY;
+            if (myVice && myVice[0] === y && myVice[1] === x) order += vicePenalty(from.rules);
           }
         }
       }

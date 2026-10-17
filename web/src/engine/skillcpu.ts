@@ -28,7 +28,7 @@ import {
   skillLength,
   SKILLS,
   strongDamage,
-  VICE_PENALTY,
+  vicePenalty,
   type SkillId,
   type SkillUse,
 } from "./skills";
@@ -111,13 +111,13 @@ function penaltyOf(view: PlayerView, victim: Player): number {
 function oppViceHint(view: PlayerView): { cells: Set<number>; pen: number } {
   const ov = view.oppVice;
   if (!ov.set) return { cells: new Set(), pen: 0 };
-  if (ov.scouted && ov.cell) return { cells: new Set([key(ov.cell[0], ov.cell[1])]), pen: VICE_PENALTY };
+  if (ov.scouted && ov.cell) return { cells: new Set([key(ov.cell[0], ov.cell[1])]), pen: vicePenalty(view.rules) };
   const q = other(view.turn);
   const ok = view.oppKing;
   const kc = ok.scouted && !ok.revealed ? key(ok.candidates[0][0], ok.candidates[0][1]) : -1;
   const cells = new Set<number>();
   for (let r = 0; r < SIZE; r++) for (let c = 0; c < SIZE; c++) if (view.board[r][c]?.owner === q && key(r, c) !== kc) cells.add(key(r, c));
-  return { cells, pen: cells.size > 0 ? VICE_PENALTY / cells.size : 0 };
+  return { cells, pen: cells.size > 0 ? vicePenalty(view.rules) / cells.size : 0 };
 }
 
 /** bestReply の score に、返されるマス（自分の王・副将）ごとの罰を足したもの（sim.ts の bestReply2） */
@@ -159,7 +159,7 @@ function lookahead(view: PlayerView, o: Opt = {}): { best: number; cands: Choice
   // 副将: 相手の副将を返す見込みと、自分の副将を返される危険（相手が場所を知っているとみなす）
   const vk = oppViceHint(view);
   const mv = view.myVice;
-  const myVicePen = mv.cell ? { cell: mv.cell, penalty: VICE_PENALTY } : null;
+  const myVicePen = mv.cell ? { cell: mv.cell, penalty: vicePenalty(rules) } : null;
   const viceHits = (ls: Line[]) => ls.reduce((n, l) => n + l.cells.filter(([y, x]) => vk.cells.has(key(y, x))).length, 0);
   let best = -Infinity;
   let cands: Choice[] = [];

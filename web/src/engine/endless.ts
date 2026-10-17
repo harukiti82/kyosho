@@ -12,11 +12,14 @@ import { cloneRules, presetById, type Hand, type Player, type RuleSet } from "./
 import type { SkillId } from "./skills";
 
 /** 短い対局の体力 [先手, 後手]（CPU の側には段階の hp を足す） */
-export const ENDLESS_HP: readonly [number, number] = [72, 67];
-/** 短い対局の持ち駒（両者同じ。13 個） */
-export const ENDLESS_HAND: Readonly<Hand> = { fu: 4, yoko: 4, gin: 0, kaku: 2, kin: 1, hi: 2 };
+export const ENDLESS_HP: readonly [number, number] = [88, 84];
+/** 短い対局の持ち駒（両者同じ。20 個） */
+export const ENDLESS_HAND: Readonly<Hand> = { fu: 6, yoko: 6, gin: 0, kaku: 3, kin: 2, hi: 3 };
 /** 短い対局のゲージの長さの倍率（百分率） */
-export const ENDLESS_GAUGE = 40;
+export const ENDLESS_GAUGE = 50;
+/** 短い対局の王と副将の罰（標準の 30・15 を体力の比 88 ÷ 135 で下げた） */
+export const ENDLESS_KING_PENALTY = 19;
+export const ENDLESS_VICE_PENALTY = 10;
 /** 短い対局で配らないカード（巻き戻しは短いゲージで応酬になり対局が進まない） */
 export const ENDLESS_OMIT: readonly SkillId[] = ["judge"];
 /** CPU の体力の下限（段階の hp を引いても 1 は残す） */
@@ -24,13 +27,15 @@ const MIN_HP = 1;
 
 /**
  * 短い対局のルール。cpu は CPU の席、cpuHp は CPU の体力に足す段階の値（負なら減る）。
- * 隠し王・副将・回復・方向駒・反対側の駒の力は標準のまま
+ * 隠し王・副将の決まり・回復・方向駒・反対側の駒の力は標準のまま（罰だけ下げる）
  */
 export function endlessRules(cpu: Player, cpuHp = 0): RuleSet {
   const r = cloneRules(presetById("skill").rules);
   r.hp = [ENDLESS_HP[0], ENDLESS_HP[1]];
   r.hp[cpu] = Math.max(MIN_HP, r.hp[cpu] + cpuHp);
   r.hand = { ...ENDLESS_HAND };
+  r.king = { ...r.king, amount: ENDLESS_KING_PENALTY };
+  r.vice = ENDLESS_VICE_PENALTY;
   r.gauge = ENDLESS_GAUGE;
   r.omit = [...ENDLESS_OMIT];
   return r;
@@ -68,8 +73,8 @@ const mixes = (a: EndlessCpu, b: EndlessCpu, n: number): EndlessStage[] =>
  * （短い対局で、2 手読み（normal）・ハード・深く読む CPU をプレイヤーに見立てて各段階と対局させた勝率）
  */
 export const ENDLESS_STAGES: readonly EndlessStage[] = [
-  // イージーの体力を −36 から 3 ずつ戻す（13 段）
-  ...Array.from({ length: 13 }, (_, i) => st("easy", -36 + 3 * i)),
+  // イージーの体力を −44 から 0 まで 6 段で戻す
+  ...Array.from({ length: 6 }, (_, i) => st("easy", Math.round(-44 + (44 * i) / 5))),
   // イージー → ノーマル → ハードを 1/8 ずつ混ぜる（各 8 段。最後の段は混ぜない）
   ...mixes("easy", "normal", 8),
   ...mixes("normal", "hard", 8),
@@ -81,7 +86,7 @@ export const ENDLESS_STAGES: readonly EndlessStage[] = [
 ];
 
 /** 表の後ろで 1 段階ごとに CPU の体力に足す値 */
-export const ENDLESS_TAIL_HP = 6;
+export const ENDLESS_TAIL_HP = 7;
 
 /** wins 連勝した後の段階（表の後ろは最後の段階の CPU の体力を ENDLESS_TAIL_HP ずつ増やす） */
 export function stageOf(wins: number): EndlessStage {

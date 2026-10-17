@@ -872,6 +872,10 @@ describe("副将", () => {
     expect(viceInfo(s, 1)).toMatchObject({ status: "unset", cell: at("b1"), left: 5 });
     const hit = play(s, "c1");
     expect(last(hit).vice).toEqual({ r: 0, c: 1, kind: "fu", penalty: 15 });
+    // 罰はルールの vice（エンドレスの短い対局）で変わる。減る体力もその値
+    const low = play({ ...s, rules: { ...s.rules, vice: 10 } }, "c1");
+    expect(last(low).vice).toEqual({ r: 0, c: 1, kind: "fu", penalty: 10 });
+    expect(low.hp[1] - hit.hp[1]).toBe(5);
     expect(hit.kings[1].vice).toEqual({ since: 3, base: 7, list: [{ cell: at("b1"), due: 14, hit: true }] });
     // 副将はない。次の期限（17 手目）は変わらない
     expect(viceInfo(hit, 1)).toMatchObject({ status: "unset", cell: null, left: 5 });

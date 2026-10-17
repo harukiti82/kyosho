@@ -3,7 +3,7 @@
 
 import { env, runDurableObjectAlarm, runInDurableObject } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
-import { stageOf } from "../../web/src/engine/endless";
+import { ENDLESS_HP, stageOf } from "../../web/src/engine/endless";
 import type { GameState } from "../../web/src/engine/game";
 import { TURN_GRACE_MS, type DeviceResponse, type EndlessStateMessage, type RankingResponse } from "../../web/src/net/protocol";
 import worker, { allowDevice } from "../src/index";
@@ -111,7 +111,7 @@ describe("挑戦の流れ", () => {
     const run = s0.run!;
     expect(run).toMatchObject({ phase: "playing", wins: 0, game: 1, you: 0, clock: null, thinking: false });
     expect(run.stage).toMatchObject({ no: 1, ...stageOf(0) });
-    expect(run.view.rules.hp).toEqual([72, 67 + stageOf(0).hp]);
+    expect(run.view.rules.hp).toEqual([ENDLESS_HP[0], ENDLESS_HP[1] + stageOf(0).hp]);
     expect(run.view.skills!.ready).toBe(false);
     // CPU は選び終えているが、両者が選ぶまで見せない
     expect(run.view.skills!.sides[1]).toMatchObject({ card: null, offer: [] });
