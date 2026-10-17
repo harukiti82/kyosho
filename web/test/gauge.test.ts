@@ -4,6 +4,9 @@ import { gaugeMax, GAUGE_UNIT, isZone, type SkillsState, type SkillId } from "..
 import { animDone, FULL_FLASH_MS, gainText, gaugeGains, growDelay, GROW_AT_MS, GROW_MS, ORB_MS, snapOf, zoneSources, type GaugeGain } from "../src/ui/gauge";
 import { rulesOf } from "./helpers";
 
+/** 標準のルール（ゲージの倍率なし） */
+const STD = rulesOf("skill");
+
 const U = GAUGE_UNIT;
 const NO: [boolean, boolean] = [false, false];
 
@@ -34,28 +37,28 @@ const move = (r: number, c: number, targets: [number, number][]): MoveEvent => (
 describe("ゲージが溜まった量（前回描いたゲージとの差）", () => {
   it("1 手進んだら人ごとの前後の値を返し、増えていない人は null", () => {
     const snap = snapOf(3, 4, skills(["strong", "wall"], [2 * U, 5 * U]), NO);
-    const [a, b] = gaugeGains(snap, 3, 5, skills(["strong", "wall"], [6 * U, 5 * U]), NO);
-    expect(a).toEqual({ from: 2 * U, to: 6 * U, max: gaugeMax("strong"), full: false });
+    const [a, b] = gaugeGains(snap, 3, 5, skills(["strong", "wall"], [6 * U, 5 * U]), NO, STD);
+    expect(a).toEqual({ from: 2 * U, to: 6 * U, max: gaugeMax("strong", STD), full: false });
     expect(b).toBeNull();
   });
 
   it("使えるようになった手だけ full。満タンでも使えない・前から使えた・満タンでない手は full でない", () => {
-    const max = gaugeMax("firstaid");
+    const max = gaugeMax("firstaid", STD);
     const snap = snapOf(1, 0, skills(["firstaid", "firstaid"], [max - U, max - 3 * U]), NO);
-    const [a, b] = gaugeGains(snap, 1, 1, skills(["firstaid", "firstaid"], [max, max - U]), [true, false]);
+    const [a, b] = gaugeGains(snap, 1, 1, skills(["firstaid", "firstaid"], [max, max - U]), [true, false], STD);
     expect(a!.full).toBe(true);
     expect(b!.full).toBe(false);
     // 満タンになったが使えない（応急手当で体力が満タンなど）: 伸びるが光らない
-    const [held] = gaugeGains(snap, 1, 1, skills(["firstaid", "firstaid"], [max, max - U]), NO);
+    const [held] = gaugeGains(snap, 1, 1, skills(["firstaid", "firstaid"], [max, max - U]), NO, STD);
     expect(held).toEqual({ from: max - U, to: max, max, full: false });
     // 前の手から使えた: 光らない（増えていなければ何も出さない）
-    expect(gaugeGains(snapOf(1, 1, skills(["firstaid", null], [max, 0]), [true, false]), 1, 2, skills(["firstaid", null], [max, 0]), [true, false])).toEqual([null, null]);
+    expect(gaugeGains(snapOf(1, 1, skills(["firstaid", null], [max, 0]), [true, false]), 1, 2, skills(["firstaid", null], [max, 0]), [true, false], STD)).toEqual([null, null]);
   });
 
   it("満タンのまま使えない理由がなくなった手（補充で戻せる駒ができた・相手が王を決め終えたなど）は、増えていなくても光る", () => {
-    const max = gaugeMax("refill");
+    const max = gaugeMax("refill", STD);
     const snap = snapOf(4, 9, skills(["refill", "wall"], [max, 0]), NO);
-    const [a, b] = gaugeGains(snap, 4, 10, skills(["refill", "wall"], [max, 0]), [true, false]);
+    const [a, b] = gaugeGains(snap, 4, 10, skills(["refill", "wall"], [max, 0]), [true, false], STD);
     expect(a).toEqual({ from: max, to: max, max, full: true });
     expect(gainText(a!)).toBeNull();
     expect(zoneSources(move(2, 2, []), a)).toEqual([]);
@@ -65,14 +68,14 @@ describe("ゲージが溜まった量（前回描いたゲージとの差）", (
   it("演出しない: 前回の描画がない・別の対局・2 手以上進んだ・戻った（待った）・減った（使って 0）・選び終える前", () => {
     const sk = skills(["strong", "wall"], [4 * U, 4 * U]);
     const snap = snapOf(2, 6, skills(["strong", "wall"], [U, U]), NO);
-    expect(gaugeGains(null, 2, 7, sk, NO)).toEqual([null, null]);
-    expect(gaugeGains(snap, 3, 7, sk, NO)).toEqual([null, null]);
-    expect(gaugeGains(snap, 2, 8, sk, NO)).toEqual([null, null]);
-    expect(gaugeGains(snap, 2, 5, sk, NO)).toEqual([null, null]);
-    expect(gaugeGains(snap, 2, 6, sk, NO)).toEqual([null, null]);
-    expect(gaugeGains(snapOf(2, 6, sk, NO), 2, 7, skills(["strong", "wall"], [0, 4 * U]), NO)).toEqual([null, null]);
-    expect(gaugeGains(snap, 2, 7, skills(["strong", "wall"], [4 * U, 4 * U], false), NO)).toEqual([null, null]);
-    expect(gaugeGains(snap, 2, 7, undefined, NO)).toEqual([null, null]);
+    expect(gaugeGains(null, 2, 7, sk, NO, STD)).toEqual([null, null]);
+    expect(gaugeGains(snap, 3, 7, sk, NO, STD)).toEqual([null, null]);
+    expect(gaugeGains(snap, 2, 8, sk, NO, STD)).toEqual([null, null]);
+    expect(gaugeGains(snap, 2, 5, sk, NO, STD)).toEqual([null, null]);
+    expect(gaugeGains(snap, 2, 6, sk, NO, STD)).toEqual([null, null]);
+    expect(gaugeGains(snapOf(2, 6, sk, NO), 2, 7, skills(["strong", "wall"], [0, 4 * U]), NO, STD)).toEqual([null, null]);
+    expect(gaugeGains(snap, 2, 7, skills(["strong", "wall"], [4 * U, 4 * U], false), NO, STD)).toEqual([null, null]);
+    expect(gaugeGains(snap, 2, 7, undefined, NO, STD)).toEqual([null, null]);
   });
 
   it("「+N」は四捨五入した整数。1 に満たない微増は出さない", () => {
@@ -119,7 +122,7 @@ describe("engine の局面で: 打った手の差がそのまま engine の足�
       const [r, c] = zone ?? cells[0];
       g = playMove(g, r, c, kind);
       const m = lastMoveOf(g)!;
-      const gains = gaugeGains(before, 1, g.ply, g.skills, NO);
+      const gains = gaugeGains(before, 1, g.ply, g.skills, NO, STD);
       const mover = gains[m.player];
       if (zone && mover && !mover.full && mover.to < mover.max) {
         expect(zoneSources(m, mover).length).toBeGreaterThan(0);

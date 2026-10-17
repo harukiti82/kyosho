@@ -130,6 +130,7 @@ export type HttpErrorCode =
   | "method_not_allowed"
   | "forbidden_origin" // 許可していない Origin（同一オリジンと ALLOWED_ORIGINS 以外）
   | "upgrade_required" // /ws に WebSocket 以外で来た
+  | "unauthorized" // エンドレスの管理用の API で、トークンが違う
   | "internal";
 
 // ---- WebSocket: クライアント → サーバー ----
@@ -303,6 +304,9 @@ export type WsErrorCode =
   | "stale_move" // 手を考えた局面がもう進んでいる（制限時間切れの自動の手と入れ違い）
   | "stale_rematch" // 終局していない・gameNo が今の対局と違う（再戦が成立した後に届いた二重押しなど）
   | "opponent_left" // 退室した相手に再戦を申し込んだ
+  | "no_game" // エンドレス: 対局中でない（挑戦がない・終局後）のに手を送った
+  | "run_active" // エンドレス: 挑戦の途中で start を送った
+  | "stale_next" // エンドレス: 次の対局を始められない（対局中・負けの後・game が今の対局と違う）
   | "internal";
 
 export type ServerMessage = JoinedMessage | StateMessage | ErrorMessage;
@@ -318,3 +322,119 @@ export const CLOSE = {
   /** 放置で部屋が消えた */
   expired: 4010,
 } as const;
+
+// ---- エンドレスマッチ（.agent/online-protocol.md「エンドレスマッチ」） ----
+// CPU に勝つたびに CPU が強くなり、負けたら終わる。CPU の手はサーバー（端末ごとの Durable Object）が打ち、連勝数はサーバーだけが数える。
+// 本番では機能フラグ（wrangler の var ENDLESS_ENABLED が "1"）のときだけ、/api/endless の下と health の endless が出る。
+
+/** エンドレスマッチの API の接頭辞 */
+export const ENDLESS_PATH = `${API_PATH}/endless`;
+/** 端末 ID（ランダム 16 バイトの base64url、22 文字）。秘密ではない（ランキングの自分の行・WebSocket のパスに使う） */
+export const DEVICE_ID_PATTERN = /^[A-Za-z0-9_-]{22}$/;
+/** 1 手の制限時間（秒）。数えるのは対局中（プレイヤーの手番で WebSocket がつながっている間）だけ */
+export const ENDLESS_TURN_SECONDS = 45;
+/** CPU が考えている演出の間（ミリ秒）。プレイヤーの手の後、これだけ待ってから CPU の手を打つ */
+export const ENDLESS_CPU_DELAY_MS = 700;
+/** 同じ接続元からの端末の発行の上限（DEVICE_WINDOW_MS ごと）。超えると 429 too_many_requests */
+export const DEVICE_LIMIT = 10;
+export const DEVICE_WINDOW_MS = 10 * 60_000;
+/** ランキングの上位の件数 */
+export const RANKING_TOP = 50;
+
+/** GET /api/health の応答。endless はエンドレスマッチを使える（機能フラグが on）ときだけ true */
+export interface HealthResponse {
+  ok: true;
+  endless?: true;
+}
+
+/** POST /api/endless/devices の応答（201）。localStorage に保存し、WebSocket の join に token を付ける */
+export interface DeviceResponse {
+  device: string;
+  token: string;
+}
+
+/** ランキングの 1 行。name は検証済みの名前（名前なしは null。画面は「名無し」）。同じ連勝数は同じ順位 */
+export interface RankEntry {
+  rank: number;
+  name: string | null;
+  best: number;
+  /** 問い合わせた端末の行 */
+  me?: true;
+}
+
+/** GET /api/endless/ranking の応答。device を付けると me にその端末の順位（ランキングに載っていなければ null） */
+export interface RankingResponse {
+  top: RankEntry[];
+  me: { rank: number; best: number } | null;
+  /** ランキングに載っている端末の数 */
+  total: number;
+}
+
+/** CPU の強さ（engine/endless.ts の EndlessCpu と同じ値） */
+export type EndlessCpuName = "easy" | "normal" | "hard" | "d300" | "d1000" | "d3000" | "d10000";
+
+/** 対局の段階（engine/endless.ts の EndlessStage に、何戦目かを足したもの） */
+export interface EndlessStageInfo {
+  /** 何戦目か（1 始まり。それまでの連勝数 + 1） */
+  no: number;
+  base: EndlessCpuName;
+  next: EndlessCpuName;
+  /** CPU の手番ごとに next を使う確率 */
+  mix: number;
+  /** CPU の体力に足した値 */
+  hp: number;
+}
+
+/** 挑戦の今の対局の状態。playing: 対局中 / won: 勝った（次の対局へ）/ drawn: 引き分け（同じ段階をもう一度）/ lost: 負けた（挑戦の終わり） */
+export type EndlessPhase = "playing" | "won" | "drawn" | "lost";
+
+export interface EndlessRunInfo {
+  phase: EndlessPhase;
+  /** 連勝数（勝った対局を含む） */
+  wins: number;
+  /** この挑戦の何局目か（1 始まり。引き分けも数える） */
+  game: number;
+  /** プレイヤーの席（1 局ごとに先手と後手を入れ替える。1 局目は先手） */
+  you: Player;
+  stage: EndlessStageInfo;
+  /** viewFor(対局, you)。CPU の王・副将の場所は含まない */
+  view: PlayerView;
+  /** プレイヤーの手番の残り時間。CPU の手番・カードを選ぶ間・対局中でなければ null */
+  clock: TurnClockInfo | null;
+  /** CPU が考えている（CPU の手番。ENDLESS_CPU_DELAY_MS の後に手が届く） */
+  thinking: boolean;
+}
+
+/** エンドレスマッチの状態。join・手・CPU の手・時間切れ・対局の始まりのたびに届く */
+export interface EndlessStateMessage {
+  type: "endless";
+  /** 今の挑戦。まだ挑戦していなければ null */
+  run: EndlessRunInfo | null;
+  /** この端末の最高の連勝数（サーバーが数えた値） */
+  best: number;
+  /** サーバーが受け付けた名前（ランキングに出る名前）。名前なしは null */
+  name: string | null;
+}
+
+/** 接続直後に 1 回。token は端末のトークン。name は自分の名前（net/name.ts で検証。不正なら名前なし） */
+export interface EndlessJoinMessage {
+  type: "join";
+  token: string;
+  name?: string;
+}
+
+/** 新しい挑戦を始める（挑戦がない・前の挑戦が負けで終わったときだけ） */
+export interface EndlessStartMessage {
+  type: "start";
+}
+
+/** 勝った・引き分けの後に次の対局を始める。game は終わった対局の番号（run.game）。違えば stale_next（二重押し） */
+export interface EndlessNextMessage {
+  type: "next";
+  game: number;
+}
+
+/** エンドレスマッチのサーバー → クライアント */
+export type EndlessServerMessage = EndlessStateMessage | ErrorMessage;
+
+export type EndlessClientMessage = EndlessJoinMessage | EndlessStartMessage | EndlessNextMessage | MoveMessage | PickMessage | RerollMessage | SkillMessage;

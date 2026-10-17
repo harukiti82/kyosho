@@ -1058,7 +1058,7 @@ button {
   font-weight: 900;
   letter-spacing: 0.02em;
   flex: 0 1 auto;
-  min-width: 2.5em;
+  min-width: 3em;
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -4123,6 +4123,91 @@ button {
 a.btn {
   display: inline-block;
   text-decoration: none;
+}
+
+/* ---- エンドレスマッチのランキング（ui/ranking.ts） ---- */
+/* 上に自分の順位（順位だけ大きく）、下に上位の列。自分の行は手番の名札と同じく白の板に反転して左端に黒の帯 */
+.rank-me {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.8rem;
+  margin: 0 0 0.6rem;
+}
+.rank-me-line {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+}
+.rank-me-label {
+  font-size: 0.85rem;
+  color: var(--ink-muted);
+}
+.rank-me-no {
+  font-family: var(--font-display);
+  font-size: var(--point-size);
+  font-weight: 900;
+  color: #fff;
+}
+.rank-me-best {
+  font-size: 0.9rem;
+  font-weight: 800;
+}
+.rank-wait,
+.rank-total {
+  font-size: var(--note-size);
+  color: var(--ink-dim);
+}
+.rank-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: min(55dvh, 26rem);
+  overflow-y: auto;
+  font-variant-numeric: tabular-nums;
+}
+.rank-row {
+  display: grid;
+  grid-template-columns: 2.6rem minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 0.6rem;
+  padding: 0.4rem 0.7rem;
+  border-bottom: 1px solid var(--line);
+}
+.rank-row.me {
+  background: linear-gradient(90deg, var(--navy-950) 0 0.35rem, #fff 0.35rem);
+  color: var(--navy-900);
+  border-bottom-color: transparent;
+}
+.rank-no {
+  font-family: var(--font-display);
+  font-weight: 900;
+  text-align: right;
+}
+.rank-name {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-weight: 700;
+}
+.rank-name.nameless {
+  color: var(--ink-dim);
+}
+.rank-row.me .rank-name.nameless {
+  color: var(--navy-700);
+}
+.rank-best strong {
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  font-weight: 900;
+}
+.rank-best small {
+  margin-left: 0.15rem;
+  font-size: 0.72rem;
+}
+.rank-empty {
+  padding: 0.6rem 0;
+  color: var(--ink-dim);
 }
 
 /* ---- 想定外のエラーの知らせ（ui/crash.ts）。トーストと同じ白い斜めの板を下に出し、画面はそのまま残す ---- */

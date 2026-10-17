@@ -3,6 +3,7 @@
 // 上には自分の名前の名札（押すとその場で変える。ui/namedialog.ts）。
 // どの対局も設定メニューで保存したルール（変えなければ標準）で始まる。表示と入力だけで、対局は App が始める。
 // 初めての人が遊び方を終えるまでは、CPU対戦・マルチの鍵に錠を添え、押すと act.locked（ui/intro.ts）。
+// CPU の強さの段には、サーバーがエンドレスマッチを使えるとき（/api/health の endless）だけ「エンドレス」と「ランキング」を出す。
 
 import { CPU_LEVELS, type CpuLevel } from "../engine/cpu";
 import type { RuleSet } from "../engine/rules";
@@ -16,6 +17,10 @@ export interface MenuActions {
   online: () => void;
   /** オンライン対戦を合言葉で（入力のダイアログを出す） */
   phrase: () => void;
+  /** エンドレスマッチ（続きがあれば続きから、なければ新しい挑戦） */
+  endless: () => void;
+  /** エンドレスマッチのランキング */
+  ranking: () => void;
   /** 遊び方（チュートリアル）を前回の位置から始める */
   learn: () => void;
   /** スキル練習で id のカードの練習を始める */
@@ -52,6 +57,9 @@ export class Menu {
     resume: byId("menu-resume"),
     online: byId("menu-online"),
     phrase: byId("menu-phrase"),
+    endless: byId("menu-endless"),
+    endlessState: byId("menu-endless-state"),
+    ranking: byId("menu-ranking"),
     learn: byId("menu-learn"),
     learnState: byId("menu-learn-state"),
     skills: byId("menu-skills"),
@@ -83,6 +91,8 @@ export class Menu {
     open(this.el.pvp, () => act.pvp());
     open(this.el.online, () => act.online());
     open(this.el.phrase, () => act.phrase());
+    open(this.el.endless, () => act.endless());
+    this.el.ranking.addEventListener("click", () => act.ranking());
     for (const b of this.el.root.querySelectorAll<HTMLElement>("[data-level]")) {
       const level = b.dataset.level as CpuLevel;
       if (CPU_LEVELS.includes(level)) b.addEventListener("click", () => act.cpu(level));
@@ -182,6 +192,19 @@ export class Menu {
     this.setGate(this.gate);
   }
 
+  /** エンドレスマッチの入口（エンドレス・ランキング）を出す（サーバーの機能フラグが on の公開先だけ） */
+  enableEndless() {
+    this.el.endless.hidden = false;
+    this.el.ranking.hidden = false;
+    this.setGate(this.gate);
+  }
+
+  /** 「エンドレス」に添える状態（例: 「3連勝中」「最高 5」）。空なら添えない */
+  setEndlessState(text: string) {
+    // 先頭の空白は読み上げで「エンドレス」と区切るため
+    this.el.endlessState.textContent = text ? ` ${text}` : "";
+  }
+
   /**
    * 遊び方を終えるまで閉じる入口（null で全部開ける）。閉じた鍵に錠（読み上げは LOCKED_TITLE）を添え、遊び方を主な項目にする。
    * マルチは中に開いている入口（合言葉）があれば開ける
@@ -191,6 +214,7 @@ export class Menu {
     const phrase = !!gate?.phrase && !this.el.phrase.hidden;
     this.lock(this.el.cpu, !!gate);
     this.lock(this.el.pvp, !!gate);
+    this.lock(this.el.endless, !!gate);
     this.lock(this.el.online, !!gate);
     this.lock(this.el.phrase, !!gate && !phrase);
     this.lock(this.el.multi, !!gate && !phrase);

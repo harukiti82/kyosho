@@ -502,7 +502,7 @@ const SKILL_LESSONS: readonly Lesson[] = [
       return gameFrom(this.rules, {
         stones: stones([["h8", B, "fu"], ["h7", W, "fu"], ["h6", W, "fu"], ["h5", W, "fu"], ["b8", B, "fu"], ["b7", W, "fu"]]),
         hands: [hand({ fu: 3 }), hand({ fu: 3 })],
-        skills: [{ card: "strong", gauge: gaugeMax("strong") - 4 * GAUGE_UNIT }, {}],
+        skills: [{ card: "strong", gauge: gaugeMax("strong", this.rules) - 4 * GAUGE_UNIT }, {}],
       });
     },
     answers: [{ at: parseCell("h4"), kind: "fu" }],
@@ -515,7 +515,7 @@ const SKILL_LESSONS: readonly Lesson[] = [
       return `そこで裏返せるのは ${pv.targets.length} つで、ゲージは ${gain} しか溜まらない。多く裏返せるマスに置く`;
     },
     done(m, g, after) {
-      const full = after.skills!.sides[0].gauge >= gaugeMax(after.skills!.sides[0].card!);
+      const full = after.skills!.sides[0].gauge >= gaugeMax(after.skills!.sides[0].card!, after.rules);
       return `${PIECES[m.kind].name}で ${m.targets.length} つ裏返して、ゲージが ${gaugeGain(g, after)} 溜まった。${full ? "満タンになったので、次の自分の手番で使える。" : ""}`;
     },
   },
@@ -530,7 +530,7 @@ const SKILL_LESSONS: readonly Lesson[] = [
       return gameFrom(this.rules, {
         stones: stones([["d8", B, "kin"], ["d7", W, "fu"], ["d6", W, "fu"]]),
         hands: [hand({ fu: 3 }), hand({ fu: 3 })],
-        skills: [{ card: "strong", gauge: gaugeMax("strong") }, {}],
+        skills: [{ card: "strong", gauge: gaugeMax("strong", this.rules) }, {}],
       });
     },
     answers: [{ at: parseCell("d5"), kind: "fu", skill: true }],

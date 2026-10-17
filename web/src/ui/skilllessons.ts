@@ -13,7 +13,7 @@ import { B, cells, hand, label, labels, skillOnly, std, stones, W, type Lesson }
 import { skillText } from "./ruletext";
 
 /** 満タンのカード（自分）と、カードを持たない相手 */
-const full = (id: SkillId): [PositionSkill, PositionSkill] => [{ card: id, gauge: gaugeMax(id) }, {}];
+const full = (id: SkillId): [PositionSkill, PositionSkill] => [{ card: id, gauge: gaugeMax(id, std()) }, {}];
 
 /** 名札のカードを使ってから置く課題（例: 「名札の強打を押してから、光っているマスに歩を置く」） */
 const useTask = (id: SkillId, then: string) => `名札の${SKILLS[id].name}を押してから、${then}`;

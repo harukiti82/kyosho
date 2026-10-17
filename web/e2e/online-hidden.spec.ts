@@ -1,4 +1,4 @@
-// /api がない公開先（vite preview。GitHub Pages と同じ）: オンライン対戦の入口（招待リンク・合言葉）を出さず、既存のモードは今までどおり。
+// /api がない公開先（vite preview。GitHub Pages と同じ）: オンライン対戦の入口（招待リンク・合言葉）とエンドレスマッチの入口を出さず、既存のモードは今までどおり。
 // 招待リンクを開いても、つながらないことを案内してメニューに戻せる
 
 import { expect, test } from "@playwright/test";
@@ -18,6 +18,13 @@ test("/api に届かなければオンラインの入口を出さない。CPU �
   await expect(page.locator("#menu-online")).toBeHidden();
   await expect(page.locator("#menu-phrase")).toBeHidden();
   await page.locator("#menu-modes .menu-back").click();
+  // エンドレスマッチ（サーバーが打つ CPU）も出さない。プライバシーの説明の行も出さない
+  await page.locator("#menu-cpu").click();
+  await expect(page.locator("#menu-levels [data-level=hard]")).toBeVisible();
+  await expect(page.locator("#menu-endless")).toBeHidden();
+  await expect(page.locator("#menu-ranking")).toBeHidden();
+  await page.locator("#menu-levels .menu-back").click();
+  await expect(page.locator("#about-endless")).toBeHidden();
   await openSettings(page);
   await expect(page.locator("#host-field")).toBeHidden();
   await startGame(page, { mode: "cpu", preset: "v10" });

@@ -1,6 +1,6 @@
 # 深く読む CPU（engine/deepcpu.ts）
 
-エンドレスマッチの強い段階に使う CPU。今の easy / normal / hard（`cpu.ts` の `chooseMove`）の手は変えず、別の入口 `chooseDeep` にした。画面・サーバーにはまだ組み込んでいない（2026-10-17）。
+エンドレスマッチの強い段階に使う CPU。今の easy / normal / hard（`cpu.ts` の `chooseMove`）の手は変えず、別の入口 `chooseDeep` にした。エンドレスマッチ（`engine/endless.ts` の `cpuTurn`。サーバーの `server/src/endless.ts` が打つ）で予算 300・1000・3000・10000 を使う。段階の表と測定は `.agent/endless.md`。
 
 ## 使い方
 

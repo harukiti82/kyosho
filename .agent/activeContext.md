@@ -5,10 +5,10 @@
 
 ## 現在の対象
 
-- 何を / どこを: 深く読む CPU（エンドレスマッチの準備）。`web/src/engine/deepcpu.ts` の `chooseDeep(view, { nodes }, rng)`・`web/test/deepcpu.test.ts`・`npm run balance -- deep`（`web/scripts/deep*.{ts,mjs}`）。画面・サーバーにはまだ組み込んでいない。依頼元セッション（master）経由
-- ステータス: PR でマージ（画面に出ないので本番の確認はデプロイの成功だけ）。最終更新 2026-10-17
-- 要点: 予算 10000 で対 hard 94.3%・対 normal 95.5%（各 400 局）、1 手番は workerd の中央値 107ms。直接対戦で強さが並ぶのは 1000 → 3000 → 10000 まで。30000・100000 は 10000 に負け越す（未解決。`.agent/deep-cpu.md`）
-- 前の対象: メニューの名前の名札（PR #66）・1 画面に収める（#64）・手番の知らせ（#62）・名前（#60）・初めての人は遊び方から（#59）・合言葉（#57）
+- 何を / どこを: エンドレスマッチ（CPU に勝つたびに強くなる・負けたら終わり・全員のランキング）。`web/src/engine/endless.ts`（短い対局・段階の表 39 段・`cpuTurn`）、`server/src/endless.ts`（1 端末 = 1 DO）・`server/src/ranking.ts`（SQLite）、`web/src/net/endless.ts`・`web/src/ui/app.ts`（「エンドレスマッチ」節）・`web/src/ui/ranking.ts`。依頼元セッション（master）経由
+- ステータス: 本番には機能フラグ off（`server/wrangler.jsonc` の `ENDLESS_ENABLED: "0"`）で入れた。最終更新 2026-10-17
+- 要点: 実測の見込み平均連勝数 normal 10.51・hard 10.55・deep:1000 18.17（各段階 400 局。`.agent/endless.md`）。フラグを on にするのは Workers の有料プランに上げた後（master / ユーザー）
+- 前の対象: 深く読む CPU（PR #68）・メニューの名前の名札（#66）・1 画面に収める（#64）
 
 ## スキルの要点
 
@@ -32,7 +32,7 @@
 
 ## 未解決・次の一手
 
-- [ ] エンドレスマッチ: 深く読む CPU をサーバーの Durable Object で打つ段階の設計（何連勝目からどの予算か・待ち時間）。予算 10000 より上を強くするなら、先に `.agent/deep-cpu.md`「未解決」を直す。本番の DO の中で 1 手の時間を測り直す
+- [ ] エンドレスマッチを on にする: ユーザーが Workers を有料プランに上げる → `server/wrangler.jsonc` の `ENDLESS_ENABLED` を `"1"` にする PR → 本番の DO で予算 10000 の 1 手の時間を測る。管理用に `npx wrangler secret put ENDLESS_ADMIN_TOKEN`。ユーザーに見てもらう: 入口の置き場所（CPU の強さの段）・「Lv N」の見せ方・39 段の長さ・1 局目は先手で交互・切断中は時計を止めること
 - [ ] 1 画面に収める: ユーザーに見てもらう（PC の右の列の配置・スマホのタブのシート・背の低いスマホで遊び方の間はタブをしまうこと・遊び方の盤 34px）
 - [ ] 手番の知らせ: ユーザーに見てもらう（帯の位置・長さ 1.2 秒・パスでも出すこと・効果音なし）
 - [ ] 名前: ユーザーに見てもらう（メニューの名札をロゴの上に・「名前を決める」の黄の字・オンラインの前の案内を 1 回だけ・招待された人は参加の確認の欄・設定の 2 人対戦の 2 つの欄・10 文字・終局画面の見出し「〇〇の勝ち」）。悪い言葉の対策（NG ワード・相手の名前を隠す設定）を足すかはユーザーの判断。エンドレスマッチのランキングの名前もこの `Saved.name` の前提
@@ -56,7 +56,7 @@
 
 ## 現フェーズで Read すべき設計書
 
-- 深く読む CPU・エンドレスマッチ: `.agent/deep-cpu.md` → `web/src/engine/deepcpu.ts`, `web/test/deepcpu.test.ts`, `web/scripts/deep-run.mjs`, `web/src/engine/skillcpu.ts`（`chooseSkillUse` / `viceWith`）
+- エンドレスマッチ: `.agent/endless.md`・`.agent/online-protocol.md`「エンドレスマッチ」→ `web/src/engine/endless.ts`, `server/src/endless.ts`, `server/src/ranking.ts`, `web/src/net/endless.ts`, `web/src/ui/app.ts`（「エンドレスマッチ」節）, `server/test/endless.test.ts`, `web/test/endless.test.ts`, `web/e2e/online/endless.spec.ts`。深く読む CPU は `.agent/deep-cpu.md`
 - 1 画面に収める: AGENTS.md の「1 画面に収める」の項 → `web/src/style.css`（「レイアウト」節・末尾の「1 画面に収める」節）, `web/e2e/fit.spec.ts`
 - 手番の知らせ: AGENTS.md の「手番の知らせ」の項 → `web/src/ui/turncue.ts`, `web/src/ui/fx.ts`（`turnCue`）, `web/src/ui/app.ts`（`queueTurnCue` / `syncTurnCue`・`onState` の `hush`）, `web/test/turncue.test.ts`, `web/e2e/turncue.spec.ts`, `web/e2e/online/turncue.spec.ts`
 - 名前: AGENTS.md の「プレイヤーの名前」の項・`.agent/online-protocol.md`「名前」→ `web/src/net/name.ts`, `web/src/ui/setup.ts`（`Saved.name` / `pvpNames`・`checkName`）, `web/src/ui/app.ts`（`playerName` / `shortName` / `name`）, `server/src/room.ts`（`names`）, `server/test/name.test.ts`, `web/e2e/names.spec.ts`, `web/e2e/online/names.spec.ts`。メニューの名札・オンラインの前の案内は `web/src/ui/namedialog.ts`, `web/src/ui/menu.ts`（`setName`）, `web/src/ui/app.ts`（「名前」節）, `web/e2e/name-menu.spec.ts`, `web/e2e/online/name-ask.spec.ts`

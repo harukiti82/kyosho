@@ -6,6 +6,7 @@ import { isLegal, type GameState, type PlayerView } from "../../web/src/engine/g
 import { KIND_ORDER, presetById, type PieceKind, type PresetId, type RuleSet } from "../../web/src/engine/rules";
 import type {
   CreateRoomResponse,
+  EndlessStateMessage,
   ErrorMessage,
   HostSeat,
   JoinedMessage,
@@ -35,10 +36,13 @@ export const stubOf = (roomId: string) => (env.ROOMS as DurableObjectNamespace<R
 
 const TIMEOUT_MS = 3000;
 
+/** 対局の部屋とエンドレスマッチのサーバーからのメッセージ */
+type AnyMessage = ServerMessage | EndlessStateMessage;
+
 export class Client {
   /** 受け取った生のテキスト（隠し情報の検査用） */
   readonly raw: string[] = [];
-  readonly msgs: ServerMessage[] = [];
+  readonly msgs: AnyMessage[] = [];
   closed: { code: number; reason: string } | null = null;
   private cursor = 0;
   private wake: (() => void) | null = null;
@@ -47,7 +51,7 @@ export class Client {
     ws.addEventListener("message", (e) => {
       const text = typeof e.data === "string" ? e.data : "";
       this.raw.push(text);
-      this.msgs.push(JSON.parse(text) as ServerMessage);
+      this.msgs.push(JSON.parse(text) as AnyMessage);
       this.wake?.();
     });
     ws.addEventListener("close", (e) => {
@@ -57,7 +61,12 @@ export class Client {
   }
 
   static async connect(roomId: string, headers: Record<string, string> = {}): Promise<Client> {
-    const res = await call(`/rooms/${roomId}/ws`, { headers: { Upgrade: "websocket", ...headers } });
+    return Client.connectTo(`/rooms/${roomId}/ws`, headers);
+  }
+
+  /** API のパス（/rooms/:id/ws・/endless/devices/:id/ws）に WebSocket でつなぐ */
+  static async connectTo(path: string, headers: Record<string, string> = {}): Promise<Client> {
+    const res = await call(path, { headers: { Upgrade: "websocket", ...headers } });
     if (!res.webSocket) throw new Error(`WebSocket にならない: ${res.status} ${await res.text()}`);
     res.webSocket.accept();
     return new Client(res.webSocket);
@@ -77,7 +86,7 @@ export class Client {
   }
 
   /** まだ読んでいない次のメッセージ */
-  async next(): Promise<ServerMessage> {
+  async next(): Promise<AnyMessage> {
     const deadline = Date.now() + TIMEOUT_MS;
     while (this.cursor >= this.msgs.length) {
       if (this.closed) throw new Error(`接続が閉じた: ${this.closed.code} ${this.closed.reason}`);
@@ -95,10 +104,10 @@ export class Client {
     return this.msgs[this.cursor++];
   }
 
-  async expect<T extends ServerMessage["type"]>(type: T): Promise<Extract<ServerMessage, { type: T }>> {
+  async expect<T extends AnyMessage["type"]>(type: T): Promise<Extract<AnyMessage, { type: T }>> {
     const m = await this.next();
     if (m.type !== type) throw new Error(`${type} のはずが ${JSON.stringify(m).slice(0, 300)}`);
-    return m as Extract<ServerMessage, { type: T }>;
+    return m as Extract<AnyMessage, { type: T }>;
   }
 
   async expectError(code: ErrorMessage["code"]): Promise<ErrorMessage> {

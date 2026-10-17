@@ -30,7 +30,7 @@ async function patch(roomId: string, fn: (g: GameState) => GameState) {
 /** p のカードを card にしてゲージを満たす */
 const charge = (p: Player, card: SkillId) => (g: GameState): GameState => {
   const sides: [SkillSide, SkillSide] = [g.skills!.sides[0], g.skills!.sides[1]];
-  sides[p] = { offer: [card], card, gauge: gaugeMax(card) };
+  sides[p] = { offer: [card], card, gauge: gaugeMax(card, g.rules) };
   return { ...g, skills: { ...g.skills!, sides, ready: true } };
 };
 

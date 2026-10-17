@@ -4,7 +4,7 @@
 
 import { SIZE, type Cell } from "./board";
 import type { GameState } from "./game";
-import type { PieceKind } from "./rules";
+import type { PieceKind, RuleSet } from "./rules";
 
 /** 基本の 8 枚 */
 export type BaseSkillId = "firstaid" | "bigheal" | "strong" | "omni" | "refill" | "wall" | "scout" | "kingmove";
@@ -71,8 +71,12 @@ export const ZONE_CELLS: readonly Cell[] = [[2, 2], [2, 5], [5, 2], [5, 5]];
 const ZONE_KEYS = new Set(ZONE_CELLS.map(([r, c]) => r * SIZE + c));
 export const isZone = (r: number, c: number) => ZONE_KEYS.has(r * SIZE + c);
 
+/** ルールでのゲージの長さ（点）。RuleSet.gauge（百分率。ないのは 100）を掛けて四捨五入、1 未満は 1 */
+export const skillLength = (id: SkillId, rules: Pick<RuleSet, "gauge">): number =>
+  rules.gauge === undefined || rules.gauge === 100 ? SKILLS[id].length : Math.max(1, Math.round((SKILLS[id].length * rules.gauge) / 100));
+
 /** 満タンの値（GAUGE_UNIT 単位） */
-export const gaugeMax = (id: SkillId) => SKILLS[id].length * GAUGE_UNIT;
+export const gaugeMax = (id: SkillId, rules: Pick<RuleSet, "gauge">) => skillLength(id, rules) * GAUGE_UNIT;
 
 /**
  * 1 手で手を打った人のゲージに入る点（GAUGE_UNIT 単位）。

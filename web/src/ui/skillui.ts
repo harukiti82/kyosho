@@ -2,7 +2,7 @@
 // タロットは名前と意味の対応だけを借り、絵柄は石・駒・盤の格子で描くゲーム独自のもの。ルールの計算はしない（engine の値を読むだけ）。
 
 import type { Player, RuleSet } from "../engine/rules";
-import { gaugeMax, GAUGE_UNIT, SKILLS, type SkillId, type SkillSide } from "../engine/skills";
+import { gaugeMax, GAUGE_UNIT, skillLength, SKILLS, type SkillId, type SkillSide } from "../engine/skills";
 import { byId, h } from "./dom";
 import { skillText } from "./ruletext";
 
@@ -96,6 +96,7 @@ export function tarotArt(id: SkillId): SVGSVGElement {
  */
 export function tarotCard(id: SkillId, rules: RuleSet, opts: { button?: boolean; cls?: string } = {}): HTMLElement {
   const s = SKILLS[id];
+  const len = skillLength(id, rules);
   const t = skillText(id, rules);
   const children = [
     h("span", { class: "tarot-num", text: s.numeral, attrs: { "aria-hidden": "true" } }),
@@ -104,10 +105,10 @@ export function tarotCard(id: SkillId, rules: RuleSet, opts: { button?: boolean;
     h("span", { class: "tarot-arcana", text: s.tarot }),
     h("span", { class: "tarot-effect", text: t.short }),
     // ゲージの長さ（いちばん長い大回復 80 を全幅）
-    h("span", { class: "tarot-len", attrs: { "aria-hidden": "true", style: `--len:${s.length / 80}` } }, [h("i"), h("b", { text: String(s.length) })]),
+    h("span", { class: "tarot-len", attrs: { "aria-hidden": "true", style: `--len:${len / 80}` } }, [h("i"), h("b", { text: String(len) })]),
   ];
   const cls = `tarot t-${id}${opts.cls ? ` ${opts.cls}` : ""}`;
-  const label = `${s.name}。${t.point}。${t.note}。ゲージ ${s.length}`;
+  const label = `${s.name}。${t.point}。${t.note}。ゲージ ${len}`;
   if (opts.button) {
     return h("button", { class: cls, attrs: { type: "button", "data-skill": id, "aria-pressed": "false", "aria-label": label, title: `${t.point}。${t.note}` } }, children);
   }
@@ -295,7 +296,8 @@ export class SkillPick {
 }
 
 /** ゲージの割合（0〜1） */
-export const gaugeRatio = (side: SkillSide) => (side.card ? Math.min(1, side.gauge / gaugeMax(side.card)) : 0);
+export const gaugeRatio = (side: SkillSide, rules: Pick<RuleSet, "gauge">) => (side.card ? Math.min(1, side.gauge / gaugeMax(side.card, rules)) : 0);
 
 /** ゲージの残り（満タンまでの点。小数は切り上げ） */
-export const gaugeLeft = (side: SkillSide) => (side.card ? Math.ceil((gaugeMax(side.card) - side.gauge) / GAUGE_UNIT) : 0);
+export const gaugeLeft = (side: SkillSide, rules: Pick<RuleSet, "gauge">) =>
+  side.card ? Math.ceil((gaugeMax(side.card, rules) - side.gauge) / GAUGE_UNIT) : 0;
