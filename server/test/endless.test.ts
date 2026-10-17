@@ -296,8 +296,8 @@ describe("改ざんと不正な入力", () => {
       expect(raw).not.toContain('"kings"');
       expect(raw).not.toContain('"undo"');
     }
-    // CPU は王を決めている（7 手まで）が、プレイヤーの view には候補しかない
-    expect(s.run!.view.oppKing.candidates.length).toBeGreaterThan(0);
+    // 相手（CPU）の王は公開情報（候補・返されたか・偵察したか）だけで、場所の項目はない（候補の数は CPU の乱数で 0 もありうる）
+    expect(Object.keys(s.run!.view.oppKing).sort()).toEqual(["candidates", "revealed", "scouted"]);
   }, 20_000);
 
   it("カードの選び直し・配られていないカード・2 回目の配り直しは illegal_skill", async () => {
