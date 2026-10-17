@@ -55,7 +55,7 @@ import {
   type RuleSet,
 } from "../engine/rules";
 import { chooseSkillPick, chooseSkillUse, viceWith, wantsReroll } from "../engine/skillcpu";
-import { gaugeMax, GAUGE_UNIT, isZone, SKILLS, VICE_PENALTY, type SkillBlock, type SkillId, type SkillNote, type SkillUse } from "../engine/skills";
+import { gaugeMax, GAUGE_UNIT, isZone, SKILLS, vicePenalty, type SkillBlock, type SkillId, type SkillNote, type SkillUse } from "../engine/skills";
 import { endlessRules, isEndlessRules } from "../engine/endless";
 import { dropDevice, EndlessSession, endlessWsUrl, getRanking, loadDevice, registerDevice, saveDevice } from "../net/endless";
 import {
@@ -178,7 +178,7 @@ const ENDLESS_CPU_NAME: Record<EndlessCpuName, string> = {
   d10000: "深読み4",
 };
 
-/** 段階の CPU の説明（例: 「イージー 体力−36」「イージーとノーマル」） */
+/** 段階の CPU の説明（例: 「イージー 体力−44」「イージーとノーマル」） */
 function stageText(st: EndlessStageInfo): string {
   const who = st.mix > 0 && st.base !== st.next ? `${ENDLESS_CPU_NAME[st.base]}と${ENDLESS_CPU_NAME[st.next]}` : ENDLESS_CPU_NAME[st.base];
   return st.hp === 0 ? who : `${who} 体力${st.hp > 0 ? "+" : "−"}${Math.abs(st.hp)}`;
@@ -3496,7 +3496,7 @@ export class App {
     if (vi.status !== "unset" || g.turn !== p) return null;
     const forced = vi.forcedNow;
     const on = forced || this.viceOn;
-    const pen = `副将を${verb(g.rules).hitIf}体力−${VICE_PENALTY}`;
+    const pen = `副将を${verb(g.rules).hitIf}体力−${vicePenalty(g.rules)}`;
     // 前の副将が残っていれば、置き直すとふつうの駒に戻る
     const back = vi.cell ? `今の副将 ${cellName(vi.cell[0], vi.cell[1])} はふつうの駒に戻ります。` : "";
     const note = vi.kept

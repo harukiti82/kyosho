@@ -5,9 +5,9 @@
 
 ## 現在の対象
 
-- 何を / どこを: エンドレスマッチ（CPU に勝つたびに強くなる・負けたら終わり・全員のランキング）。`web/src/engine/endless.ts`（短い対局・段階の表 39 段・`cpuTurn`）、`server/src/endless.ts`（1 端末 = 1 DO）・`server/src/ranking.ts`（SQLite）、`web/src/net/endless.ts`・`web/src/ui/app.ts`（「エンドレスマッチ」節）・`web/src/ui/ranking.ts`。依頼元セッション（master）経由
+- 何を / どこを: エンドレスマッチ（CPU に勝つたびに強くなる・負けたら終わり・全員のランキング）。`web/src/engine/endless.ts`（短い対局・段階の表 32 段・`cpuTurn`）、`server/src/endless.ts`（1 端末 = 1 DO）・`server/src/ranking.ts`（SQLite）、`web/src/net/endless.ts`・`web/src/ui/app.ts`（「エンドレスマッチ」節）・`web/src/ui/ranking.ts`。依頼元セッション（master）経由
 - ステータス: 本番には機能フラグ off（`server/wrangler.jsonc` の `ENDLESS_ENABLED: "0"`）で入れた。最終更新 2026-10-17
-- 要点: 実測の見込み平均連勝数 normal 10.51・hard 10.55・deep:1000 18.17（各段階 400 局。`.agent/endless.md`）。フラグを on にするのは Workers の有料プランに上げた後（master / ユーザー）
+- 要点: 短い対局は体力 88・84・駒 20・王の罰 19・副将の罰 10（`RuleSet.vice`）・ゲージ 0.5 倍（2026-10-17 ユーザーが候補 A を選んだ）。実測の見込み平均連勝数 normal 7.59・hard 9.02・deep:1000 14.06（各段階 400 局。`.agent/endless.md`）。フラグを on にするのは Workers の有料プランに上げた後（master / ユーザー）
 - 前の対象: 深く読む CPU（PR #68）・メニューの名前の名札（#66）・1 画面に収める（#64）
 
 ## スキルの要点
@@ -32,7 +32,7 @@
 
 ## 未解決・次の一手
 
-- [ ] エンドレスマッチを on にする: ユーザーが Workers を有料プランに上げる → `server/wrangler.jsonc` の `ENDLESS_ENABLED` を `"1"` にする PR → 本番の DO で予算 10000 の 1 手の時間を測る。管理用に `npx wrangler secret put ENDLESS_ADMIN_TOKEN`。ユーザーに見てもらう: 入口の置き場所（CPU の強さの段）・「Lv N」の見せ方・39 段の長さ・1 局目は先手で交互・切断中は時計を止めること
+- [ ] エンドレスマッチを on にする: ユーザーが Workers を有料プランに上げる → `server/wrangler.jsonc` の `ENDLESS_ENABLED` を `"1"` にする PR → 本番の DO で予算 10000 の 1 手の時間を測る。管理用に `npx wrangler secret put ENDLESS_ADMIN_TOKEN`。ユーザーに見てもらう: 入口の置き場所（CPU の強さの段）・「Lv N」の見せ方・32 段の長さ（イージーの段を 6 段に縮めた）・1 局目は先手で交互・切断中は時計を止めること
 - [ ] 1 画面に収める: ユーザーに見てもらう（PC の右の列の配置・スマホのタブのシート・背の低いスマホで遊び方の間はタブをしまうこと・遊び方の盤 34px）
 - [ ] 手番の知らせ: ユーザーに見てもらう（帯の位置・長さ 1.2 秒・パスでも出すこと・効果音なし）
 - [ ] 名前: ユーザーに見てもらう（メニューの名札をロゴの上に・「名前を決める」の黄の字・オンラインの前の案内を 1 回だけ・招待された人は参加の確認の欄・設定の 2 人対戦の 2 つの欄・10 文字・終局画面の見出し「〇〇の勝ち」）。悪い言葉の対策（NG ワード・相手の名前を隠す設定）を足すかはユーザーの判断。エンドレスマッチのランキングの名前もこの `Saved.name` の前提

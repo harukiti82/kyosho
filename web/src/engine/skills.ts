@@ -51,6 +51,8 @@ export const SKILL_HEAL: Readonly<Record<"firstaid" | "bigheal", number>> = { fi
 export const KINGMOVE_RANGE = 2;
 /** 副将（スキルありで隠し王ありのルールだけ）を返されたときの罰（体力） */
 export const VICE_PENALTY = 15;
+/** そのルールの副将の罰（エンドレスの短い対局は RuleSet.vice で下げる） */
+export const vicePenalty = (rules: Pick<RuleSet, "vice">): number => rules.vice ?? VICE_PENALTY;
 /** 王を決めた後・副将を返された後、自分の手でこの手数以内に置く駒で副将を出す（期限の手で置いた駒が自動で副将になる） */
 export const VICE_DEADLINE = 7;
 /** 対局の前に配る枚数 */

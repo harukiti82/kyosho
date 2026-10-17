@@ -3,7 +3,7 @@
 
 import { kindsByValue, kindsInRules, KIND_ORDER, PIECES, REACH_MARK, type PieceKind, type RuleSet } from "../engine/rules";
 import { skillPool, wheelPool } from "../engine/game";
-import { FLIP_POINTS, KINGMOVE_RANGE, SKILL_HEAL, skillLength, SKILLS, VICE_DEADLINE, VICE_PENALTY, type SkillId } from "../engine/skills";
+import { FLIP_POINTS, KINGMOVE_RANGE, SKILL_HEAL, skillLength, SKILLS, VICE_DEADLINE, vicePenalty, type SkillId } from "../engine/skills";
 
 /**
  * ルールの 1 行: 要点の一言（大きく太く。1 行に 1 か所だけ）と、その下に小さく添える補足（括弧で囲まず、薄い字）。
@@ -57,7 +57,7 @@ export const anchorLine = (): Sentence => ({ point: "反対側の自分の駒も
 
 /** 副将（スキルありで隠し王ありのルール）のルールカードの 1 行 */
 export const viceLine = (r: RuleSet): Sentence => ({
-  point: `副将を${verb(r).hitIf}体力−${VICE_PENALTY}`,
+  point: `副将を${verb(r).hitIf}体力−${vicePenalty(r)}`,
   note: `王を決めた後、${VICE_DEADLINE}手ごとに置く駒を1つ副将にする。前の副将はふつうの駒に戻る。相手に見えない`,
 });
 
@@ -222,7 +222,7 @@ export function skillDetails(r: RuleSet): Sentence[] {
         note: `王を決めた次の手から ${VICE_DEADLINE} 手ずつ区切り、区切りごとに置き直す。前の副将はふつうの駒に戻り、副将はいつも 1 つまで。区切りの最後の手まで置かなければ、その手で置いた駒が副将になる。相手には見えない`,
       },
       {
-        point: `副将を${v.hitIf}体力 −${VICE_PENALTY}`,
+        point: `副将を${v.hitIf}体力 −${vicePenalty(r)}`,
         note: `通常のダメージに加えて減る。王と同じ手なら両方。${v.hitIf}副将はふつうの駒になり、次の区切りで新しい副将を置くまで副将はない。区切りはずれない`,
       },
     );

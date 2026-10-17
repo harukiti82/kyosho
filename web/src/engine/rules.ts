@@ -101,6 +101,8 @@ export interface RuleSet {
   gauge?: number;
   /** 配らないカード（運命の輪も引かない）。ないのは なし。エンドレスの短い対局だけが使う（URL・設定には載せない） */
   omit?: SkillId[];
+  /** 副将を返されたときの罰（体力）。ないのは標準の値（skills.ts の VICE_PENALTY。vicePenalty で読む）。エンドレスの短い対局だけが使う（URL・設定には載せない） */
+  vice?: number;
 }
 
 /** 設定値の範囲（設定画面・URL の検証で使う） */
@@ -293,6 +295,7 @@ export function sameRules(a: RuleSet, b: RuleSet): boolean {
     a.skills === b.skills &&
     (a.gauge ?? 100) === (b.gauge ?? 100) &&
     sameOmit(a.omit ?? [], b.omit ?? []) &&
+    a.vice === b.vice &&
     KIND_ORDER.every((k) => a.hand[k] === b.hand[k] && a.values[k] === b.values[k])
   );
 }

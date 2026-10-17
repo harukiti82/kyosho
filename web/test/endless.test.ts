@@ -15,7 +15,7 @@ import { createGame, dealSkills, gameFrom, isLegal, legalCells, pickSkill, playa
 import { cloneRules, KIND_ORDER, matchPreset, PIECES, presetById, sameRules, type PieceKind, type Player } from "../src/engine/rules";
 
 const PIECE_NAME = Object.fromEntries(KIND_ORDER.map((k) => [k, PIECES[k].name])) as Record<PieceKind, string>;
-import { gaugeMax, GAUGE_UNIT, skillLength, SKILL_ORDER, SKILLS } from "../src/engine/skills";
+import { gaugeMax, GAUGE_UNIT, skillLength, SKILL_ORDER, SKILLS, VICE_PENALTY, vicePenalty } from "../src/engine/skills";
 import { decodeRules, encodeRules } from "../src/ui/query";
 import { at } from "./helpers";
 import RULES_MD from "../../RULES.md?raw";
@@ -33,24 +33,32 @@ function mulberry(seed: number): () => number {
 }
 
 describe("短い対局のルール", () => {
-  it("標準から体力・持ち駒・ゲージ・配るカードだけを変える", () => {
+  it("標準から体力・持ち駒・王と副将の罰・ゲージ・配るカードだけを変える", () => {
     const r = endlessRules(1);
     const std = presetById("skill").rules;
-    expect(r.hp).toEqual([72, 67]);
-    expect(r.hand).toEqual({ fu: 4, yoko: 4, gin: 0, kaku: 2, kin: 1, hi: 2 });
-    expect(KIND_ORDER.reduce((n, k) => n + r.hand[k], 0)).toBe(13);
-    expect(r.gauge).toBe(40);
+    expect(r.hp).toEqual([88, 84]);
+    expect(r.hand).toEqual({ fu: 6, yoko: 6, gin: 0, kaku: 3, kin: 2, hi: 3 });
+    expect(KIND_ORDER.reduce((n, k) => n + r.hand[k], 0)).toBe(20);
+    expect(r.king).toEqual({ ...std.king, amount: 19 });
+    expect(vicePenalty(r)).toBe(10);
+    expect(vicePenalty(std)).toBe(VICE_PENALTY);
+    expect(r.gauge).toBe(50);
     expect(r.omit).toEqual(["judge"]);
-    expect({ ...r, hp: std.hp, hand: std.hand, gauge: undefined, omit: undefined }).toEqual({ ...std, gauge: undefined, omit: undefined });
+    expect({ ...r, hp: std.hp, hand: std.hand, king: std.king, vice: undefined, gauge: undefined, omit: undefined }).toEqual({
+      ...std,
+      vice: undefined,
+      gauge: undefined,
+      omit: undefined,
+    });
   });
 
   it("CPU の席の体力にだけ段階の値を足す（1 未満にはしない）", () => {
-    expect(endlessRules(1, 12).hp).toEqual([72, 79]);
-    expect(endlessRules(0, -36).hp).toEqual([36, 67]);
-    expect(endlessRules(0, -500).hp).toEqual([1, 67]);
+    expect(endlessRules(1, 12).hp).toEqual([88, 96]);
+    expect(endlessRules(0, -44).hp).toEqual([44, 84]);
+    expect(endlessRules(0, -500).hp).toEqual([1, 84]);
     // 定数を書き換えない
-    expect(ENDLESS_HP).toEqual([72, 67]);
-    expect(ENDLESS_HAND.fu).toBe(4);
+    expect(ENDLESS_HP).toEqual([88, 84]);
+    expect(ENDLESS_HAND.fu).toBe(6);
   });
 
   it("どのプリセットとも別のルールで、URL に載せると倍率・配らないカードが落ちて同じルールに戻らない", () => {
@@ -58,20 +66,23 @@ describe("短い対局のルール", () => {
     expect(matchPreset(r)).toBeNull();
     expect(sameRules(r, { ...r, gauge: 100 })).toBe(false);
     expect(sameRules(r, { ...r, omit: [] })).toBe(false);
+    expect(sameRules(r, { ...r, vice: undefined })).toBe(false);
     expect(sameRules(r, cloneRules(r))).toBe(true);
     expect(sameRules({ ...presetById("skill").rules, gauge: 100, omit: [] }, presetById("skill").rules)).toBe(true);
     const back = decodeRules(encodeRules(r)).rules;
     expect(back.gauge).toBeUndefined();
+    expect(back.vice).toBeUndefined();
     expect(sameRules(back, r)).toBe(false);
   });
 
   it("ゲージの長さは倍率を掛けて四捨五入（1 未満は 1）", () => {
     const r = endlessRules(0);
-    expect(skillLength("strong", r)).toBe(10); // 26 × 0.4 = 10.4
-    expect(skillLength("omni", r)).toBe(13); // 12.8
-    expect(skillLength("bigheal", r)).toBe(72);
-    expect(skillLength("wall", r)).toBe(8);
-    expect(gaugeMax("wall", r)).toBe(8 * GAUGE_UNIT);
+    expect(skillLength("strong", r)).toBe(13); // 26 × 0.5
+    expect(skillLength("omni", r)).toBe(16);
+    expect(skillLength("bigheal", r)).toBe(90);
+    expect(skillLength("wall", r)).toBe(10);
+    expect(skillLength("scout", r)).toBe(12);
+    expect(gaugeMax("wall", r)).toBe(10 * GAUGE_UNIT);
     expect(skillLength("wall", { gauge: 1 })).toBe(1);
     for (const id of SKILL_ORDER) expect(skillLength(id, presetById("skill").rules)).toBe(SKILLS[id].length);
   });
@@ -92,7 +103,7 @@ describe("短い対局のルール", () => {
   it("同じゲージの値でも、短い対局では満タンで使える（標準ではまだ溜まっていない）", () => {
     const pos = {
       stones: [{ at: at("d4"), owner: 0, kind: "fu" }, { at: at("d5"), owner: 1, kind: "fu" }, { at: at("e5"), owner: 0, kind: "fu" }],
-      skills: [{ card: "wall", gauge: 8 * GAUGE_UNIT }, { card: "strong" }],
+      skills: [{ card: "wall", gauge: 10 * GAUGE_UNIT }, { card: "strong" }],
     } as const;
     const short = gameFrom(endlessRules(1), { ...pos, stones: [...pos.stones], skills: [{ ...pos.skills[0] }, { ...pos.skills[1] }] });
     const std = gameFrom(presetById("skill").rules, { ...pos, stones: [...pos.stones], skills: [{ ...pos.skills[0] }, { ...pos.skills[1] }] });
@@ -108,19 +119,24 @@ describe("RULES.md の短い対局の節", () => {
   it("体力・持ち駒・ゲージの長さ・配らないカードがコードと同じ", () => {
     const r = endlessRules(0);
     expect(section).toContain(`体力は先手 ${ENDLESS_HP[0]}・後手 ${ENDLESS_HP[1]}`);
+    expect(section).toContain(`王を返されたら体力 −${r.king.amount}、副将を返されたら体力 −${vicePenalty(r)}`);
     expect(section).toContain(`持ち駒は 1 人 ${KIND_ORDER.reduce((n, k) => n + ENDLESS_HAND[k], 0)} 個`);
     for (const k of KIND_ORDER) if (ENDLESS_HAND[k] > 0) expect(cell(PIECE_NAME[k]), k).toBe(ENDLESS_HAND[k]);
     for (const id of skillPool(r)) expect(cell(SKILLS[id].name), id).toBe(skillLength(id, r));
     expect(section).not.toMatch(/\| 巻き戻し \|/);
     expect(section).toContain(`運命の輪以外の ${wheelPool(r).length} 枚`);
     expect(section).toContain(`CPU の体力を ${ENDLESS_TAIL_HP} ずつ増やし続ける`);
+    expect(section).toContain(`CPU の体力を ${-stageOf(0).hp} 減らしたイージー`);
+    expect(section).toContain(`ゲージの長さは標準の ${(r.gauge ?? 100) / 100} 倍`);
   });
 });
 
 describe("段階", () => {
   it("1 戦目は体力の少ないイージー。CPU は段階が進むほど弱くならない（体力の差、混ぜる確率、強さの順）", () => {
-    expect(stageOf(0)).toEqual({ base: "easy", next: "easy", mix: 0, hp: -36 });
-    expect(ENDLESS_STAGES).toHaveLength(39);
+    expect(stageOf(0)).toEqual({ base: "easy", next: "easy", mix: 0, hp: -44 });
+    expect(stageOf(5)).toEqual({ base: "easy", next: "easy", mix: 0, hp: 0 });
+    expect(stageOf(6)).toEqual({ base: "easy", next: "normal", mix: 1 / 8, hp: 0 });
+    expect(ENDLESS_STAGES).toHaveLength(32);
     const rank = (c: string) => ENDLESS_CPUS.indexOf(c as never);
     for (let i = 1; i < ENDLESS_STAGES.length + 5; i++) {
       const a = stageOf(i - 1);
@@ -154,7 +170,7 @@ describe("段階", () => {
 describe("CPU の手番", () => {
   it("新しい対局は CPU だけが選び終えている（プレイヤーは配られた 3 枚から選ぶ）", () => {
     const g = newEndlessGame(1, stageOf(3), mulberry(5));
-    expect(g.rules.hp).toEqual([72, 67 + stageOf(3).hp]);
+    expect(g.rules.hp).toEqual([88, 84 + stageOf(3).hp]);
     expect(g.skills!.ready).toBe(false);
     expect(g.skills!.sides[0].card).toBeNull();
     expect(g.skills!.sides[0].offer).toHaveLength(3);
