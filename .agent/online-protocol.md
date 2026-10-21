@@ -211,7 +211,7 @@ state{phase:finished, view.result} ◀──────────────
 
 CPU に勝つたびに CPU が強くなり、負けたら終わる 1 人用のモード。CPU の手もサーバーが打ち（権威サーバー）、連勝数はサーバーだけが数える（画面から連勝数は受け取らない）。ルールと段階は `web/src/engine/endless.ts`（短い対局・`ENDLESS_STAGES`）、段階の値の測定は `.agent/endless.md`。
 
-- **機能フラグ**: `server/wrangler.jsonc` の var `ENDLESS_ENABLED` が `"1"` のときだけ `/api/endless` の下を受ける。それ以外（本番の既定は `"0"`）はほかの存在しないパスと同じ 404 で、Durable Object も起こさない。`GET /api/health` はフラグが on のときだけ `{"ok":true,"endless":true}`（off は今までどおり `{"ok":true}`）。画面は `endless: true` のときだけメニューに入口を出す（オフラインの PWA は health に届かないので出ない）。深く読む CPU が 1 手 約 0.1 秒の CPU を使うので、Workers の有料プランにしてから on にする
+- **機能フラグ**: `server/wrangler.jsonc` の var `ENDLESS_ENABLED` が `"1"` のときだけ `/api/endless` の下を受ける。それ以外（`"0"`。本番は 2026-10-22 から `"1"`）はほかの存在しないパスと同じ 404 で、Durable Object も起こさない。`GET /api/health` はフラグが on のときだけ `{"ok":true,"endless":true}`（off は今までどおり `{"ok":true}`）。画面は `endless: true` のときだけメニューに入口を出す（オフラインの PWA は health に届かないので出ない）。深く読む CPU が 1 手 約 0.1 秒の CPU を使うので、Workers の有料プランにしてから on にする
 - **1 端末 = 1 Durable Object**（`server/src/endless.ts` の `Endless`、binding `ENDLESS`、migration `v3`）。端末 ID から `idFromName`。端末のトークン・名前・最高の連勝数・今の挑戦を storage の `"device"` に 1 件で持ち、消さない（別の日に続きから）
 - **ランキング**: 全員で 1 つの Durable Object（`server/src/ranking.ts` の `Ranking`、binding `RANKING`、名前 `"global"`）の SQLite（`scores`: 端末 ID・名前・最高・達した時刻、`blocked`）。書くのは端末の Durable Object だけ（勝って最高を超えたとき `report`、名前を変えて join したとき `rename`）。上位は最高の大きい順・同じなら先に達した順、順位は「より大きい最高の端末の数 + 1」（同じ連勝数は同じ順位）。外部のリソース（D1 など）は作らない
 

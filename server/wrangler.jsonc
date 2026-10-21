@@ -38,8 +38,9 @@
     // （同一オリジンの判定でも通るが、公開先として明示する）。ローカル開発の localhost は npm run dev が --var で足す
     "ALLOWED_ORIGINS": "https://kyosho.rukiharukichi.com",
     // エンドレスマッチの機能フラグ。"1" のときだけ /api/endless の下を受け、/api/health に endless: true を返す（画面は入口を出す）。
-    // 深く読む CPU が 1 手 約 0.1 秒の CPU を使うので、Workers の有料プランにしてから "1" にする（.agent/online-protocol.md「エンドレスマッチ」）
-    "ENDLESS_ENABLED": "0"
+    // 2026-10-22 に無料プランのまま "1" にした。深く読む CPU（1 手 約 0.1 秒）は Durable Object の中で打ち、DO の CPU は無料でも 1 リクエスト 30 秒。
+    // 無料の 1 日の上限（DO のリクエスト・SQLite の書き込み 各 10 万）に近づいたら有料に上げる（.agent/endless.md）。"0" に戻せば入口が消え /api/endless は 404
+    "ENDLESS_ENABLED": "1"
   },
   // 独自ドメイン（Custom Domain）: https://kyosho.rukiharukichi.com で配信する。次の本番デプロイで反映され、
   // Cloudflare が DNS レコードと証明書を自動で作る（ゾーン rukiharukichi.com が同じアカウントにあること）。

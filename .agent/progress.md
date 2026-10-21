@@ -96,3 +96,7 @@
 - 深く読む CPU（エンドレスマッチ向け、画面・サーバーには未組み込み）: `engine/deepcpu.ts` の `chooseDeep`（反復深化のアルファベータ・予算は調べる局面の数・view だけから読む）。予算 10000 で対 hard 94.3%、workerd の 1 手番の中央値 107ms。30000 以上が 10000 に負け越すのは未解決（`.agent/deep-cpu.md`）。unit `deepcpu.test.ts`・`npm run balance -- deep`
 - エンドレスマッチ（機能フラグ off で本番へ）: 短い対局（`RuleSet.gauge` / `omit`）・段階の表 39 段（実測の見込み平均 normal 10.5・deep:1000 18.2 連勝）・1 端末 1 DO が手の検証と CPU の手（alarm で 1 手番ずつ）・SQLite のランキングと管理用の API・メニューの入口とランキングの画面。server `endless.test.ts`・unit `endless.test.ts` / `endless-net.test.ts`・e2e `online/endless.spec.ts`
 - エンドレスの短い対局を長く（体力 88・84・駒 20・ゲージ 0.5 倍、駒切れの打ち切り 23.7% → 2.4%）、王・副将の罰を体力の比で 19・10 に（副将の罰は `RuleSet.vice`、標準は 15 のまま）、イージーの段を 13 → 6 段に。見込み平均 normal 7.6・hard 9.0・deep:1000 14.1
+
+## 2026-10-22
+
+- エンドレスマッチを本番で on に（Workers の無料プランのまま。DO の CPU は無料でも 30 秒/リクエストと公式で確かめた）。README にエンドレスマッチとプライバシーの説明
