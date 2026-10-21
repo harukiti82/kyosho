@@ -2,7 +2,7 @@
 // 今の挑戦（連勝数・段階・対局の GameState）を storage の "device" に 1 件で持つ。
 // 権威サーバー: プレイヤーの手は engine の playMove で検証し、CPU の手もここで打つ（engine/endless.ts の cpuTurn）。
 // 画面へは viewFor(対局, プレイヤー) だけを送る（CPU の王・副将の場所を含む GameState は送らない）。連勝数は画面から受け取らない。
-// CPU の手は alarm で打つ: プレイヤーの手の後 ENDLESS_CPU_DELAY_MS（考えている演出）で 1 手番ずつ（1 回の呼び出しで 1 手）。
+// CPU の手はプレイヤーの手の後 ENDLESS_CPU_DELAY_MS（考えている演出）でタイマーと alarm の先に来た方が打つ（1 回の呼び出しで 1 手番）。
 // 1 手の制限時間はプレイヤーの手番で WebSocket がつながっている間だけ数える。切断したら残りを覚えて止め、戻ったら残りから数える
 // （中断して時間を稼げない・中断中に時間切れで負けない）。alarm は 1 つなので、CPU の手の時刻と締め切りの早い方に張る。
 // 勝つと連勝数を 1 増やし（最高を超えたらランキング ranking.ts に書く）、次の対局は段階を 1 つ上げる。引き分けは同じ段階をもう一度、
@@ -129,6 +129,11 @@ export function newRun(wins: number, game: number, test: EndlessTest | undefined
 
 export class Endless extends DurableObject<Env> {
   private dev: DeviceRecord | null = null;
+  /**
+   * CPU の手の時刻のタイマー。alarm はときどき大きく遅れて起きる（本番で予定より 19.8 秒後）ので、
+   * 起きている間はタイマーで打つ。休んで（hibernation・追い出し）タイマーが消えたときは alarm が打つ
+   */
+  private cpuTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -201,6 +206,11 @@ export class Endless extends DurableObject<Env> {
 
   /** CPU の手の時刻か、プレイヤーの締め切り */
   async alarm(): Promise<void> {
+    await this.tick();
+  }
+
+  /** CPU の手の時刻か締め切りを過ぎていれば進める（alarm と CPU のタイマーの両方から呼ぶ。先に来た方が打ち、後の方は何もしない） */
+  private async tick(): Promise<void> {
     const run = this.dev?.run;
     if (!run || run.phase !== "playing") return;
     const now = Date.now();
@@ -390,6 +400,18 @@ export class Endless extends DurableObject<Env> {
     const times = run && run.phase === "playing" ? [run.cpuAt, run.deadline].filter((t): t is number => t !== null) : [];
     if (times.length === 0) await this.ctx.storage.deleteAlarm();
     else await this.ctx.storage.setAlarm(Math.min(...times));
+    this.armCpuTimer(run && run.phase === "playing" ? run.cpuAt : null);
+  }
+
+  /** CPU の手の時刻にタイマーを張り直す（null なら外す） */
+  private armCpuTimer(at: number | null): void {
+    if (this.cpuTimer !== null) clearTimeout(this.cpuTimer);
+    this.cpuTimer = null;
+    if (at === null) return;
+    this.cpuTimer = setTimeout(() => {
+      this.cpuTimer = null;
+      this.tick().catch((e) => console.error(e));
+    }, Math.max(0, at - Date.now()));
   }
 
   /** ランキングに書く。失敗しても対局は止めない（端末の最高は残るので、次に最高を超えたときに書き直す） */
