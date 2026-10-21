@@ -289,6 +289,12 @@ export class App {
   } | null = null;
   /** 手を送って、サーバーから state が届くのを待っている */
   private sending = false;
+  /**
+   * オンライン対戦・エンドレスで送った手。サーバーの state が届くまで置いた駒だけを盤に先に出す（往復の待ちを見せない）。
+   * 返る駒・ダメージ・王と副将の罰はサーバーの結果で描く（画面では playMove しない）。seq は送った局面の棋譜の長さで、
+   * 新しい state が届けば棋譜が伸びて出さなくなる（拒否・切断は sending が戻って出さなくなる）
+   */
+  private pending: { r: number; c: number; kind: PieceKind; owner: Player; king: boolean; vice: boolean; seq: number } | null = null;
   /** 再戦の申し込み・取り消し・断りを送って、state（または error）を待っている（二重押しを防ぐ） */
   private rematchSending = false;
   /** 演出の間に届いた state（演出が終わってから反映する） */
@@ -742,6 +748,7 @@ export class App {
         return;
       }
       this.sending = true;
+      this.pending = { r, c, kind, owner: this.game.turn, king, vice, seq: this.game.history.length };
       this.focus = null;
       this.pinned = false;
       this.render();
@@ -1256,6 +1263,7 @@ export class App {
         return;
       }
       this.sending = true;
+      this.pending = null;
       this.render();
       return;
     }
@@ -2791,7 +2799,9 @@ export class App {
     const cands = this.oppCandidates(g);
     const designating = this.designating(g);
     const viceNow = this.viceNow(g);
-    const last = lastMoveOf(g);
+    // 送った手の返事を待つ間は、置いた駒を先に出す（そのマスがまだ空のときだけ）
+    const pend = this.online && this.sending && this.pending?.seq === g.history.length && !g.board[this.pending.r][this.pending.c] ? this.pending : null;
+    const last = pend ? { r: pend.r, c: pend.c } : lastMoveOf(g);
     // 遊び方: 打つマスを光らせ、駒台で選ぶもの（駒・王）がなければ矢印も出す。1 マスだけのときだけ矢印（候補から選ぶステップは光だけ）
     const step = this.inStep();
     const need = this.lessonNeed(g);
@@ -2848,6 +2858,10 @@ export class App {
           cell.append(this.stone(s.owner, s.kind, kings.get(i) === s.owner));
           label += ` ${PLAYER_NAME[s.owner]}の${pieceLabel(g.rules, s.kind)}`;
           if (kings.get(i) === s.owner) label += "（王）";
+        } else if (pend && pend.r === r && pend.c === c) {
+          cell.append(this.stone(pend.owner, pend.kind, pend.king));
+          if (pend.vice) cell.append(h("span", { class: "vice-mark", text: "副", attrs: { "aria-hidden": "true" } }));
+          label += ` ${PLAYER_NAME[pend.owner]}の${pieceLabel(g.rules, pend.kind)}（送信中）`;
         } else if (isFocus && kind) {
           const ghost = this.stone(g.turn, kind, designating);
           ghost.classList.add("ghost");

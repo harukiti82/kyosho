@@ -5,7 +5,7 @@ import { env, runDurableObjectAlarm, runInDurableObject } from "cloudflare:test"
 import { describe, expect, it } from "vitest";
 import { ENDLESS_HP, stageOf } from "../../web/src/engine/endless";
 import type { GameState } from "../../web/src/engine/game";
-import { TURN_GRACE_MS, type DeviceResponse, type EndlessStateMessage, type RankingResponse } from "../../web/src/net/protocol";
+import { ENDLESS_CPU_DELAY_MS, TURN_GRACE_MS, type DeviceResponse, type EndlessStateMessage, type RankingResponse } from "../../web/src/net/protocol";
 import worker, { allowDevice } from "../src/index";
 import { newRun, settle, type DeviceRecord, type Endless } from "../src/endless";
 import type { Ranking } from "../src/ranking";
@@ -204,6 +204,25 @@ describe("引き分けの次の対局", () => {
     const s = await client.expect("endless");
     expect(s.run).toMatchObject({ phase: "playing", wins: 4, game: 2, you: 1 });
     expect(s.run!.stage).toMatchObject({ no: 5, ...stageOf(4) });
+  });
+});
+
+describe("CPU の手", () => {
+  it("alarm が起きなくても（本番では alarm がときどき 20 秒ほど遅れる）、CPU はタイマーで考える時間の後に打つ", async () => {
+    const { dev, client, s1 } = await started({ hp: [100, 100], cpu: "easy" });
+    client.send({ type: "move", ...firstLegal(s1.run!.view) });
+    const thinking = await client.expect("endless");
+    expect(thinking.run!.thinking).toBe(true);
+    // 遅れる alarm の代わりに、張った alarm を消して起きないようにする
+    await runInDurableObject(devStub(dev.device), (_i, s) => s.storage.deleteAlarm());
+    const t = Date.now();
+    const after = await settled(client);
+    expect(Date.now() - t).toBeLessThan(ENDLESS_CPU_DELAY_MS + 1500);
+    expect(after.run!.view.history.length).toBe(2);
+    expect(after.run!.view.turn).toBe(0);
+    // 先に来たタイマーが打った後に alarm が起きても、CPU は 2 回打たない
+    await runDurableObjectAlarm(devStub(dev.device));
+    expect((await recordOf(dev.device)).run!.state.history.length).toBe(2);
   });
 });
 

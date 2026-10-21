@@ -5,7 +5,7 @@
 
 import { expect, test, type Page } from "@playwright/test";
 import type { EndlessStateMessage, RankingResponse, StateMessage } from "../../src/net/protocol";
-import { play } from "../helpers";
+import { cellAt, play } from "../helpers";
 import { bestMove, prefix, SHOT } from "./net";
 
 interface EPlayer {
@@ -203,3 +203,61 @@ test("localStorage の端末のトークンを壊すと始め直しの案内。�
   expect(now?.device).toMatch(/^[A-Za-z0-9_-]{22}$/);
   expect(now.device).not.toBe(dev.device);
 });
+
+test("自分の手はサーバーの返事を待たずに置いた駒だけ盤に出る。返す駒は返事で、拒否されたら消える", async ({ page }, info) => {
+  const touch = !!info.project.use.hasTouch;
+  // サーバーからの返事を止められるように、エンドレスの WebSocket を間に入って中継する
+  // 中継した分は page の websocket の記録に出ないことがあるので、画面に渡した state はここで記録する
+  let hold = false;
+  const held: string[] = [];
+  const got: EndlessStateMessage[] = [];
+  let toPage: ((m: string) => void) | null = null;
+  await page.routeWebSocket(/\/api\/endless\/devices\/[^/]+\/ws/, (ws) => {
+    const server = ws.connectToServer();
+    ws.onMessage((m) => server.send(m));
+    toPage = (text) => {
+      ws.send(text);
+      try {
+        const m = JSON.parse(text);
+        if (m.type === "endless") got.push(m);
+      } catch {
+        // pong
+      }
+    };
+    server.onMessage((m) => {
+      const text = typeof m === "string" ? m : m.toString("utf8");
+      if (hold) held.push(text);
+      else toPage!(text);
+    });
+  });
+  const ep = await open(page, touch, { hp: [100, 100], cpu: "easy" });
+  ep.states = got;
+  await enter(ep);
+  await pick(ep);
+  await expect(page.locator(".board.acting")).toBeVisible({ timeout: 30_000 });
+  const run = last(ep).run!;
+  const before = run.view.history.length;
+  const mv = bestMove({ view: run.view } as StateMessage);
+
+  // 返事を止めて打つ: 置いた駒は出るが、返す駒（相手の駒の色）はまだ変わらない
+  hold = true;
+  await play(page, mv.r, mv.c, mv.kind, touch);
+  const cell = cellAt(page, mv.r, mv.c);
+  await expect(cell.locator(".stone")).toBeVisible();
+  await expect(cell).toHaveClass(/\blast\b/);
+  await expect(cell).toHaveAttribute("aria-label", /送信中/);
+  await expect(page.locator(".board .stone.flipped")).toHaveCount(0);
+  await expect(page.locator("#status")).toContainText("送信中");
+
+  // 拒否された（と同じ error を返す）と置いた駒は消える
+  toPage!(JSON.stringify({ type: "error", code: "illegal_move", message: "その手は打てません" }));
+  await expect(cell.locator(".stone")).toHaveCount(0);
+
+  // 止めていた本当の返事を流すと、サーバーの結果どおりに置かれて返る
+  hold = false;
+  for (const m of held.splice(0)) toPage!(m);
+  await expect.poll(() => last(ep).run!.view.history.length, { timeout: 15_000 }).toBeGreaterThan(before);
+  await expect(cell.locator(".stone")).toBeVisible();
+  await expect(cell).not.toHaveAttribute("aria-label", /送信中/);
+});
+
