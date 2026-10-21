@@ -7,6 +7,7 @@
 
 - 何を / どこを: エンドレスマッチ（CPU に勝つたびに強くなる・負けたら終わり・全員のランキング）。`web/src/engine/endless.ts`（短い対局・段階の表 32 段・`cpuTurn`）、`server/src/endless.ts`（1 端末 = 1 DO）・`server/src/ranking.ts`（SQLite）、`web/src/net/endless.ts`・`web/src/ui/app.ts`（「エンドレスマッチ」節）・`web/src/ui/ranking.ts`。依頼元セッション（master）経由
 - ステータス: 2026-10-22 に本番で機能フラグを on（Workers は無料プランのまま。ユーザーの判断）。段階の表は 32 段の版。68 段の版（混ぜる段を細かくして上手い人で 20 連勝超え）は worktree `../kyosho-endless3`（ブランチ `feat/endless-finer`）で測定を一時停止中（PC の音のため。ユーザーの「再開して」で続ける）
+- 遅さ（2026-10-22 本番で測った）: 無料プランでは日本からの通信が遠い拠点（欧州 OTP・米国 PDX）に回ることがあり、往復 0.2〜0.3 秒。打った駒は返事を待たずに先に出す（`App.pending`）。CPU の手は alarm がときどき約 20 秒遅れたので DO のタイマーでも打つ。拠点の選び方は無料プランでは変えられない
 - 要点: 短い対局は体力 88・84・駒 20・王の罰 19・副将の罰 10（`RuleSet.vice`）・ゲージ 0.5 倍（2026-10-17 ユーザーが候補 A を選んだ）。実測の見込み平均連勝数 normal 7.59・hard 9.02・deep:1000 14.06（各段階 400 局。`.agent/endless.md`）。フラグを on にするのは Workers の有料プランに上げた後（master / ユーザー）
 - 前の対象: 深く読む CPU（PR #68）・メニューの名前の名札（#66）・1 画面に収める（#64）
 
