@@ -178,7 +178,7 @@ const ENDLESS_CPU_NAME: Record<EndlessCpuName, string> = {
   d10000: "深読み4",
 };
 
-/** 段階の CPU の説明（例: 「イージー 体力−44」「イージーとノーマル」） */
+/** 段階の CPU の説明（例: 「イージー 体力−31」「イージーとノーマル」） */
 function stageText(st: EndlessStageInfo): string {
   const who = st.mix > 0 && st.base !== st.next ? `${ENDLESS_CPU_NAME[st.base]}と${ENDLESS_CPU_NAME[st.next]}` : ENDLESS_CPU_NAME[st.base];
   return st.hp === 0 ? who : `${who} 体力${st.hp > 0 ? "+" : "−"}${Math.abs(st.hp)}`;
