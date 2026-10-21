@@ -73,8 +73,9 @@ const mixes = (a: EndlessCpu, b: EndlessCpu, n: number): EndlessStage[] =>
  * （短い対局で、2 手読み（normal）・ハード・深く読む CPU をプレイヤーに見立てて各段階と対局させた勝率）
  */
 export const ENDLESS_STAGES: readonly EndlessStage[] = [
-  // イージーの体力を −44 から 0 まで 6 段で戻す
-  ...Array.from({ length: 6 }, (_, i) => st("easy", Math.round(-44 + (44 * i) / 5))),
+  // イージーの体力を −31 から 1 ずつ戻す（32 段）。人間はイージーとノーマルの間くらいなので、
+  // 2 手読みはほぼ勝ち、イージーは負け始める段を長くする（初めての人 5・上手い人 20 連勝の見込み）
+  ...Array.from({ length: 32 }, (_, i) => st("easy", -31 + i)),
   // イージー → ノーマル → ハードを 1/8 ずつ混ぜる（各 8 段。最後の段は混ぜない）
   ...mixes("easy", "normal", 8),
   ...mixes("normal", "hard", 8),
