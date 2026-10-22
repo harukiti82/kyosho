@@ -55,15 +55,18 @@ describe("段階の判定", () => {
   it("王を返した手はダメージが小さくても特大（即負けの罰でも）", () => {
     const king = { r: 0, c: 1, kind: "fu" as const, penalty: 0, lose: true };
     expect(tierOf(r, move({ damage: 1, king }))).toBe("huge");
-    expect(tierText("huge", move({ damage: 1, king }), "attack")).toBe("王を討った！");
-    expect(tierText("huge", move({ damage: 1, king }), "hurt")).toBe("王を討たれた！");
+    expect(tierText("huge", move({ damage: 1, king }), "attack")).toBe("王を討った");
+    expect(tierText("huge", move({ damage: 1, king }), "hurt")).toBe("王を討たれた");
   });
 
   it("文言は段階ごとに 1 つ。小はなし", () => {
     expect(tierText("small", move(), "attack")).toBeNull();
-    expect(tierText("mid", move(), "attack")).toBe("ナイス！");
-    expect(tierText("big", move(), "attack")).toBe("会心！");
-    expect(tierText("huge", move(), "attack")).toBe("痛恨！");
+    expect(tierText("mid", move(), "attack")).toBe("グッド");
+    expect(tierText("big", move(), "attack")).toBe("グレート");
+    expect(tierText("huge", move(), "attack")).toBe("エクセレント");
+    expect(tierText("mid", move(), "hurt")).toBe("ダメージ");
+    expect(tierText("big", move(), "hurt")).toBe("大ダメージ");
+    expect(tierText("huge", move(), "hurt")).toBe("超ダメージ");
   });
 
   it("実際の着手（エンジンの棋譜）でも判定できる: v1.0 の体力 20 に歩1 を 1 枚取る → 5% で中", () => {
@@ -82,7 +85,7 @@ describe("成績の集計", () => {
   const history: GameEvent[] = [
     move({ ply: 1, player: 0, damage: 3 }),
     move({ ply: 2, player: 1, damage: 12 }),
-    // 上乗せ 5 を含む 11 → 会心（big）
+    // 上乗せ 5 を含む 11 → グレート（big）
     move({ ply: 3, player: 0, damage: 11, anchors: [{ r: 0, c: 2, kind: "kin" }] }),
     { type: "pass", player: 1, reason: "noMoves" },
     // 同じ 11 でも先の手を最大とする。王の罰 20 で合計 31
@@ -98,7 +101,7 @@ describe("成績の集計", () => {
     expect(p1.best?.hit.total).toBe(12);
   });
 
-  it("会心（大）以上の回数・上乗せの合計・王を返したか", () => {
+  it("グレート（大）以上の回数・上乗せの合計・王を返したか", () => {
     // 先手: 11（大）と王の手（特大）で 2 回。後手: 12（大）で 1 回
     expect([p0.bigHits, p1.bigHits]).toEqual([2, 1]);
     expect([p0.anchorTotal, p1.anchorTotal]).toEqual([5 + 4, 0]);

@@ -94,7 +94,7 @@ for (const project of ["desktop", "mobile"] as const) {
       expect(tierOf(s.rules, lastMoveOf(s)!)).toBe("huge");
       expect(s.result).toMatchObject({ winner: 0, reason: "ko" });
       // 最後の一手の演出の間は、決着の演出も終局画面も出さない
-      await expect(page.locator(".fx-banner")).toHaveText("痛恨！");
+      await expect(page.locator(".fx-banner .fx-word")).toHaveText("エクセレント");
       await expect(finale(page)).toHaveCount(0);
       await waitFinale(page, "win");
       const shownAt = Date.now();

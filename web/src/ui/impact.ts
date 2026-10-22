@@ -13,7 +13,7 @@ export type Tier = "small" | "mid" | "big" | "huge";
  */
 export const TIER_THRESHOLDS = { mid: 0.05, big: 0.1, huge: 0.2 } as const;
 
-/** 段階の順序（「会心」以上の判定などに使う） */
+/** 段階の順序（「グレート」以上の判定などに使う） */
 export const TIER_RANK: Record<Tier, number> = { small: 0, mid: 1, big: 2, huge: 3 };
 
 /** その手のダメージの内訳 */
@@ -61,8 +61,8 @@ export function tierOf(rules: RuleSet, m: MoveEvent): Tier {
  * 王を返した手は専用の文言
  */
 export const TIER_TEXT: Record<"attack" | "hurt", Record<Exclude<Tier, "small">, string> & { king: string }> = {
-  attack: { mid: "ナイス！", big: "会心！", huge: "痛恨！", king: "王を討った！" },
-  hurt: { mid: "被弾！", big: "大ダメージ！", huge: "痛恨の一撃！", king: "王を討たれた！" },
+  attack: { mid: "グッド", big: "グレート", huge: "エクセレント", king: "王を討った" },
+  hurt: { mid: "ダメージ", big: "大ダメージ", huge: "超ダメージ", king: "王を討たれた" },
 };
 
 /** 演出の文言（small はなし） */
@@ -75,7 +75,7 @@ export function tierText(tier: Tier, m: MoveEvent, side: "attack" | "hurt"): str
 export interface PlayerStats {
   /** 最大ダメージの手（同じなら早い手）。ダメージを与えていなければ null */
   best: { move: MoveEvent; hit: HitBreakdown } | null;
-  /** 「会心」（big）以上の手の数 */
+  /** 「グレート」（big）以上の手の数 */
   bigHits: number;
   /** 端の駒の上乗せの合計 */
   anchorTotal: number;

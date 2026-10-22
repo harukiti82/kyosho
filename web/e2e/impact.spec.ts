@@ -14,7 +14,7 @@ import { cellAt, greedy, noHorizontalScroll, play, rng, seedPage, startGame, wai
 const SHOT = "screenshots";
 const ORIG = presetById("orig").rules;
 const withHp = (hp: [number, number]): RuleSet => ({ ...ORIG, hp });
-const TEXT: Record<Exclude<Tier, "small">, string> = { mid: "ナイス！", big: "会心！", huge: "痛恨！" };
+const TEXT: Record<Exclude<Tier, "small">, string> = { mid: "グッド", big: "グレート", huge: "エクセレント" };
 
 const moveCount = (page: Page) => page.locator("#log .log-item.move").count();
 const isMobile = (name: string) => name === "mobile";
@@ -57,15 +57,24 @@ for (const project of ["desktop", "mobile"] as const) {
         expect(tierOf(rules, m)).toBe(tier);
         await open(page, rules);
         await play(page, 2, 3, "fu", touch);
+        // 小はマスの近くにダメージ数。グッド以上は盤の幅の帯に言葉と数字を入れ、マスの近くには出さない
         const pop = cellAt(page, 2, 3).locator(".dmg-pop");
-        await expect(pop).toHaveClass(new RegExp(`t-${tier}`));
-        await expect(pop).toHaveText("1 ダメージ ＋1 回復");
         const banner = page.locator(".fx-banner");
         if (tier === "small") {
+          await expect(pop).toHaveText("1 ダメージ ＋1 回復");
           await expect(banner).toHaveCount(0);
         } else {
-          await expect(banner).toHaveText(TEXT[tier]);
+          await expect(banner.locator(".fx-word")).toHaveText(TEXT[tier]);
+          await expect(banner.locator(".fx-dmg")).toHaveText("1ダメージ");
+          await expect(banner.locator(".fx-heal")).toHaveText("+1 回復");
           await expect(banner).toHaveClass(new RegExp(`attack t-${tier}`));
+          await expect(pop).toHaveCount(0);
+          // 帯は盤の幅で、両端の石と言葉が重ならない（言葉は帯の内側に収まる）
+          const [bb, wb] = await Promise.all([banner.boundingBox(), banner.locator(".fx-word").boundingBox()]);
+          const board = (await page.locator("#board").boundingBox())!;
+          expect(Math.abs(bb!.width - board.width)).toBeLessThan(board.width * 0.03);
+          expect(wb!.x).toBeGreaterThan(bb!.x + bb!.height * 0.5);
+          expect(wb!.x + wb!.width).toBeLessThan(bb!.x + bb!.width - bb!.height * 0.5);
         }
         // 演出の途中（文言が出きったところ）を撮る
         await page.waitForTimeout(250);
@@ -104,14 +113,15 @@ for (const project of ["desktop", "mobile"] as const) {
       await open(page, rules);
       await play(page, 2, 3, "fu", touch);
       const banner = page.locator(".fx-banner.hurt");
-      await expect(banner).toHaveText("痛恨の一撃！", { timeout: 5000 });
+      await expect(banner.locator(".fx-word")).toHaveText("超ダメージ", { timeout: 5000 });
+      await expect(banner.locator(".fx-dmg")).toHaveText("体力−1");
       await page.waitForTimeout(250);
       await page.screenshot({ path: `${SHOT}/${pre}-impact-hurt.png` });
       await expect(page.locator(".fx-vignette.t-huge")).toHaveCount(1);
       await expect(page.locator(".fx-flash.hurt")).toHaveCount(1);
       await expect(page.locator(".fx-spark.hurt").first()).toBeAttached();
       await expect(page.locator("#player-0")).toHaveClass(/fx-hurt/);
-      await expect(cellAt(page, cpuMove.r, cpuMove.c).locator(".dmg-pop")).toHaveClass(/hurt/);
+      await expect(cellAt(page, cpuMove.r, cpuMove.c).locator(".dmg-pop")).toHaveCount(0);
       await expect(page.locator("#board")).not.toHaveClass(/acting/);
       if (touch) await noHorizontalScroll(page, 375);
       expect(await canPlayAfterFx(page, touch)).toBe(true);
@@ -150,9 +160,9 @@ for (const project of ["desktop", "mobile"] as const) {
           expect(new Set(delays).size).toBe(m.targets.length);
           built++;
         }
-        await expect(page.locator(".fx-banner")).toHaveText("痛恨！");
-        // 演出の最中も横にはみ出さない（特大の数字 .dmg-pop は 1.45 倍に膨らむので、右寄りの列でも盤の中に収める。App.fitPop）。
-        // 文言が出た直後と、数字がいちばん大きくなる頃（溜めの後 0.25 秒前後）の 2 回測る
+        await expect(page.locator(".fx-banner .fx-word")).toHaveText("エクセレント");
+        // 演出の最中も横にはみ出さない（帯は盤の幅で、出入りで横に 8% 動く。王の札は右寄りの列でも盤の中に収める。App.fitPop）。
+        // 帯が出た直後と、出きった頃（0.25 秒後）の 2 回測る
         if (touch) {
           await noHorizontalScroll(page, 375);
           await page.waitForTimeout(250);
@@ -181,7 +191,7 @@ for (const project of ["desktop", "mobile"] as const) {
       const best = mine.best!;
       await expect(stats).toContainText(`最大ダメージ${best.hit.total} ${best.move.ply} 手目`);
       await expect(stats).toContainText(`返した駒 ${best.move.targets.length} 個で ${best.hit.base}`);
-      await expect(stats).toContainText(`会心以上${mine.bigHits} 回`);
+      await expect(stats).toContainText(`グレート以上${mine.bigHits} 回`);
       // 端の駒の力・隠し王がない設定では、その行を出さない
       await expect(stats).not.toContainText("端の駒");
       await expect(stats).not.toContainText("相手の王");
@@ -199,8 +209,8 @@ test.describe("PC 幅（設定・音・2 人対戦）", () => {
     await page.emulateMedia({ reducedMotion: "reduce" });
     await open(page, withHp([40, 5]));
     await play(page, 2, 3, "fu", false);
-    await expect(page.locator(".fx-banner")).toHaveText("痛恨！");
-    await expect(cellAt(page, 2, 3).locator(".dmg-pop.t-huge")).toHaveText("1 ダメージ ＋1 回復");
+    await expect(page.locator(".fx-banner .fx-word")).toHaveText("エクセレント");
+    await expect(page.locator(".fx-banner .fx-dmg")).toHaveText("1ダメージ");
     await expect(page.locator(".fx-spark, .fx-flash, .fx-vignette, .fx-wait")).toHaveCount(0);
     await expect(page.locator("#board")).not.toHaveClass(/fx-shake/);
     await expect(page.locator("#player-1")).not.toHaveClass(/fx-hurt/);
@@ -234,7 +244,7 @@ test.describe("PC 幅（設定・音・2 人対戦）", () => {
     // 対局を始める操作（メニューの CPU対戦 → 強さ）で初めて作る
     expect(await created()).toBe(1);
     await play(page, 2, 3, "fu", false);
-    await expect(page.locator(".fx-banner")).toHaveText("会心！");
+    await expect(page.locator(".fx-banner .fx-word")).toHaveText("グレート");
     await page.locator("#btn-mute").click();
     await expect(page.locator("#btn-mute")).toHaveAttribute("aria-pressed", "true");
     await expect(page.locator("#btn-mute")).toHaveAttribute("title", "効果音: オフ");
@@ -243,7 +253,7 @@ test.describe("PC 幅（設定・音・2 人対戦）", () => {
     await expect(page.locator("#btn-mute")).toHaveAttribute("aria-pressed", "true");
     await startGame(page);
     await play(page, 2, 3, "fu", false);
-    await expect(page.locator(".fx-banner")).toHaveText("会心！");
+    await expect(page.locator(".fx-banner .fx-word")).toHaveText("グレート");
     expect(await created()).toBe(0);
     // 消音を解除するとその操作で作る
     await page.locator("#btn-mute").click();
@@ -263,7 +273,7 @@ test.describe("PC 幅（設定・音・2 人対戦）", () => {
     // 先手: 同じマスをダブルクリックしても 1 手だけ
     await cellAt(page, 2, 3).dblclick();
     s = playMove(s, 2, 3, "fu");
-    await expect(page.locator(".fx-banner")).toHaveText("会心！");
+    await expect(page.locator(".fx-banner .fx-word")).toHaveText("グレート");
     await expect(page.locator(".fx-banner")).toHaveClass(/attack/);
     await expect(page.locator("#player-1")).toHaveClass(/fx-hurt/);
     // 演出中は後手の置けるマスを連打しても置けない
@@ -296,7 +306,7 @@ test.describe("PC 幅（設定・音・2 人対戦）", () => {
     for (const p of [0, 1] as const) {
       const b = all[p].best!;
       await expect(stats.nth(p)).toContainText(`最大ダメージ${hitOf(rules, b.move).total} ${b.move.ply} 手目`);
-      await expect(stats.nth(p)).toContainText(`会心以上${all[p].bigHits} 回`);
+      await expect(stats.nth(p)).toContainText(`グレート以上${all[p].bigHits} 回`);
     }
     await page.screenshot({ path: `${SHOT}/pc-impact-pvp-stats.png` });
     expect(errors).toEqual([]);
