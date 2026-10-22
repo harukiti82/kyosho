@@ -1834,14 +1834,15 @@ button {
   z-index: 4;
   left: 50%;
   top: 50%;
-  padding: 0.15rem 0.45rem;
-  border-radius: 5px;
-  background: var(--gold);
-  color: #1f1b14;
-  font-size: 0.85rem;
-  font-weight: 800;
+  padding: 0.18rem 0.6rem 0.16rem 0.7rem;
+  background: rgba(4, 17, 46, 0.94);
+  clip-path: var(--slant-sm);
+  box-shadow: inset 0.22rem 0 0 var(--gold);
+  color: var(--gold);
+  font-family: var(--font-display);
+  font-size: 0.9rem;
+  font-weight: 900;
   white-space: nowrap;
-  box-shadow: 0 0 0 2px #fff, 0 6px 16px -4px rgba(31, 27, 20, 0.5);
   pointer-events: none;
   transform: translate(var(--pop-x, -50%), -50%);
   animation: king-pop 1.6s ease-out forwards;
@@ -1892,19 +1893,24 @@ button {
   z-index: 3;
   left: 50%;
   bottom: 70%;
-  padding: 0.1em 0.5em;
-  border-radius: 5px;
-  background: var(--danger);
+  padding: 0.18em 0.7em 0.16em 0.85em;
+  background: rgba(4, 17, 46, 0.94);
+  clip-path: var(--slant-sm);
+  box-shadow: inset 0.24em 0 0 var(--go);
   color: #fff;
+  font-family: var(--font-display);
   font-size: max(0.8rem, 3.6cqi);
   font-weight: 800;
-  /* 長い文（ダメージ＋回復）は盤の幅に収まるよう空白で折り返す（特大で 1.45 倍になっても盤の中） */
+  /* 長い文（ダメージ＋回復）は盤の幅に収まるよう空白で折り返す */
   width: max-content;
   max-width: 66cqi;
   word-break: keep-all;
   text-align: center;
   pointer-events: none;
   animation: pop 1.6s ease-out forwards;
+}
+.dmg-pop.hurt {
+  box-shadow: inset 0.24em 0 0 var(--danger);
 }
 @keyframes pop {
   0% {
@@ -1925,55 +1931,6 @@ button {
   }
 }
 /* ---- ダメージの段階の演出（ui/impact.ts の段階・ui/fx.ts） ---- */
-/* 中以上はダメージ数を大きく。暖色＝攻めた側、赤＝CPU から受けた */
-.dmg-pop.t-mid {
-  font-size: max(1rem, 4.6cqi);
-  background: linear-gradient(135deg, #e0893a, #c2412b);
-  box-shadow: 0 0 0 2px #fff, 0 6px 18px -6px rgba(194, 65, 43, 0.7);
-}
-.dmg-pop.t-big {
-  z-index: 5;
-  font-size: max(1.15rem, 5.6cqi);
-  background: linear-gradient(135deg, #f2b33d, #d4542b);
-  box-shadow: 0 0 0 2.5px #fff, 0 0 22px 2px rgba(242, 179, 61, 0.75);
-}
-.dmg-pop.t-huge {
-  z-index: 5;
-  font-size: max(1.35rem, 6.8cqi);
-  background: linear-gradient(135deg, #ffd65a, #f08a24 55%, #c2412b);
-  color: #2a1a06;
-  box-shadow: 0 0 0 3px #fff, 0 0 34px 6px rgba(255, 196, 70, 0.85);
-  animation-name: pop-huge;
-  animation-duration: 1.9s;
-}
-.dmg-pop.hurt.t-mid,
-.dmg-pop.hurt.t-big,
-.dmg-pop.hurt.t-huge {
-  background: linear-gradient(135deg, #e5484d, #8e1b12);
-  color: #fff;
-  box-shadow: 0 0 0 2.5px #fff, 0 0 26px 4px rgba(229, 72, 77, 0.7);
-}
-@keyframes pop-huge {
-  0% {
-    opacity: 0;
-    transform: translate(var(--pop-x, -50%), 40%) scale(0.3);
-  }
-  12% {
-    opacity: 1;
-    transform: translate(var(--pop-x, -50%), -10%) scale(1.45);
-  }
-  24% {
-    transform: translate(var(--pop-x, -50%), 0) scale(1.05);
-  }
-  80% {
-    opacity: 1;
-    transform: translate(var(--pop-x, -50%), -20%) scale(1);
-  }
-  100% {
-    opacity: 0;
-    transform: translate(var(--pop-x, -50%), -60%) scale(1);
-  }
-}
 /* 特大の溜め: 遅れて始まるアニメーションの最初の姿（めくる前の駒・出る前の数字）で待つ */
 .cell > .fx-wait,
 .board .stone.flipped.fx-wait {
@@ -2073,55 +2030,127 @@ button {
   position: absolute;
   /* 発光・赤い縁より手前 */
   z-index: 2;
-  transform: translate(-50%, -50%);
-  white-space: nowrap;
-  font-family: var(--font-piece);
+  box-sizing: border-box;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  column-gap: 0.45em;
+  row-gap: 0.18em;
+  padding: 0.3em 2em;
+  background: rgba(4, 17, 46, 0.94);
+  clip-path: var(--slant);
+  /* 上下に線: 与えた側はシアン、受けた側は赤 */
+  box-shadow: inset 0 3px 0 var(--go), inset 0 -3px 0 var(--go);
+  color: var(--ink);
+  font-family: var(--font-display);
   font-weight: 900;
-  letter-spacing: 0.06em;
-  line-height: 1.1;
-  color: #fff7de;
-  -webkit-text-stroke: 0.06em #b4471f;
-  paint-order: stroke fill;
-  text-shadow: 0 0.07em 0 #7a2c10, 0 0 0.5em rgba(255, 190, 80, 0.95), 0 0.15em 0.6em rgba(80, 30, 5, 0.45);
+  line-height: 1;
+  white-space: nowrap;
+  text-shadow: var(--soft-shadow);
+  transform: translateY(-50%);
   animation: banner 1.3s ease-out forwards;
 }
+/* 両端から黒と白の石が挟む */
+.fx-banner::before,
+.fx-banner::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  width: 0.9em;
+  height: 0.9em;
+  margin-top: -0.45em;
+}
+.fx-banner::before {
+  left: 0.6em;
+  background: var(--pinch-black);
+}
+.fx-banner::after {
+  right: 0.6em;
+  background: var(--pinch-white);
+}
+.fx-word {
+  letter-spacing: 0.04em;
+}
+/* 数字の札: 白い斜めの板に紺の字 */
+.fx-dmg {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.15em;
+  padding: 0.14em 0.45em 0.1em;
+  background: #fff;
+  color: var(--navy-900);
+  clip-path: var(--slant-sm);
+  font-size: 0.6em;
+  font-variant-numeric: tabular-nums;
+  text-shadow: none;
+}
+.fx-dmg small {
+  font-size: 0.55em;
+}
+.fx-heal {
+  color: var(--heal);
+  font-size: 0.45em;
+  font-weight: 800;
+}
+/* 大きさは段階ごと（狭い盤では盤の幅 --band-w の 1/10 まで。両端の石と重ならない） */
 .fx-banner.t-mid {
-  font-size: min(1.9rem, 9vw);
+  font-size: min(2rem, var(--band-w, 100vw) / 10);
   animation-duration: 1s;
 }
 .fx-banner.t-big {
-  font-size: min(2.8rem, 12vw);
+  font-size: min(2.8rem, var(--band-w, 100vw) / 10);
 }
+/* 特大は白い板に反転（数字の札は紺） */
 .fx-banner.t-huge {
-  font-size: min(3.6rem, 13vw);
-  color: #fffbe8;
-  -webkit-text-stroke-color: #c2412b;
-  text-shadow: 0 0.07em 0 #7a2c10, 0 0 0.35em #ffd65a, 0 0 1em rgba(255, 160, 40, 0.95);
+  font-size: min(3.4rem, var(--band-w, 100vw) / 10);
+  background: #fff;
+  color: var(--navy-900);
+  text-shadow: none;
+}
+.fx-banner.t-huge .fx-dmg {
+  background: var(--navy-900);
+  color: #fff;
+}
+.fx-banner.t-huge .fx-heal {
+  color: #1d8a3b;
 }
 .fx-banner.hurt {
-  color: #fff;
-  -webkit-text-stroke-color: #8e1b12;
-  text-shadow: 0 0.07em 0 #4a0a06, 0 0 0.5em rgba(229, 72, 77, 0.95), 0 0.15em 0.6em rgba(40, 0, 0, 0.5);
+  box-shadow: inset 0 3px 0 var(--danger), inset 0 -3px 0 var(--danger);
+}
+.fx-banner.hurt .fx-dmg {
+  color: #c01b2b;
+}
+/* 受けた側の特大は白に反転せず、赤い線を太く */
+.fx-banner.hurt.t-huge {
+  background: rgba(4, 17, 46, 0.94);
+  color: var(--ink);
+  text-shadow: var(--soft-shadow);
+  box-shadow: inset 0 5px 0 var(--danger), inset 0 -5px 0 var(--danger);
+}
+.fx-banner.hurt.t-huge .fx-dmg {
+  background: #fff;
+  color: #c01b2b;
 }
 @keyframes banner {
   0% {
     opacity: 0;
-    transform: translate(-50%, -50%) scale(0.4);
+    transform: translate(-8%, -50%) scaleY(0.3);
   }
-  14% {
+  12% {
     opacity: 1;
-    transform: translate(-50%, -50%) scale(1.18);
+    transform: translate(0, -50%) scaleY(1.12);
   }
-  26% {
-    transform: translate(-50%, -50%) scale(1);
+  22% {
+    transform: translate(0, -50%) scaleY(1);
   }
-  78% {
+  80% {
     opacity: 1;
-    transform: translate(-50%, -55%) scale(1);
+    transform: translate(0, -50%);
   }
   100% {
     opacity: 0;
-    transform: translate(-50%, -80%) scale(1);
+    transform: translate(8%, -50%);
   }
 }
 /* 手番の知らせ（ui/fx.ts の turnCue）: 盤の幅の紺の斜めの帯が手番の人の席の側を横切り、石と「あなたの番」を見せて抜ける。
@@ -3014,33 +3043,22 @@ button {
   inset: 0;
   pointer-events: none;
 }
-/* 勝利: 暖色の発光（中心からの光と、ゆっくり回る光の筋） */
+/* 勝利: 盤の色に合わせたシアンと白の光（中心から広がる光と、斜めに流れる光の筋） */
 .fx-glow {
   overflow: hidden;
-  background: radial-gradient(circle at 50% 50%, rgba(255, 238, 180, 0.8), rgba(255, 186, 84, 0.4) 38%, rgba(240, 138, 36, 0.08) 75%);
+  background: radial-gradient(ellipse at 50% 50%, rgba(47, 211, 255, 0.32), rgba(18, 112, 220, 0.22) 42%, rgba(2, 8, 23, 0.4) 88%);
   animation: fin-glow 2.3s ease-out both;
 }
 .fx-glow::before {
   content: "";
   position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 220vmax;
-  height: 220vmax;
-  margin: -110vmax 0 0 -110vmax;
-  background: repeating-conic-gradient(from 0deg, rgba(255, 224, 140, 0.45) 0deg 7deg, rgba(255, 224, 140, 0) 7deg 22deg);
-  -webkit-mask-image: radial-gradient(circle, #000 0, transparent 28%);
-  mask-image: radial-gradient(circle, #000 0, transparent 28%);
-  animation: fin-rays 2.3s linear both;
-}
-.tone-black .fx-glow {
-  background: radial-gradient(circle at 50% 50%, rgba(255, 226, 150, 0.7), rgba(42, 37, 28, 0.55) 45%, rgba(42, 37, 28, 0.25) 85%);
-}
-.tone-white .fx-glow {
-  background: radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.95), rgba(255, 249, 228, 0.6) 40%, rgba(220, 214, 196, 0.2) 85%);
-}
-.tone-white .fx-glow::before {
-  background: repeating-conic-gradient(from 0deg, rgba(255, 255, 255, 0.7) 0deg 7deg, rgba(255, 255, 255, 0) 7deg 22deg);
+  inset: -20% -60%;
+  background:
+    repeating-linear-gradient(-12deg, transparent 0 46px, rgba(47, 211, 255, 0.28) 46px 50px, transparent 50px 120px),
+    repeating-linear-gradient(-12deg, transparent 0 80px, rgba(255, 255, 255, 0.18) 80px 82px, transparent 82px 170px);
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 30%, #000 70%, transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 30%, #000 70%, transparent);
+  animation: fin-streak 2.3s linear both;
 }
 @keyframes fin-glow {
   0% {
@@ -3050,23 +3068,23 @@ button {
     opacity: 1;
   }
   80% {
-    opacity: 0.85;
+    opacity: 0.9;
   }
   100% {
-    opacity: 0.7;
+    opacity: 0.75;
   }
 }
-@keyframes fin-rays {
+@keyframes fin-streak {
   0% {
     opacity: 0;
-    transform: rotate(0deg) scale(0.6);
+    transform: translateX(-10%);
   }
   20% {
     opacity: 1;
   }
   100% {
     opacity: 0.8;
-    transform: rotate(40deg) scale(1);
+    transform: translateX(10%);
   }
 }
 /* 紙吹雪（上から舞い落ちる。色は基調ごと） */
@@ -3078,19 +3096,20 @@ button {
   --cf3: #ff2d55;
   --cf4: #e6f8ff;
 }
+/* 2 人対戦: 勝った側の石の色にシアンを添える */
 .fx-confetti.tone-black {
-  --cf0: #2a251c;
-  --cf1: #ffd65a;
-  --cf2: #5c5446;
-  --cf3: #fbf6ea;
-  --cf4: #c9a227;
+  --cf0: #141311;
+  --cf1: #2fd3ff;
+  --cf2: #4a4640;
+  --cf3: #ffffff;
+  --cf4: #7ae6ff;
 }
 .fx-confetti.tone-white {
-  --cf0: #fffdf6;
-  --cf1: #ffd65a;
-  --cf2: #d9d4c4;
-  --cf3: #ffffff;
-  --cf4: #f2b33d;
+  --cf0: #ffffff;
+  --cf1: #2fd3ff;
+  --cf2: #eee8db;
+  --cf3: #b9b1a0;
+  --cf4: #7ae6ff;
 }
 .fx-confetto {
   position: absolute;
@@ -3158,9 +3177,9 @@ button {
     transform: translateY(0);
   }
 }
-/* 引き分け: 穏やかな幕 */
+/* 引き分け: 穏やかな紺の幕 */
 .fx-calm {
-  background: radial-gradient(circle at 50% 50%, rgba(60, 54, 46, 0.55), rgba(23, 21, 18, 0.75) 60%, rgba(10, 9, 8, 0.85));
+  background: radial-gradient(circle at 50% 50%, rgba(10, 44, 159, 0.35), rgba(2, 8, 23, 0.7) 60%, rgba(2, 8, 23, 0.85));
   animation: fin-fade 0.8s ease-out both;
 }
 @keyframes fin-fade {
@@ -3171,63 +3190,75 @@ button {
     opacity: 1;
   }
 }
-/* 文字 */
+/* 文字: 段階の言葉と同じ紺の斜めの帯に、勝った側の石と直立の太字の見出し。副題は白の細い枠の帯 */
 .fin-card {
   position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.35rem;
-  max-width: calc(100vw - 32px);
+  gap: 0.55rem;
+  width: 100%;
   text-align: center;
   animation: fin-pop 0.6s cubic-bezier(0.2, 0.9, 0.3, 1.25) both;
 }
+.fin-band {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: min(1.1rem, 3vw);
+  width: min(100%, 52rem);
+  padding: min(1.1rem, 3.4vw) min(4rem, 10vw);
+  background: rgba(4, 17, 46, 0.95);
+  clip-path: var(--slant);
+  box-shadow: inset 0 4px 0 var(--go), inset 0 -4px 0 var(--go);
+}
 .fin-title {
   margin: 0;
-  font-family: var(--font-piece);
+  font-family: var(--font-display);
   white-space: nowrap;
-  font-size: min(5rem, 13vw);
+  /* 長い見出し（「〇〇の勝ち」。名前は 10 字まで）は帯の幅（石と左右の余白を除く）に収まるまで小さく */
+  font-size: min(5rem, 15vw, (min(100vw, 52rem) - min(11rem, 36vw)) / (var(--len, 2) * 1.1));
   font-weight: 900;
-  letter-spacing: 0.06em;
-  line-height: 1.1;
-  color: #fff7de;
-  -webkit-text-stroke: 0.05em #b4471f;
-  paint-order: stroke fill;
-  text-shadow: 0 0.06em 0 #7a2c10, 0 0 0.4em rgba(255, 200, 90, 0.95), 0 0 1.1em rgba(255, 150, 40, 0.7);
+  letter-spacing: 0.1em;
+  line-height: 1;
+  color: var(--ink);
+  text-shadow: var(--soft-shadow);
 }
 .fin-sub,
 .fin-cheer {
   margin: 0;
-  padding: 0.3rem 0.85rem;
-  border-radius: 6px;
+  padding: 0.32rem 1.1rem;
+  font-family: var(--font-display);
   font-size: min(1.05rem, 4.4vw);
-  font-weight: 700;
+  font-weight: 800;
   font-variant-numeric: tabular-nums;
   color: var(--ink);
-  background: rgba(23, 21, 18, 0.88);
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08), 0 8px 22px -8px rgba(0, 0, 0, 0.8);
+  background: rgba(4, 17, 46, 0.85);
+  clip-path: var(--slant-sm);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.75);
 }
 .fin-cheer {
   font-size: min(0.98rem, 4.2vw);
-  color: var(--go-ink);
-  background: var(--amber);
+  color: var(--navy-900);
+  background: #fff;
+  box-shadow: none;
   animation: fin-rise 0.5s ease-out 0.7s both;
 }
 .fin-skip {
-  margin: 0.6rem 0 0;
-  padding: 0.15rem 0.6rem;
-  border-radius: 5px;
+  margin: 0.5rem 0 0;
   font-size: 0.75rem;
-  font-weight: 600;
+  font-weight: 700;
   color: var(--ink-muted);
-  background: rgba(23, 21, 18, 0.7);
+  text-shadow: var(--soft-shadow);
   animation: fin-fade 0.4s ease-out 0.9s both;
 }
 .fin-stone {
-  width: min(3.4rem, 13vw);
-  height: min(3.4rem, 13vw);
+  flex: none;
+  width: min(3rem, 10vw);
+  height: min(3rem, 10vw);
   border-radius: 50%;
-  box-shadow: 0 0 0 3px #ffd65a, 0 0 28px 6px rgba(255, 214, 90, 0.75);
+  box-shadow: 0 0 0 3px var(--navy-900), 0 0 0 5px var(--go);
 }
 .fin-stone.p0 {
   background: radial-gradient(circle at 35% 30%, #5c5446, var(--stone-0) 60%);
@@ -3235,34 +3266,26 @@ button {
 .fin-stone.p1 {
   background: radial-gradient(circle at 35% 30%, #fff, var(--stone-1) 55%, #e4dfd0);
 }
-/* 2 人対戦: 勝った側の駒色 */
-.tone-black .fin-title {
-  color: var(--stone-0);
-  -webkit-text-stroke-color: #ffe9a8;
-  text-shadow: 0 0 0.35em rgba(255, 214, 90, 0.95), 0 0 1em rgba(255, 190, 60, 0.6);
-}
-.tone-white .fin-title {
-  color: #fffdf6;
-  -webkit-text-stroke-color: #2a251c;
-  text-shadow: 0 0.06em 0 #2a251c, 0 0 0.4em rgba(255, 255, 255, 0.95), 0 0 1em rgba(255, 214, 90, 0.6);
-}
-/* 敗北: 冷たい色で、ゆっくり沈む */
+/* 敗北: 帯の線を沈んだ色にして、ゆっくり沈む */
 .fx-finale.lose .fin-card {
   animation: fin-sink 2.2s cubic-bezier(0.25, 0.6, 0.3, 1) both;
 }
+.fx-finale.lose .fin-band {
+  background: rgba(14, 20, 34, 0.95);
+  box-shadow: inset 0 4px 0 rgba(207, 233, 255, 0.35), inset 0 -4px 0 rgba(207, 233, 255, 0.35);
+}
 .fx-finale.lose .fin-title {
-  color: #e3e6ee;
-  -webkit-text-stroke-color: #3a4152;
-  text-shadow: 0 0.06em 0 #1d2230, 0 0.2em 0.8em rgba(10, 14, 24, 0.55);
+  color: #d6dbe6;
+}
+.fx-finale.lose .fin-stone {
+  box-shadow: 0 0 0 3px rgba(14, 20, 34, 0.95), 0 0 0 5px rgba(207, 233, 255, 0.35);
 }
 .fx-finale.lose .fin-sub {
   color: #e9ecf3;
-  background: rgba(40, 46, 60, 0.82);
-  box-shadow: 0 6px 20px -8px rgba(10, 14, 24, 0.6);
+  background: rgba(14, 20, 34, 0.85);
 }
 .fx-finale.lose .fin-skip {
   color: rgba(240, 242, 248, 0.85);
-  background: rgba(40, 46, 60, 0.6);
 }
 @keyframes fin-sink {
   0% {
@@ -3277,17 +3300,12 @@ button {
     transform: translateY(18px);
   }
 }
-/* 引き分け: 中間の色で静かに出る */
+/* 引き分け: 白の線で静かに出る */
 .fx-finale.draw .fin-card {
   animation: fin-fade 0.7s ease-out both;
 }
-.fx-finale.draw .fin-title {
-  color: var(--ink);
-  -webkit-text-stroke-color: #4a443b;
-  text-shadow: 0 0.06em 0 #1d1a16, 0 0 0.6em rgba(0, 0, 0, 0.6);
-}
-.fx-finale.draw .fin-sub {
-  color: var(--ink);
+.fx-finale.draw .fin-band {
+  box-shadow: inset 0 4px 0 #fff, inset 0 -4px 0 #fff;
 }
 @keyframes fin-pop {
   0% {
@@ -3312,15 +3330,10 @@ button {
     transform: none;
   }
 }
-/* 動きを減らす設定: 幕なしで文字だけなので、読みやすいよう文字の下に薄い板を敷く */
+/* 動きを減らす設定: 幕なしで文字だけなので、読みやすいよう帯の後ろを少し暗くする */
 .fx-finale.reduce .fin-card {
-  padding: 1rem 1.25rem;
-  border-radius: 12px;
-  background: rgba(37, 34, 30, 0.94);
-  box-shadow: 0 24px 60px -24px rgba(0, 0, 0, 0.8);
-}
-.fx-finale.reduce .fin-skip {
-  color: var(--ink-muted);
+  padding: 0.75rem 0;
+  background: rgba(2, 8, 23, 0.55);
 }
 /* ---- ダイアログ（設定・終局・オンライン・ルール詳細）。角を斜めに落とした紺の面に、直立の太い見出しと右へ伸びる罫線 ---- */
 .modal {
@@ -5948,8 +5961,8 @@ button.tarot:focus-visible {
   background: var(--vice);
 }
 .vice-pop {
-  background: var(--vice);
-  color: var(--navy-900);
+  box-shadow: inset 0.22rem 0 0 var(--vice);
+  color: var(--vice);
 }
 
 /* ---- 1 画面に収める: 部品の定義より後に置いて上書きする ---- */

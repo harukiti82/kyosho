@@ -39,6 +39,9 @@ export interface BurstOptions {
   /** CPU から受けた（赤系の被弾演出） */
   hurt: boolean;
   text: string | null;
+  /** その手のダメージと回復（言葉の帯の数字の札） */
+  damage: number;
+  heal: number;
   /** 置いたマス（粒が飛び散る中心） */
   cell: HTMLElement;
   board: HTMLElement;
@@ -286,7 +289,7 @@ export class Fx {
   }
 
   /**
-   * 決着の演出。勝利は紙吹雪と暖色（2 人対戦は勝った側の駒色）の発光、敗北は彩度を落として静かに沈む、引き分けは穏やかな幕。
+   * 決着の演出。見出しは段階の言葉と同じ紺の斜めの帯に勝った側の石。勝利は紙吹雪とシアンと白の光の筋、敗北は彩度を落として静かに沈む、引き分けは穏やかな幕。
    * 画面全体を覆ってタップ／クリックを受け、終局画面へ進める（盤や見出しのボタンには届かない）。
    * 動きを減らす設定では文字と副題だけ
    */
@@ -305,8 +308,11 @@ export class Fx {
     }
     root.append(
       h("div", { class: "fin-card" }, [
-        oc.winner !== null ? h("span", { class: `fin-stone p${oc.winner}`, attrs: { "aria-hidden": "true" } }) : null,
-        h("p", { class: "fin-title", text: oc.title }),
+        // 言葉の帯と同じ紺の斜めの帯に、勝った側の石と見出し
+        h("div", { class: "fin-band" }, [
+          oc.winner !== null ? h("span", { class: `fin-stone p${oc.winner}`, attrs: { "aria-hidden": "true" } }) : null,
+          h("p", { class: "fin-title", text: oc.title, attrs: { style: `--len: ${[...oc.title].length}` } }),
+        ]),
         h("p", { class: "fin-sub", text: oc.subtitle }),
         oc.cheer ? h("p", { class: "fin-cheer", text: oc.cheer }) : null,
         h("p", { class: "fin-skip", text: "タップで結果へ" }),
@@ -349,11 +355,21 @@ export class Fx {
     const side = o.hurt ? "hurt" : "attack";
     const rank = TIER_RANK[o.tier];
     if (o.text) {
-      // 文言は盤の中央（盤が画面外にあるときは画面内に寄せる）
+      // 言葉は盤の幅の紺の斜めの帯で、盤の中央を横切る（盤が画面外にあるときは画面内に寄せる）。
+      // 帯の中に数字の札（与えた: 「12 ダメージ」、受けた: 「体力 −14」）。狭い盤では札が 2 行目に折り返す
       const b = o.board.getBoundingClientRect();
       const y = Math.min(Math.max(b.top + b.height / 2, 90), window.innerHeight - 90);
-      const banner = h("div", { class: `fx-banner ${side} t-${o.tier}`, text: o.text });
-      banner.style.left = `${b.left + b.width / 2}px`;
+      const num = o.hurt
+        ? h("span", { class: "fx-dmg" }, [h("small", { text: "体力" }), h("b", { text: `−${o.damage}` })])
+        : h("span", { class: "fx-dmg" }, [h("b", { text: String(o.damage) }), h("small", { text: "ダメージ" })]);
+      const banner = h("div", { class: `fx-banner ${side} t-${o.tier}` }, [
+        h("span", { class: "fx-word", text: o.text }),
+        o.damage > 0 ? num : null,
+        o.heal > 0 && !o.hurt ? h("span", { class: "fx-heal", text: `+${o.heal} 回復` }) : null,
+      ]);
+      banner.style.left = `${b.left}px`;
+      banner.style.width = `${b.width}px`;
+      banner.style.setProperty("--band-w", `${b.width}px`);
       banner.style.top = `${y}px`;
       this.add(banner, o.tier === "mid" ? 1000 : 1300);
     }

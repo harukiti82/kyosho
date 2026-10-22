@@ -3625,11 +3625,14 @@ export class App {
       }
       return el;
     };
-    // 置いたマスにダメージ数を出す（次の描画で消える）
-    const pop = m.heal > 0 ? `${m.damage} ダメージ ＋${m.heal} 回復` : `${m.damage} ダメージ`;
-    const dmgPop = delayed(h("span", { class: `dmg-pop t-${tier}${plan.hurt ? " hurt" : ""}`, text: pop }));
-    this.cells[m.r][m.c].append(dmgPop);
-    const [dmgL, dmgR] = this.fitPop(dmgPop, m.r, m.c, tier === "huge" ? 1.45 : 1.15);
+    // 段階の言葉の帯が出ない手（小）だけ、置いたマスにダメージ数を出す（次の描画で消える）。帯が出る手は数字も帯に入れる（fx.ts の burst）
+    let [dmgL, dmgR] = [0, 0];
+    if (!plan.text) {
+      const pop = m.heal > 0 ? `${m.damage} ダメージ ＋${m.heal} 回復` : `${m.damage} ダメージ`;
+      const dmgPop = delayed(h("span", { class: `dmg-pop t-${tier}${plan.hurt ? " hurt" : ""}`, text: pop }));
+      this.cells[m.r][m.c].append(dmgPop);
+      [dmgL, dmgR] = this.fitPop(dmgPop, m.r, m.c, 1.15);
+    }
     // 上乗せに使った端の駒に足した数字を出す。同じ行・隣の行でダメージ数と横に重なるなら、駒の下に出す
     for (const a of m.anchors ?? []) {
       const anchorPop = h("span", { class: "anchor-pop", text: `+${g.rules.values[a.kind]}` });
@@ -3658,6 +3661,8 @@ export class App {
       tier,
       hurt: plan.hurt,
       text: plan.text,
+      damage: m.damage,
+      heal: m.heal,
       cell: this.cells[m.r][m.c],
       board: this.el.board,
       victim: this.el.players[other(m.player)],
@@ -3966,7 +3971,7 @@ export class App {
     }
     const rows: [string, string | [string, string]][] = [
       ["最大ダメージ", best],
-      ["会心以上", `${s.bigHits} 回`],
+      ["グレート以上", `${s.bigHits} 回`],
     ];
     if (r.anchor === "attack") rows.push(["反対側の駒の分", `合計 ${s.anchorTotal}`]);
     if (r.king.on) rows.push(["相手の王", s.kingHit ? `${v.past}` : `${v.cannot.slice(0, -1)}かった`]);
