@@ -133,11 +133,11 @@ describe("RULES.md の短い対局の節", () => {
 
 describe("段階", () => {
   it("1 戦目は体力の少ないイージー。CPU は段階が進むほど弱くならない（体力の差、混ぜる確率、強さの順）", () => {
-    expect(stageOf(0)).toEqual({ base: "easy", next: "easy", mix: 0, hp: -30 });
-    expect(stageOf(1)).toEqual({ base: "easy", next: "easy", mix: 0, hp: -28 });
-    expect(stageOf(15)).toEqual({ base: "easy", next: "easy", mix: 0, hp: 0 });
-    expect(stageOf(16)).toEqual({ base: "easy", next: "normal", mix: 1 / 8, hp: 0 });
-    expect(ENDLESS_STAGES).toHaveLength(42);
+    expect(stageOf(0)).toEqual({ base: "easy", next: "easy", mix: 0, hp: -27 });
+    expect(stageOf(1)).toEqual({ base: "easy", next: "easy", mix: 0, hp: -24 });
+    expect(stageOf(9)).toEqual({ base: "easy", next: "easy", mix: 0, hp: 0 });
+    expect(stageOf(10)).toEqual({ base: "easy", next: "normal", mix: 1 / 8, hp: 0 });
+    expect(ENDLESS_STAGES).toHaveLength(36);
     const rank = (c: string) => ENDLESS_CPUS.indexOf(c as never);
     for (let i = 1; i < ENDLESS_STAGES.length + 5; i++) {
       const a = stageOf(i - 1);
