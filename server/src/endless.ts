@@ -10,8 +10,8 @@
 // 端末の記録は消さない（別の日に続きから遊べる）。e2e 用に var TEST_ENDLESS があるときだけ、start / next の test で体力・CPU を変えられる。
 
 import { DurableObject } from "cloudflare:workers";
-import { cpuOf, cpuTurn, newEndlessGame, stageOf, type EndlessStage } from "../../web/src/engine/endless";
-import { pickSkill, playMove, playTimeout, rerollSkills, useSkill, viewFor, type GameState } from "../../web/src/engine/game";
+import { cpuOf, cpuTurn, endlessReroll, newEndlessGame, stageOf, type EndlessStage } from "../../web/src/engine/endless";
+import { pickSkill, playMove, playTimeout, useSkill, viewFor, type GameState } from "../../web/src/engine/game";
 import { other, type Player } from "../../web/src/engine/rules";
 import {
   CLOSE,
@@ -117,7 +117,7 @@ export function newRun(wins: number, game: number, test: EndlessTest | undefined
   const cpu: Player = game % 2 === 1 ? 1 : 0;
   const base = stageOf(wins);
   const stage: EndlessStage = test?.cpu ? { base: test.cpu, next: test.cpu, mix: 0, hp: base.hp } : base;
-  let state = newEndlessGame(cpu, stage, rng);
+  let state = newEndlessGame(cpu, stage, rng, test?.ex ? 1 : undefined);
   if (test?.hp) {
     const hp: [number, number] = [state.hp[0], state.hp[1]];
     hp[other(cpu)] = test.hp[0];
@@ -284,7 +284,7 @@ export class Endless extends DurableObject<Env> {
     const s = run.state;
     if (msg.type === "pick" || msg.type === "reroll") {
       try {
-        run.state = msg.type === "pick" ? pickSkill(s, you, msg.card) : rerollSkills(s, you, cryptoRng);
+        run.state = msg.type === "pick" ? pickSkill(s, you, msg.card) : endlessReroll(s, you, cryptoRng, run.test?.ex ? 1 : undefined);
       } catch (e) {
         return send(ws, errorMsg("illegal_skill", e instanceof Error ? e.message : "そのカードは選べません"));
       }

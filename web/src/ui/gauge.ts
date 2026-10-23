@@ -4,7 +4,7 @@
 import type { Cell } from "../engine/board";
 import type { MoveEvent } from "../engine/game";
 import type { RuleSet } from "../engine/rules";
-import { gaugeMax, GAUGE_UNIT, isZone, type SkillsState } from "../engine/skills";
+import { GAUGE_UNIT, isZone, sideMax, type SkillsState } from "../engine/skills";
 
 /** 光の粒が溜めマスからゲージへ飛ぶ時間（ミリ秒） */
 export const ORB_MS = 520;
@@ -69,7 +69,7 @@ export function gaugeGains(
     const from = snap.gauge[p];
     const full = !snap.ready[p] && ready[p];
     if (!card || to < from || (to === from && !full)) return null;
-    return { from, to, max: gaugeMax(card, rules), full };
+    return { from, to, max: sideMax(sk.sides[p], rules), full };
   }) as [GaugeGain | null, GaugeGain | null];
 }
 

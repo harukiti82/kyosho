@@ -5,6 +5,7 @@
 
 import { expect, test, type Page } from "@playwright/test";
 import type { EndlessStateMessage, RankingResponse, StateMessage } from "../../src/net/protocol";
+import { cardLength, type SkillId } from "../../src/engine/skills";
 import { cellAt, play } from "../helpers";
 import { bestMove, prefix, SHOT } from "./net";
 
@@ -259,5 +260,33 @@ test("自分の手はサーバーの返事を待たずに置いた駒だけ盤�
   await expect.poll(() => last(ep).run!.view.history.length, { timeout: 15_000 }).toBeGreaterThan(before);
   await expect(cell.locator(".stone")).toBeVisible();
   await expect(cell).not.toHaveAttribute("aria-label", /送信中/);
+});
+
+test("極: 配られた 3 枚の 1 枚に「極」の印とゲージ半分。選ぶと名札のカードも極", async ({ page }, info) => {
+  const touch = !!info.project.use.hasTouch;
+  const p = await open(page, touch, { hp: [100, 100], cpu: "easy", ex: true });
+  await enter(p);
+  const dialog = page.locator("#skill-pick");
+  await expect(dialog.locator(".tarot")).toHaveCount(3, { timeout: 15_000 });
+  const exCard = dialog.locator(".tarot.ex");
+  await expect(exCard).toHaveCount(1);
+  await expect(exCard.locator(".tarot-ex")).toHaveText("極");
+  const id = (await exCard.getAttribute("data-skill")) as SkillId;
+  const run = last(p).run!;
+  expect(run.view.skills!.sides[run.you].exOffer).toBe(id);
+  await expect(exCard.locator(".tarot-len b")).toHaveText(String(cardLength(id, run.view.rules, true)));
+  await expect(exCard).toHaveAttribute("aria-label", /^極の/);
+  await page.waitForTimeout(800);
+  await page.screenshot({ path: `${SHOT}/${prefix(info)}-endless-ex-pick.png`, animations: "disabled" });
+  await tap(p, "#skill-pick .tarot.ex");
+  await tap(p, "#skill-pick-ok");
+  await expect.poll(() => last(p).run?.view.skills?.ready).toBe(true);
+  const me = last(p).run!.you;
+  expect(last(p).run!.view.skills!.sides[me]).toMatchObject({ card: id, ex: true });
+  const plate = page.locator(`#player-${me} .plate-skill.ex`);
+  await expect(plate).toBeVisible();
+  await expect(plate.locator(".ps-ex")).toHaveText("極");
+  await expect(page.locator(".board.acting")).toBeVisible({ timeout: 30_000 });
+  await page.screenshot({ path: `${SHOT}/${prefix(info)}-endless-ex.png`, animations: "disabled" });
 });
 

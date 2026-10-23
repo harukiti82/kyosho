@@ -3,6 +3,7 @@ import { SIZE } from "../src/engine/board";
 import {
   createGame,
   dealSkills,
+  markEx,
   gameFrom,
   isLegal,
   kingInfo,
@@ -28,7 +29,8 @@ import {
 import { chooseMove } from "../src/engine/cpu";
 import { chooseSkillPick, chooseSkillUse, viceWith, wantsReroll, WEAK_CARDS } from "../src/engine/skillcpu";
 import { NO_KING, type Hand, type PieceKind, type Player, type RuleSet } from "../src/engine/rules";
-import { gaugeMax, GAUGE_UNIT, SKILLS, SKILL_ORDER, type SkillId, type SkillsState, type WheelEffect } from "../src/engine/skills";
+import { gaugeMax, GAUGE_UNIT, sideMax, SKILLS, SKILL_ORDER, type SkillId, type SkillsState, type WheelEffect } from "../src/engine/skills";
+import { endlessReroll } from "../src/engine/endless";
 import { at, rulesOf } from "./helpers";
 
 /** 全方向・上乗せなし・回復なし・隠し王なしのスキルあり（ダメージ = 返した駒の数字の合計） */
@@ -975,6 +977,26 @@ describe("副将", () => {
     expect(viewFor(next, 0).oppVice).toMatchObject({ set: true, scouted: false, cell: null });
   });
 
+  it("極の偵察は、相手の王が分からない間に使うと王と、「いる」と見えている副将の両方を特定する", () => {
+    // 後手は王を決める期限の 7 手のうちに h8・h4 に置いた（相手から見た王の候補は 2 つ）。窓 1 の副将 b1 は見せる 14 手目を過ぎた
+    const fake = (ply: number): MoveEvent => ({ type: "move", ply, player: 1, r: ply % 2 ? 7 : 3, c: 7, kind: "fu", targets: [], damage: 0, heal: 0 });
+    const s0 = start(["scout", null]);
+    const s1 = withVices({ ...s0, ply: 15, history: Array.from({ length: 15 }, (_, i) => fake(i + 1)) }, 1, [{ cell: "b1", due: 14 }], { since: 3, base: 7 });
+    const sides: SkillsState["sides"] = [{ ...s1.skills!.sides[0], ex: true }, s1.skills!.sides[1]];
+    sides[0] = { ...sides[0], gauge: sideMax(sides[0], s1.rules) };
+    const s = { ...s1, turn: 0 as Player, skills: { ...s1.skills!, sides } };
+    expect(viewFor(s, 0).oppKing.candidates.length).toBeGreaterThanOrEqual(2);
+    expect(viewFor(s, 0).oppVice).toMatchObject({ set: true, scouted: false });
+    const found = useSkill(s, { id: "scout" });
+    expect(found.skills!.armed).toEqual({ id: "scout", scout: "both", ex: true });
+    expect(viewFor(found, 0).oppKing).toMatchObject({ scouted: true, candidates: [at("h8")] });
+    expect(viewFor(found, 0).oppVice).toMatchObject({ scouted: true, cell: at("b1") });
+    // ふつうの偵察は王だけ
+    const plain = useSkill({ ...s, skills: { ...s.skills!, sides: [{ ...sides[0], ex: false, gauge: gaugeMax("scout", s.rules) }, sides[1]] } }, { id: "scout" });
+    expect(plain.skills!.armed).toEqual({ id: "scout", scout: "find" });
+    expect(viewFor(plain, 0).oppVice.scouted).toBe(false);
+  });
+
   it("王と副将を同じ手で返すと両方の罰", () => {
     const s0 = game({ a1: [0, "fu"], b1: [1, "fu"], c1: [1, "fu"], h5: [0, "fu"], h4: [1, "fu"] }, ["strong", null], { rules, kings: [null, "b1"] });
     const s = play(withVices(s0, 1, [{ cell: "c1" }]), "d1");
@@ -1150,3 +1172,120 @@ describe("副将", () => {
     }, 60_000);
   });
 });
+
+describe("極（エンドレスでプレイヤーにだけ配る強化版のカード）", () => {
+  /** p のカードを極にし、ゲージを（極の）満タンにする */
+  const exOf = (s: GameState, p: Player = s.turn): GameState => {
+    const sides: SkillsState["sides"] = [s.skills!.sides[0], s.skills!.sides[1]];
+    sides[p] = { ...sides[p], ex: true };
+    sides[p] = { ...sides[p], gauge: sideMax(sides[p], s.rules) };
+    return { ...s, skills: { ...s.skills!, sides } };
+  };
+  const kingRules = skillRules({ dirs: "all", anchor: "none", heal: "none", king: { on: true, penalty: "hp", amount: 30, deadline: 7 } });
+
+  it("配る: 確率で 3 枚のうち 1 枚に印を付け、選ぶと極。相手には選び終えるまで見せない。配り直すと手放し、新しい 3 枚にまた付きうる", () => {
+    const dealt = dealSkills(createGame(skillRules()), () => 0.3);
+    expect(markEx(dealt, 0, () => 0.9, 0.05)).toBe(dealt);
+    const marked = markEx(dealt, 0, () => 0.01, 0.05);
+    const exCard = marked.skills!.sides[0].exOffer!;
+    expect(dealt.skills!.sides[0].offer).toContain(exCard);
+    expect(marked.skills!.sides[1].exOffer).toBeUndefined();
+    // 相手には配られたカードも極の印も見えない
+    expect(viewFor(marked, 1).skills!.sides[0]).toEqual({ offer: [], card: null, gauge: 0 });
+    expect(viewFor(marked, 0).skills!.sides[0].exOffer).toBe(exCard);
+    // 極のカードを選ぶと ex。相手には両者が選び終えるまで見せない
+    const picked = pickSkill(marked, 0, exCard);
+    expect(picked.skills!.sides[0]).toMatchObject({ card: exCard, ex: true });
+    expect(picked.skills!.sides[0].exOffer).toBeUndefined();
+    expect(viewFor(picked, 1).skills!.sides[0].ex).toBeUndefined();
+    const ready = pickSkill(picked, 1, picked.skills!.sides[1].offer[0]);
+    expect(viewFor(ready, 1).skills!.sides[0]).toMatchObject({ card: exCard, ex: true });
+    // 極でないカードを選べば極にならない
+    const other = marked.skills!.sides[0].offer.find((id) => id !== exCard)!;
+    expect(pickSkill(marked, 0, other).skills!.sides[0].ex).toBeUndefined();
+    // 配り直すと手放す。endlessReroll は新しい 3 枚にもまた付ける（確率 1 なら必ず）
+    expect(rerollSkills(marked, 0, () => 0.3).skills!.sides[0].exOffer).toBeUndefined();
+    const again = endlessReroll(marked, 0, () => 0.3, 1);
+    expect(again.skills!.sides[0].offer).toContain(again.skills!.sides[0].exOffer);
+  });
+
+  it("ゲージの長さは半分（四捨五入）", () => {
+    const s = game({ a1: [0, "fu"], b1: [1, "fu"] }, ["strong", null]);
+    const ex = exOf(s);
+    expect(sideMax(ex.skills!.sides[0], s.rules)).toBe(Math.round(SKILLS.strong.length / 2) * GAUGE_UNIT);
+    expect(skillBlock(viewFor(ex, 0))).toBeNull();
+    // 同じゲージでも極でなければまだ溜まっていない
+    const plain: GameState = { ...ex, skills: { ...ex.skills!, sides: [{ ...ex.skills!.sides[0], ex: false }, ex.skills!.sides[1]] } };
+    expect(skillBlock(viewFor(plain, 0))).toBe("charging");
+  });
+
+  it("回復: 応急手当 +12・大回復 +40（始めの体力は超えない）", () => {
+    const st = { a1: [0, "fu"], b1: [1, "fu"] } as const;
+    expect(useSkill(exOf(game(st, ["firstaid", null], { hp: [100, 130] })), { id: "firstaid" }).hp[0]).toBe(112);
+    expect(useSkill(exOf(game(st, ["bigheal", null], { hp: [80, 130] })), { id: "bigheal" }).hp[0]).toBe(120);
+    expect(useSkill(exOf(game(st, ["bigheal", null], { hp: [100, 130] })), { id: "bigheal" }).hp[0]).toBe(129);
+  });
+
+  it("強打: その手のダメージ ×2.5（端数切り捨て）", () => {
+    const stones = { a8: [0, "fu"], b8: [1, "fu"], c8: [1, "fu"], d8: [1, "fu"], e8: [1, "fu"], f8: [1, "fu"], a1: [1, "fu"], b1: [0, "fu"] } as const;
+    const s = useSkill(exOf(game(stones, ["strong", null])), { id: "strong" });
+    expect(previewMove(s, ...at("g8"), "fu")).toMatchObject({ damage: 12, plain: 5, mods: ["strong"] });
+    expect(play(s, "g8").hp[1]).toBe(130 - 12);
+  });
+
+  it("鉄壁: 相手の次の手のダメージは 0（駒は返る）。その次は元どおり", () => {
+    const stones = { a1: [0, "fu"], b1: [1, "fu"], a8: [1, "fu"], b8: [0, "fu"], c8: [0, "fu"], d8: [0, "fu"], e8: [0, "fu"], f8: [0, "fu"] } as const;
+    let s = useSkill(exOf(game(stones, ["wall", null])), { id: "wall" });
+    expect(s.skills!.shielded).toEqual([false, true]);
+    expect(s.skills!.wallEx).toEqual([false, true]);
+    // 鉄壁を使った手番の予測: 相手の次の手のダメージは 0
+    expect(previewMove(s, ...at("c1"), "fu")!.exposedDamage).toBe(0);
+    s = play(s, "c1");
+    expect(viewFor(s, 1).skills!.wallEx).toEqual([false, true]);
+    expect(previewMove(s, ...at("g8"), "fu")).toMatchObject({ damage: 0, plain: 5, mods: ["shield"] });
+    s = play(s, "g8");
+    expect(last(s)).toMatchObject({ damage: 0, plain: 5, shielded: true });
+    expect(last(s).targets).toHaveLength(5);
+    expect(s.hp[0]).toBe(129);
+    expect(s.skills!.shielded).toEqual([false, false]);
+    expect(s.skills!.wallEx).toBeUndefined();
+  });
+
+  it("補充: 同じ種類を 2 つ戻す（減った数まで）", () => {
+    // 始めの持ち駒は 角 4
+    const two = useSkill(exOf(game({ a1: [0, "fu"], b1: [1, "fu"] }, ["refill", null], { hands: [{ kaku: 1 }, {}] })), { id: "refill", kind: "kaku" });
+    expect(two.hands[0].kaku).toBe(3);
+    const one = useSkill(exOf(game({ a1: [0, "fu"], b1: [1, "fu"] }, ["refill", null], { hands: [{ kaku: 3 }, {}] })), { id: "refill", kind: "kaku" });
+    expect(one.hands[0].kaku).toBe(4);
+  });
+
+  it("王の移し替え: 盤のどこの自分の駒へでも移せる", () => {
+    const lonely = game({ a1: [0, "fu"], b1: [1, "fu"], h8: [0, "fu"] }, ["kingmove", null], { rules: kingRules, kings: ["h8", null] });
+    expect(skillBlock(viewFor(full(lonely), 0))).toBe("noRoom");
+    const ex = exOf(lonely);
+    expect(kingMoveCells(viewFor(ex, 0))).toEqual([at("a1")]);
+    const moved = useSkill(ex, { id: "kingmove", to: at("a1") });
+    expect(kingInfo(moved, 0).cell).toEqual(at("a1"));
+  });
+
+  it("連続行動: 2 手目もダメージを半分にしない", () => {
+    const stones = { a8: [0, "fu"], b8: [1, "fu"], c8: [1, "fu"], a1: [0, "fu"], b1: [1, "fu"], c1: [1, "fu"], h4: [1, "fu"], h5: [0, "fu"] } as const;
+    let s = useSkill(exOf(game(stones, ["fool", null])), { id: "fool" });
+    s = play(s, "d8");
+    expect(s.turn).toBe(0);
+    expect(s.skills).toMatchObject({ second: true, secondEx: true });
+    expect(previewMove(s, ...at("d1"), "fu")).toMatchObject({ damage: 2 });
+    s = play(s, "d1");
+    expect(last(s)).toMatchObject({ player: 0, damage: 2 });
+    expect(last(s).second).toBeUndefined();
+    expect(s.skills!.secondEx).toBeUndefined();
+  });
+
+  it("運命の輪: 引いた効果が極の強さ", () => {
+    const s = exOf(game({ a1: [0, "fu"], b1: [1, "fu"] }, ["wheel", null], { hp: [100, 130] }));
+    const healed = useSkill(s, { id: "wheel" }, drawOf(s, "firstaid"));
+    expect(healed.skills!.armed).toEqual({ id: "wheel", effect: "firstaid", heal: 12, ex: true });
+    expect(healed.hp[0]).toBe(112);
+  });
+});
+

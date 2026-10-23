@@ -82,6 +82,8 @@ interface Opt {
   shield?: boolean;
   /** 自分の手のダメージが半分（相手の鉄壁） */
   ownHalf?: boolean;
+  /** 相手の極の鉄壁で、自分のこの手のダメージは 0 */
+  ownZero?: boolean;
   /** 自分の王のマス（王の移し替えの読み） */
   kingCell?: Cell | null;
   /** 持ち駒に 1 つ足して読む（補充） */
@@ -172,7 +174,7 @@ function lookahead(view: PlayerView, o: Opt = {}): { best: number; cands: Choice
       if (rules.action === "flip" && lines.length === 0) continue;
       let d = damageOf(board, lines, rules);
       if (o.strong) d = strongDamage(d);
-      if (o.ownHalf) d = shieldDamage(d);
+      if (o.ownHalf) d = shieldDamage(d, !!o.ownZero);
       if (o.secondHalf) d = secondDamage(d);
       let own = d + healOf(lines, rules.values[kind], rules);
       const hits = (ls: typeof lines) => ls.reduce((n, l) => n + l.cells.filter(([y, x]) => oc.has(key(y, x))).length, 0);
@@ -237,6 +239,7 @@ function currentOpt(view: PlayerView): Opt {
   const card = sk.sides[p].card!;
   const o: Opt = { gaugeW: gaugeWeight(card, view.rules), room: (gaugeMax(card, view.rules) - sk.sides[p].gauge) / GAUGE_UNIT };
   if (sk.shielded[p]) o.ownHalf = true;
+  if (sk.wallEx?.[p]) o.ownZero = true;
   if (sk.second) o.secondHalf = true;
   switch (armedEffect(sk)) {
     case "strong":
@@ -341,7 +344,7 @@ export function chooseSkillUse(view: PlayerView, rng: () => number): SkillUse | 
   const normal = lookahead(view, { gaugeW: gw, room: 0 });
   if (normal.cands.length === 0) return null;
   const room = skillLength(id, view.rules);
-  const wo: Opt = sk!.shielded[p] ? { ownHalf: true } : {};
+  const wo: Opt = sk!.shielded[p] ? { ownHalf: true, ...(sk!.wallEx?.[p] ? { ownZero: true } : {}) } : {};
   const withRoom = (o: Opt): Opt => ({ ...wo, ...o, gaugeW: gw, room });
   const better = (o: Opt, th: number) => lookahead(view, withRoom(o)).best - normal.best >= th;
   switch (id) {
