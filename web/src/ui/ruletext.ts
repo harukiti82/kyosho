@@ -3,7 +3,7 @@
 
 import { kindsByValue, kindsInRules, KIND_ORDER, PIECES, REACH_MARK, type PieceKind, type RuleSet } from "../engine/rules";
 import { skillPool, wheelPool } from "../engine/game";
-import { FLIP_POINTS, KINGMOVE_RANGE, SKILL_HEAL, skillLength, SKILLS, VICE_DEADLINE, vicePenalty, type SkillId } from "../engine/skills";
+import { EX_HEAL, EX_REFILL, FLIP_POINTS, KINGMOVE_RANGE, SKILL_HEAL, skillLength, SKILLS, VICE_DEADLINE, vicePenalty, type SkillId } from "../engine/skills";
 
 /**
  * ルールの 1 行: 要点の一言（大きく太く。1 行に 1 か所だけ）と、その下に小さく添える補足（括弧で囲まず、薄い字）。
@@ -65,9 +65,14 @@ export const viceLine = (r: RuleSet): Sentence => ({
 export const skillLine = (): Sentence => ({ point: "ゲージが満タンでスキルを使う", note: "配られた3枚から1枚を選ぶ。返した枚数と受けたダメージで溜まる" });
 
 /**
- * スキルの効果の文。short はカードの面の一言、point / note はルール詳細・選ぶ画面の要点と補足
+ * スキルの効果の文。short はカードの面の一言、point / note はルール詳細・選ぶ画面の要点と補足。
+ * ex は極（エンドレスでプレイヤーにだけ配る強化版。ゲージは半分）
  */
-export function skillText(id: SkillId, r: RuleSet): { short: string; point: string; note: string } {
+export function skillText(id: SkillId, r: RuleSet, ex = false): { short: string; point: string; note: string } {
+  if (ex) {
+    const t = exText(id, r);
+    return { ...t, note: `極。ゲージは半分。${t.note}` };
+  }
   switch (id) {
     case "firstaid":
     case "bigheal":
@@ -100,6 +105,33 @@ export function skillText(id: SkillId, r: RuleSet): { short: string; point: stri
     }
     case "judge":
       return { short: "2 手戻す", point: "自分の直前の手と相手の応手を戻す", note: "戻した局面から打ち直す。相手の王の指定は残る" };
+  }
+}
+
+/** 極の効果の文（ゲージが半分であることは skillText が補足に足す） */
+function exText(id: SkillId, r: RuleSet): { short: string; point: string; note: string } {
+  switch (id) {
+    case "firstaid":
+    case "bigheal":
+      return { short: `体力 +${EX_HEAL[id]}`, point: `体力を ${EX_HEAL[id]} 回復`, note: "始めの体力は超えない" };
+    case "strong":
+      return { short: "ダメージ ×2.5", point: "その手のダメージが 2.5 倍", note: "小数は切り捨て" };
+    case "refill":
+      return { short: `駒を ${EX_REFILL} つ戻す`, point: `減った駒を同じ種類で ${EX_REFILL} つまで戻す`, note: "減った数まで" };
+    case "wall":
+      return { short: "相手の次の手を 0 に", point: "相手の次の手のダメージが 0", note: `駒は${verb(r).hit.replace("された", "る").replace("られた", "られる")}` };
+    case "scout":
+      return { short: "相手の王と副将が見える", point: "相手の王と副将の場所が自分にだけ分かる", note: `相手が最初の${r.king.deadline}手を打ち終えてから使える。副将は相手が置く期限の後に見える分だけ。罰は変わらない` };
+    case "kingmove":
+      return { short: "王を好きな駒へ", point: "自分の王を盤のどの自分の駒へも移せる", note: "どこへ移したかは相手に見えない" };
+    case "fool":
+      return { short: "2 手続けて打つ", point: "この手番に 2 手続けて打てる", note: "2 手目もダメージは半分にならない" };
+    case "wheel": {
+      const n = wheelPool(r).length;
+      return { short: `${n} 枚から 1 つ`, point: `ほかの ${n} 枚のどれかの効果が極の強さで出る`, note: `運命の輪以外の${n}枚から同じ確率。その場で使えない効果は不発` };
+    }
+    default:
+      return skillText(id, r);
   }
 }
 

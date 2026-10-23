@@ -2,8 +2,8 @@
 // プレイヤーに見立てた CPU（easy / normal / hard / deep:予算）を、段階の表（engine/endless.ts）の CPU と短い対局で打たせる。
 // 局 i は種 i + 1（mulberry32）。偶数局はプレイヤーが先手（サーバーと同じく 1 局ごとに入れ替える）。
 
-import { cpuOf, cpuTurn, newEndlessGame, stageOf } from "../src/engine/endless";
-import { pickSkill, rerollSkills } from "../src/engine/game";
+import { cpuOf, cpuTurn, ENDLESS_EX_CHANCE, endlessReroll, newEndlessGame, stageOf } from "../src/engine/endless";
+import { pickSkill } from "../src/engine/game";
 import { chooseSkillPick, wantsReroll } from "../src/engine/skillcpu";
 import type { Player } from "../src/engine/rules";
 import { rng, turn, type Bot } from "./deep.ts";
@@ -17,6 +17,10 @@ export interface StageResult {
   plies: number;
 }
 
+/** プレイヤーに配る極の確率（環境変数 ENDLESS_EX_CHANCE で変えて測れる。1 なら毎局、0 なら極なし） */
+const exEnv = (globalThis as { process?: { env: Record<string, string | undefined> } }).process?.env.ENDLESS_EX_CHANCE;
+const EX_CHANCE = exEnv !== undefined ? Number(exEnv) : ENDLESS_EX_CHANCE;
+
 /** プレイヤー bot を段階 stage（それまでの連勝数）と局 from〜to−1 で対局させる */
 export function play(bot: Bot, stage: number, from: number, to: number): StageResult {
   const st = stageOf(stage);
@@ -25,9 +29,11 @@ export function play(bot: Bot, stage: number, from: number, to: number): StageRe
     const rand = rng(i + 1);
     const me: Player = i % 2 === 0 ? 0 : 1;
     const cpu: Player = me === 0 ? 1 : 0;
-    let s = newEndlessGame(cpu, st, rand);
-    if (wantsReroll(s.skills!.sides[me].offer)) s = rerollSkills(s, me, rand);
-    s = pickSkill(s, me, chooseSkillPick(s.skills!.sides[me].offer, rand));
+    let s = newEndlessGame(cpu, st, rand, EX_CHANCE);
+    // 人と同じに、極が配られたら必ずそれを選ぶ。極がなく弱いカードばかりなら配り直す（新しい 3 枚にも極が付きうる）
+    if (!s.skills!.sides[me].exOffer && wantsReroll(s.skills!.sides[me].offer)) s = endlessReroll(s, me, rand, EX_CHANCE);
+    const side = s.skills!.sides[me];
+    s = pickSkill(s, me, side.exOffer ?? chooseSkillPick(side.offer, rand));
     let steps = 0;
     while (!s.result) {
       if (++steps > 400) throw new Error(`局 ${i} が終わりません`);

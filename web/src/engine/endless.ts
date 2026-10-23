@@ -1,12 +1,13 @@
 // エンドレスマッチ: CPU に勝つたびに CPU が強くなり、負けたら終わる。DOM・時計・乱数の直接参照なし（乱数は引数）。
 // 対局は標準（id skill）をもとにした「短い対局」（体力・駒の数を減らし、ゲージを短くし、巻き戻しを配らない）。
+// プレイヤーには低い確率で極（強化版のカード）を配る（ENDLESS_EX_CHANCE）。
 // 強くなり方は段階の表（ENDLESS_STAGES）: 最初は CPU の体力の差、途中から読みの強さ。段階のあいだは CPU の手番ごとに
 // 強い方を確率で混ぜて細かく刻む。表の後ろは深く読む CPU（予算 10000）のまま CPU の体力を増やし続ける。
 // サーバー（server/src/endless.ts）が段階を決めて CPU の手を打つ。測定は scripts/endless.ts（npm run balance -- endless）。
 
 import { chooseMove, type CpuLevel } from "./cpu";
 import { chooseDeep } from "./deepcpu";
-import { createGame, dealSkills, pickSkill, playMove, rerollSkills, useSkill, viewFor, type GameState } from "./game";
+import { createGame, dealSkills, markEx, pickSkill, playMove, rerollSkills, useSkill, viewFor, type GameState } from "./game";
 import { chooseSkillPick, chooseSkillUse, viceWith, wantsReroll } from "./skillcpu";
 import { cloneRules, presetById, type Hand, type Player, type RuleSet } from "./rules";
 import type { SkillId } from "./skills";
@@ -20,6 +21,11 @@ export const ENDLESS_GAUGE = 50;
 /** 短い対局の王と副将の罰（標準の 30・15 を体力の比 88 ÷ 135 で下げた） */
 export const ENDLESS_KING_PENALTY = 19;
 export const ENDLESS_VICE_PENALTY = 10;
+/**
+ * プレイヤーに配る 3 枚のうち 1 枚が極（強化版。engine/skills.ts の EX_*）になる確率。配り直しの 3 枚にも同じ確率で付く。
+ * 極が出なければ必ず配り直す人でも 1 局で 1 − 0.95² ≈ 9.75%（10 局に 1 回まで。ユーザーの指定）
+ */
+export const ENDLESS_EX_CHANCE = 0.05;
 /** 短い対局で配らないカード（巻き戻しは短いゲージで応酬になり対局が進まない） */
 export const ENDLESS_OMIT: readonly SkillId[] = ["judge"];
 /** CPU の体力の下限（段階の hp を引いても 1 は残す） */
@@ -98,10 +104,17 @@ export function stageOf(wins: number): EndlessStage {
 }
 
 /** 新しい対局（短い対局のルールで、両者にカードを配り、CPU はその場で選ぶ）。乱数は配る・CPU の選択に使う */
-export function newEndlessGame(cpu: Player, stage: EndlessStage, rng: () => number): GameState {
+export function newEndlessGame(cpu: Player, stage: EndlessStage, rng: () => number, exChance = ENDLESS_EX_CHANCE): GameState {
   let g = dealSkills(createGame(endlessRules(cpu, stage.hp)), rng);
   if (wantsReroll(g.skills!.sides[cpu].offer)) g = rerollSkills(g, cpu, rng);
-  return pickSkill(g, cpu, chooseSkillPick(g.skills!.sides[cpu].offer, rng));
+  g = pickSkill(g, cpu, chooseSkillPick(g.skills!.sides[cpu].offer, rng));
+  // 極はプレイヤーにだけ（CPU には付けない）
+  return markEx(g, cpu === 0 ? 1 : 0, rng, exChance);
+}
+
+/** プレイヤー p の配り直し。新しい 3 枚にも exChance の確率で極が付く（配られていた極は手放す） */
+export function endlessReroll(state: GameState, p: Player, rng: () => number, exChance = ENDLESS_EX_CHANCE): GameState {
+  return markEx(rerollSkills(state, p, rng), p, rng, exChance);
 }
 
 /** この手番に使う CPU（混ぜる段階は乱数を 1 回使う） */

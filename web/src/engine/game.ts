@@ -32,12 +32,15 @@ import {
   type RuleSet,
 } from "./rules";
 import {
-  gaugeMax,
+  EX_HEAL,
+  EX_KINGMOVE_RANGE,
+  EX_REFILL,
   KINGMOVE_RANGE,
   moverGain,
   OFFER_SIZE,
   secondDamage,
   shieldDamage,
+  sideMax,
   SKILL_HEAL,
   SKILL_ORDER,
   strongDamage,
@@ -327,6 +330,8 @@ export interface PositionSkill {
   offer?: SkillId[];
   card?: SkillId | null;
   gauge?: number;
+  /** 選んだカードが極 */
+  ex?: boolean;
 }
 
 /**
@@ -384,7 +389,8 @@ function skillsFrom(spec: [PositionSkill, PositionSkill], rules: RuleSet): Skill
     const card = s.card ?? null;
     const offer = [...(s.offer ?? (card ? [card] : []))];
     if (card && !offer.includes(card)) throw new Error(`${card} は配られていません`);
-    return { offer, card, gauge: card ? Math.max(0, Math.min(gaugeMax(card, rules), s.gauge ?? 0)) : 0 };
+    const ex = !!(card && s.ex);
+    return { offer, card, gauge: card ? Math.max(0, Math.min(sideMax({ card, ex }, rules), s.gauge ?? 0)) : 0, ...(ex ? { ex } : {}) };
   }) as [SkillSide, SkillSide];
   return { ...newSkills(), sides, ready: sides.every((s) => s.card !== null || s.offer.length === 0) };
 }
@@ -515,7 +521,7 @@ export function previewMove(state: GameState, r: number, c: number, kind: PieceK
     heal,
     exposed: attackable(rules, board, state.hands[q], q),
     // 鉄壁を使った手番なら、相手の次の手のダメージは半分
-    exposedDamage: armedEffect(state.skills) === "wall" ? shieldDamage(reply) : reply,
+    exposedDamage: armedEffect(state.skills) === "wall" ? shieldDamage(reply, !!state.skills?.armed?.ex) : reply,
   };
 }
 
@@ -529,14 +535,15 @@ function skillDamage(state: Pick<GameState, "turn"> & { skills?: SkillsState }, 
   if (!sk) return { damage, mods };
   let d = damage;
   if (armedEffect(sk) === "strong") {
-    d = strongDamage(d);
+    d = strongDamage(d, !!sk.armed?.ex);
     mods.push("strong");
   }
   if (sk.shielded[state.turn]) {
-    d = shieldDamage(d);
+    d = shieldDamage(d, !!sk.wallEx?.[state.turn]);
     mods.push("shield");
   }
-  if (sk.second) {
+  // 極の連続行動の 2 手目は半分にしない
+  if (sk.second && !sk.secondEx) {
     d = secondDamage(d);
     mods.push("second");
   }
@@ -655,7 +662,9 @@ export function playMove(
   if (hp[q] <= 0) return { ...next, result: { winner: p, reason: "ko", byDiscs: false } };
   if (rules.maxPlies > 0 && ply >= rules.maxPlies) return { ...next, result: judge(board, hp, "limit") };
   // 連続行動の 1 手目: 置ける手があれば続けて 2 手目（なければふつうに相手の番）
-  if (armedEffect(state.skills) === "fool" && canMove(next, p)) return { ...next, turn: p, skills: { ...next.skills!, second: true } };
+  if (armedEffect(state.skills) === "fool" && canMove(next, p)) {
+    return { ...next, turn: p, skills: { ...next.skills!, second: true, ...(state.skills!.armed!.ex ? { secondEx: true } : {}) } };
+  }
   // 相手が打てれば相手番。打てなければ相手はパスし、自分が続けて打つ。両者打てなければ終局
   return settleTurn(next, q);
 }
@@ -929,9 +938,12 @@ const newSkills = (): SkillsState => ({ sides: [emptySide(), emptySide()], ready
 function skillsFor(sk: SkillsState, viewer: Player): SkillsState {
   const { undo, ...rest } = sk;
   const sides = sk.sides.map((s, i) =>
-    i === viewer ? { ...s, offer: [...s.offer] } : { offer: [], card: sk.ready ? s.card : null, gauge: s.gauge },
+    i === viewer
+      ? { ...s, offer: [...s.offer] }
+      : { offer: [], card: sk.ready ? s.card : null, gauge: s.gauge, ...(sk.ready && s.ex ? { ex: true } : {}) },
   ) as [SkillSide, SkillSide];
   const out: SkillsState = { ...rest, sides, shielded: [sk.shielded[0], sk.shielded[1]] };
+  if (sk.wallEx) out.wallEx = [sk.wallEx[0], sk.wallEx[1]];
   if (undo) out.undoable = [undo[0] !== null, undo[1] !== null];
   return out;
 }
@@ -962,6 +974,20 @@ export function dealSkills(state: GameState, rng: () => number): GameState {
   return { ...state, skills: { ...sk, sides } };
 }
 
+/**
+ * p に配られた 3 枚のうち 1 枚を、chance の確率で極にする（エンドレスでプレイヤーにだけ。engine/endless.ts）。
+ * rng を 1 回（極にするときはもう 1 回）使う。もう極があれば何もしない
+ */
+export function markEx(state: GameState, p: Player, rng: () => number, chance: number): GameState {
+  const sk = state.skills;
+  if (!sk || sk.sides[p].exOffer || sk.sides[p].card || sk.sides[p].offer.length === 0) return state;
+  if (rng() >= chance) return state;
+  const offer = sk.sides[p].offer;
+  const sides: [SkillSide, SkillSide] = [sk.sides[0], sk.sides[1]];
+  sides[p] = { ...sides[p], exOffer: offer[Math.min(offer.length - 1, Math.floor(rng() * offer.length))] };
+  return { ...state, skills: { ...sk, sides } };
+}
+
 /** p が配り直しを使えないなら理由、使えるなら null（選ぶ前に 1 局 1 回） */
 export function rerollBlock(sk: SkillsState | undefined, p: Player): "off" | "picked" | "rerolled" | null {
   if (!sk || sk.sides[p].offer.length === 0) return "off";
@@ -979,7 +1005,9 @@ export function rerollSkills(state: GameState, p: Player, rng: () => number): Ga
   const sk = state.skills!;
   const old = sk.sides[p].offer;
   const sides: [SkillSide, SkillSide] = [sk.sides[0], sk.sides[1]];
-  sides[p] = { ...sides[p], offer: drawOffer(skillPool(state.rules).filter((id) => !old.includes(id)), rng), rerolled: true };
+  // 配られていた極も手放す（新しい 3 枚に極を付けるかは呼んだ側。engine/endless.ts の endlessReroll）
+  const { exOffer: _ex, ...rest } = sides[p];
+  sides[p] = { ...rest, offer: drawOffer(skillPool(state.rules).filter((id) => !old.includes(id)), rng), rerolled: true };
   return { ...state, skills: { ...sk, sides } };
 }
 
@@ -990,7 +1018,8 @@ export function pickSkill(state: GameState, p: Player, card: SkillId): GameState
   if (sk.ready || sk.sides[p].card) throw new Error("もう選びました");
   if (!sk.sides[p].offer.includes(card)) throw new Error(`${card} は配られていません`);
   const sides: [SkillSide, SkillSide] = [sk.sides[0], sk.sides[1]];
-  sides[p] = { ...sides[p], card };
+  const { exOffer, ...rest } = sides[p];
+  sides[p] = { ...rest, card, ...(exOffer === card ? { ex: true } : {}) };
   return { ...state, skills: { ...sk, sides, ready: sides.every((s) => s.card !== null) } };
 }
 
@@ -1021,8 +1050,12 @@ export function knownPenalties(view: Pick<PlayerView, "rules" | "oppKing" | "opp
   return { king, vice };
 }
 
-/** 王の移し替えで移せるマス（今の王から KINGMOVE_RANGE マス以内の自分の駒。今の王のマスと自分の副将のマスは除く） */
-export function kingMoveCells(view: Pick<PlayerView, "board" | "turn" | "myKing"> & { myVice?: ViceInfo }): Cell[] {
+/**
+ * 王の移し替えで移せるマス（今の王から KINGMOVE_RANGE マス以内の自分の駒。今の王のマスと自分の副将のマスは除く）。
+ * 手番の人のカードが極なら盤のどこでも（EX_KINGMOVE_RANGE）
+ */
+export function kingMoveCells(view: Pick<PlayerView, "board" | "turn" | "myKing"> & { myVice?: ViceInfo; skills?: SkillsState }): Cell[] {
+  const range = view.skills?.sides[view.turn].ex ? EX_KINGMOVE_RANGE : KINGMOVE_RANGE;
   const k = view.myKing.status === "hidden" ? view.myKing.cell : null;
   if (!k) return [];
   const v = view.myVice?.cell;
@@ -1032,7 +1065,7 @@ export function kingMoveCells(view: Pick<PlayerView, "board" | "turn" | "myKing"
       if (r === k[0] && c === k[1]) continue;
       if (v && r === v[0] && c === v[1]) continue;
       if (view.board[r][c]?.owner !== view.turn) continue;
-      if (Math.max(Math.abs(r - k[0]), Math.abs(c - k[1])) <= KINGMOVE_RANGE) out.push([r, c]);
+      if (Math.max(Math.abs(r - k[0]), Math.abs(c - k[1])) <= range) out.push([r, c]);
     }
   }
   return out;
@@ -1092,7 +1125,7 @@ export function skillBlock(view: PlayerView): SkillBlock | null {
   if (!card) return "off";
   if (view.result) return "over";
   if (sk.armed || sk.second) return "used";
-  if (sk.sides[p].gauge < gaugeMax(card, view.rules)) return "charging";
+  if (sk.sides[p].gauge < sideMax(sk.sides[p], view.rules)) return "charging";
   // 運命の輪は引いた効果が使えなければ不発（使うことはできる）
   return card === "wheel" ? null : effectBlock(view, card);
 }
@@ -1100,7 +1133,7 @@ export function skillBlock(view: PlayerView): SkillBlock | null {
 /** 手番の人のゲージが満タンか（使えるかは skillBlock） */
 export function gaugeFull(sk: SkillsState, p: Player, rules: RuleSet): boolean {
   const card = sk.sides[p].card;
-  return card !== null && sk.sides[p].gauge >= gaugeMax(card, rules);
+  return card !== null && sk.sides[p].gauge >= sideMax(sk.sides[p], rules);
 }
 
 /**
@@ -1127,16 +1160,17 @@ export function useSkill(state: GameState, use: SkillUse, rng?: () => number): G
   const sides: [SkillSide, SkillSide] = [sk!.sides[0], sk!.sides[1]];
   sides[p] = { ...sides[p], gauge: 0 };
   const spent: GameState = { ...state, skills: { ...sk!, sides } };
+  const ex: Partial<SkillNote> = sk!.sides[p].ex ? { ex: true } : {};
   switch (card) {
     case "judge":
-      return takeBack(spent, p);
+      return takeBack(spent, p, { id: card, ...ex });
     case "fool":
-      return { ...spent, skills: { ...spent.skills!, armed: { id: card } } };
+      return { ...spent, skills: { ...spent.skills!, armed: { id: card, ...ex } } };
     case "wheel": {
       if (!rng) throw new Error("運命の輪には乱数が要ります");
       const pool = wheelPool(state.rules);
       const effect = pool[Math.min(pool.length - 1, Math.floor(rng() * pool.length))];
-      const note: SkillNote = { id: card, effect };
+      const note: SkillNote = { id: card, effect, ...ex };
       if (effectBlock(viewFor(spent, p), effect)) note.fizzle = true;
       else if (effect === "refill" || effect === "kingmove") note.aim = true;
       else if (effect === "judge") return takeBack(spent, p, note);
@@ -1144,7 +1178,7 @@ export function useSkill(state: GameState, use: SkillUse, rng?: () => number): G
       return { ...spent, skills: { ...spent.skills!, armed: note } };
     }
     default:
-      return applyEffect(spent, card, use, { id: card });
+      return applyEffect(spent, card, use, { id: card, ...ex });
   }
 }
 
@@ -1155,13 +1189,15 @@ function applyEffect(state: GameState, effect: Exclude<WheelEffect, "judge">, us
   const sk = state.skills!;
   const sides: [SkillSide, SkillSide] = [sk.sides[0], sk.sides[1]];
   const shielded: [boolean, boolean] = [sk.shielded[0], sk.shielded[1]];
+  let wallEx = sk.wallEx;
   const next: GameState = { ...state };
   const view = viewFor(state, p);
+  const ex = !!note.ex;
   switch (effect) {
     case "firstaid":
     case "bigheal": {
       const hp: [number, number] = [state.hp[0], state.hp[1]];
-      hp[p] = Math.min(state.rules.hp[p], hp[p] + SKILL_HEAL[effect]);
+      hp[p] = Math.min(state.rules.hp[p], hp[p] + (ex ? EX_HEAL : SKILL_HEAL)[effect]);
       note.heal = hp[p] - state.hp[p];
       next.hp = hp;
       break;
@@ -1169,13 +1205,16 @@ function applyEffect(state: GameState, effect: Exclude<WheelEffect, "judge">, us
     case "refill": {
       if (!use.kind || !refillKinds(state).includes(use.kind)) throw new Error("補充できない駒です");
       const hands: [Hand, Hand] = [{ ...state.hands[0] }, { ...state.hands[1] }];
-      hands[p][use.kind]++;
+      // 極は同じ種類を EX_REFILL まで（減った数まで）
+      hands[p][use.kind] += ex ? Math.min(EX_REFILL, state.rules.hand[use.kind] - hands[p][use.kind]) : 1;
       note.kind = use.kind;
       next.hands = hands;
       break;
     }
     case "wall":
       shielded[q] = true;
+      // 極は相手の次の手のダメージ 0（ふつうの鉄壁なら前の極の印は消す）
+      wallEx = ex ? [q === 0, q === 1] : wallEx?.[q] ? [false, false] : wallEx;
       break;
     case "scout": {
       if (scoutBlock(view)) throw new Error("偵察できません");
@@ -1183,8 +1222,15 @@ function applyEffect(state: GameState, effect: Exclude<WheelEffect, "judge">, us
         const kings: [KingState, KingState] = [state.kings[0], state.kings[1]];
         if (!kings[q].cell) throw new Error("相手の王が決まっていません");
         kings[q] = { ...kings[q], seen: true };
-        next.kings = kings;
         note.scout = "find";
+        // 極は、相手の副将が「いる」と見えていれば副将も特定する
+        const v = kings[q].vice;
+        const live = liveVice(v);
+        if (ex && v && live && view.oppVice.set && !view.oppVice.scouted) {
+          kings[q] = { ...kings[q], vice: { ...v, list: v.list.map((x) => (x === live ? { ...x, seen: true as const } : x)) } };
+          note.scout = "both";
+        }
+        next.kings = kings;
       } else {
         // 使った時点の相手の今の副将（置き直していれば新しい副将。置き直したかは偵察した人に分かる）。
         // 使えるのは相手の副将を「いる」と見せている間（scoutBlock）で、そのときは見せている窓から後に返された副将がないので、今の副将は必ずある
@@ -1213,7 +1259,8 @@ function applyEffect(state: GameState, effect: Exclude<WheelEffect, "judge">, us
       // 強打・全方向・連続行動は置く手で効く
       break;
   }
-  const skills: SkillsState = { ...sk, sides, armed: note, shielded };
+  const { wallEx: _w, ...base } = sk;
+  const skills: SkillsState = { ...base, sides, armed: note, shielded, ...(wallEx?.some(Boolean) ? { wallEx } : {}) };
   return { ...next, skills };
 }
 
@@ -1268,15 +1315,16 @@ function skillsAfterMove(before: GameState, move: MoveEvent, lost: number): Skil
   const add = (who: Player, n: number) => {
     const card = sides[who].card;
     if (!card || n <= 0) return;
-    sides[who] = { ...sides[who], gauge: Math.min(gaugeMax(card, before.rules), sides[who].gauge + n) };
+    sides[who] = { ...sides[who], gauge: Math.min(sideMax(sides[who], before.rules), sides[who].gauge + n) };
   };
   const card = sides[p].card;
   if (card) add(p, moverGain(card, [move.r, move.c], move.targets));
   add(q, victimGain(lost));
   const shielded: [boolean, boolean] = [sk.shielded[0], sk.shielded[1]];
   shielded[p] = false;
-  const { second: _second, undo, ...rest } = sk;
+  const { second: _second, secondEx: _secondEx, wallEx, undo, ...rest } = sk;
   const out: SkillsState = { ...rest, sides, armed: null, shielded };
+  if (wallEx && wallEx[q]) out.wallEx = [q === 0, q === 1];
   if (undo || keepsUndo(card)) {
     const u: [GameState | null, GameState | null] = undo ? [undo[0], undo[1]] : [null, null];
     // 連続行動の 2 手目は手番の頭ではない（運命の輪で連続行動が出た 2 手目は 1 手目の前の局面のまま）

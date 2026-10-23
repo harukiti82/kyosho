@@ -55,7 +55,7 @@ import {
   type RuleSet,
 } from "../engine/rules";
 import { chooseSkillPick, chooseSkillUse, viceWith, wantsReroll } from "../engine/skillcpu";
-import { gaugeMax, GAUGE_UNIT, isZone, SKILLS, vicePenalty, type SkillBlock, type SkillId, type SkillNote, type SkillUse } from "../engine/skills";
+import { GAUGE_UNIT, isZone, sideMax, SKILLS, vicePenalty, type SkillBlock, type SkillId, type SkillNote, type SkillUse } from "../engine/skills";
 import { endlessRules, isEndlessRules } from "../engine/endless";
 import { dropDevice, EndlessSession, endlessWsUrl, getRanking, loadDevice, registerDevice, saveDevice } from "../net/endless";
 import {
@@ -1042,6 +1042,8 @@ export class App {
       who: this.shortName(p),
       stone: s.mode === "pvp" ? p : null,
       offer: side.offer,
+      exOffer: side.exOffer,
+      chosenEx: !!side.ex,
       rules: g.rules,
       chosen: this.online ? side.card : null,
       reroll: rerollBlock(sk, p) === null,
@@ -1096,7 +1098,7 @@ export class App {
     const sk = g.skills!;
     const name = (p: Player) => {
       const card = sk.sides[p].card;
-      return `${this.shortName(p)}は${card ? SKILLS[card].name : "なし"}`;
+      return `${this.shortName(p)}は${card ? `${sk.sides[p].ex ? "極の" : ""}${SKILLS[card].name}` : "なし"}`;
     };
     const first: Player = this.me() ?? 0;
     this.showToast(`${name(first)}、${name(other(first))}`);
@@ -1333,7 +1335,7 @@ export class App {
     const ms = skillCastMs(reduce, result !== null);
     this.placeSeats();
     const fromTop = this.el.seats[1].contains(this.el.players[p]);
-    this.fx.skillCast({ card: tarotCard(note.id, g.rules, { cls: "cast" }), who: this.shortName(p), owner: p, fromTop, reduce, result });
+    this.fx.skillCast({ card: tarotCard(note.id, g.rules, { cls: "cast", ex: !!note.ex }), who: this.shortName(p), owner: p, fromTop, reduce, result });
     this.sound.skill();
     window.clearTimeout(this.fxTimer);
     this.fxLock = true;
@@ -1369,7 +1371,7 @@ export class App {
     if (!sk || !card || !sk.ready) return null;
     const side = sk.sides[p];
     const spec = SKILLS[card];
-    const full = side.gauge >= gaugeMax(card, g.rules);
+    const full = side.gauge >= sideMax(side, g.rules);
     const armed = sk.armed && g.turn === p && !g.result ? sk.armed : null;
     // 連続行動の 2 手目
     const second = !!sk.second && g.turn === p && !g.result;
@@ -1395,13 +1397,14 @@ export class App {
             : held
               ? this.blockShort(g, p, held)
               : "満タン";
-    const t = skillText(card, g.rules);
+    const t = skillText(card, g.rules, !!side.ex);
     // 溜まった演出の途中なら、伸び始めの時刻からの経過で続きを描く（名札は描き直すたびに作り直す）
     const anim = this.gaugeAnims[p];
     const now = Date.now();
     const grow = anim && anim.key === this.gameNo && anim.to === side.gauge && !animDone(anim, now) ? anim : null;
     const children = [
       h("span", { class: "ps-num", text: spec.numeral, attrs: { "aria-hidden": "true" } }),
+      side.ex ? h("span", { class: "ps-ex", text: "極", attrs: { "aria-hidden": "true" } }) : null,
       h("span", { class: "ps-name", text: spec.name }),
       h("span", { class: "ps-gauge", attrs: { "aria-hidden": "true", style: `--g:${gaugeRatio(side, g.rules)}${grow ? `;--g0:${grow.from / grow.max}` : ""}` } }, [
         h("i"),
@@ -1409,9 +1412,9 @@ export class App {
       ]),
       h("span", { class: "ps-state", text: state }),
     ];
-    const cls = `plate-skill t-${card}${full ? " full" : ""}${held ? " held" : ""}${armed || second ? " armed" : ""}${usable ? " ready" : ""}${this.aimOf(g) ? " aiming" : ""}${grow ? ` grow${grow.full ? " just-full" : ""}` : ""}`;
+    const cls = `plate-skill t-${card}${side.ex ? " ex" : ""}${full ? " full" : ""}${held ? " held" : ""}${armed || second ? " armed" : ""}${usable ? " ready" : ""}${this.aimOf(g) ? " aiming" : ""}${grow ? ` grow${grow.full ? " just-full" : ""}` : ""}`;
     const style = grow ? `--grow-at:${grow.start - now}ms` : "";
-    const label = `${spec.name}（${t.point}）ゲージ ${Math.floor(side.gauge / GAUGE_UNIT)} / ${spec.length}`;
+    const label = `${side.ex ? "極の" : ""}${spec.name}（${t.point}）ゲージ ${Math.floor(side.gauge / GAUGE_UNIT)} / ${sideMax(side, g.rules) / GAUGE_UNIT}`;
     const why = mine && block ? `。${this.blockText(g, block)}` : held ? `。${this.blockText(g, held)}` : "";
     // 相手（CPU・オンラインの相手）のカードは押せない札。自分のカードは押せる大きさの鍵の中に札を入れる（札は斜めに切るので、当たり判定は外の鍵で広げる）
     if (!this.isHuman(p) || g.result) {
@@ -4106,10 +4109,10 @@ function lastKingHit(g: GameState, owner: Player) {
 function skillLogText(e: MoveEvent): string {
   const sk = e.skill;
   if (!sk) return "";
-  const extra = sk.heal !== undefined ? ` +${sk.heal}` : sk.kind ? ` ${PIECES[sk.kind].name}` : sk.scout === "vice" ? " 副将" : "";
+  const extra = sk.heal !== undefined ? ` +${sk.heal}` : sk.kind ? ` ${PIECES[sk.kind].name}` : sk.scout === "vice" ? " 副将" : sk.scout === "both" ? " 王と副将" : "";
   // 運命の輪は引いた効果（不発）を名前の後に
   const effect = sk.effect ? ` ${SKILLS[sk.effect].name}${sk.fizzle ? " 不発" : ""}` : "";
-  return `${SKILLS[sk.id].name}${effect}${extra}・`;
+  return `${sk.ex ? "極の" : ""}${SKILLS[sk.id].name}${effect}${extra}・`;
 }
 
 /** スキルの演出で名前の下に添える結果（運命の輪の引いた効果・不発、巻き戻しの戻した手数（運命の輪で出たときも）、偵察で副将を特定）。なければ null */
@@ -4118,6 +4121,7 @@ function castResult(note: SkillNote): { text: string; miss: boolean } | null {
   if (note.effect) return { text: note.fizzle ? `${SKILLS[note.effect].name}は不発` : SKILLS[note.effect].name, miss: !!note.fizzle };
   if (note.id === "judge") return { text: `${note.back ?? 0}手戻す`, miss: false };
   if (note.scout === "vice") return { text: "副将を特定", miss: false };
+  if (note.scout === "both") return { text: "王と副将を特定", miss: false };
   return null;
 }
 
@@ -4131,7 +4135,9 @@ function anchorText(r: RuleSet, e: MoveEvent): string {
   }
   if (e.plain !== undefined) {
     const strong = !e.skill?.fizzle && (e.skill?.effect ?? e.skill?.id) === "strong";
-    const mods = [strong ? "強打で1.5倍" : null, e.shielded ? "鉄壁で半分" : null, e.second ? "2手目で半分" : null].filter(Boolean);
+    // 極の鉄壁はダメージ 0（棋譜の手には鉄壁が極かは残らないので、0 になったかで見分ける）
+    const shield = e.shielded ? (e.damage === 0 && e.plain > 0 ? "鉄壁で0" : "鉄壁で半分") : null;
+    const mods = [strong ? (e.skill?.ex ? "強打で2.5倍" : "強打で1.5倍") : null, shield, e.second ? "2手目で半分" : null].filter(Boolean);
     parts.push(`${e.plain}を${mods.join("・")}`);
   }
   return parts.length > 0 ? `（${parts.join("、")}）` : "";

@@ -3,6 +3,8 @@ import {
   cpuOf,
   cpuTurn,
   ENDLESS_CPUS,
+  ENDLESS_EX_CHANCE,
+  endlessReroll,
   ENDLESS_HAND,
   ENDLESS_HP,
   ENDLESS_STAGES,
@@ -211,6 +213,28 @@ describe("CPU の手番", () => {
       }
       expect(s.result.reason).toBeTruthy();
     }
+  });
+
+  it("極はプレイヤーにだけ、配る 3 枚に約 ENDLESS_EX_CHANCE の確率で付く（CPU には付かない）。配り直しにも同じ確率", () => {
+    const rng = mulberry(11);
+    let first = 0;
+    let rerolled = 0;
+    const n = 4000;
+    for (let i = 0; i < n; i++) {
+      const cpu: Player = i % 2 === 0 ? 1 : 0;
+      const me: Player = cpu === 0 ? 1 : 0;
+      const g = newEndlessGame(cpu, stageOf(0), rng);
+      expect(g.skills!.sides[cpu].exOffer).toBeUndefined();
+      expect(g.skills!.sides[cpu].ex).toBeUndefined();
+      if (g.skills!.sides[me].exOffer) first++;
+      if (endlessReroll(g, me, rng).skills!.sides[me].exOffer) rerolled++;
+    }
+    // 5% ± 1%（4000 局の標準誤差は約 0.34%）
+    expect(Math.abs(first / n - ENDLESS_EX_CHANCE)).toBeLessThan(0.01);
+    expect(Math.abs(rerolled / n - ENDLESS_EX_CHANCE)).toBeLessThan(0.01);
+    // 確率 0 なら付かない・1 なら必ず付く
+    expect(newEndlessGame(1, stageOf(0), rng, 0).skills!.sides[0].exOffer).toBeUndefined();
+    expect(newEndlessGame(1, stageOf(0), rng, 1).skills!.sides[0].exOffer).toBeDefined();
   });
 
   it("同じ局面・同じ乱数なら同じ手（サーバーの手を再現できる）", () => {

@@ -139,6 +139,8 @@ export interface EndlessTest {
   hp?: [number, number];
   cpu?: EndlessCpu;
   turnSeconds?: number;
+  /** プレイヤーに配る 3 枚（配り直しも）に必ず極を付ける */
+  ex?: boolean;
 }
 
 export type ParsedEndless = { ok: true; msg: EndlessClientMessage; test?: EndlessTest } | { ok: false; code: WsErrorCode; message: string };
@@ -154,6 +156,10 @@ function parseTest(x: unknown): EndlessTest | null {
   if (x.cpu !== undefined) {
     if (!ENDLESS_CPUS.includes(x.cpu as EndlessCpu)) return null;
     t.cpu = x.cpu as EndlessCpu;
+  }
+  if (x.ex !== undefined) {
+    if (typeof x.ex !== "boolean") return null;
+    t.ex = x.ex;
   }
   if (x.turnSeconds !== undefined) {
     if (!Number.isInteger(x.turnSeconds) || (x.turnSeconds as number) < 1 || (x.turnSeconds as number) > 90) return null;

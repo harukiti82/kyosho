@@ -362,9 +362,9 @@ function damageMod(s: GameState, d: number): number {
   const sk = s.skills;
   if (!sk) return d;
   const a = sk.armed;
-  if (a && !a.fizzle && !a.aim && (a.effect ?? a.id) === "strong") d = strongDamage(d);
-  if (sk.shielded[s.turn]) d = shieldDamage(d);
-  if (sk.second) d = secondDamage(d);
+  if (a && !a.fizzle && !a.aim && (a.effect ?? a.id) === "strong") d = strongDamage(d, !!a.ex);
+  if (sk.shielded[s.turn]) d = shieldDamage(d, !!sk.wallEx?.[s.turn]);
+  if (sk.second && !sk.secondEx) d = secondDamage(d);
   return d;
 }
 

@@ -49,6 +49,18 @@ export const SKILLS: Record<SkillId, SkillSpec> = {
 export const SKILL_HEAL: Readonly<Record<"firstaid" | "bigheal", number>> = { firstaid: 4, bigheal: 20 };
 /** 王の移し替えで移せる距離（縦・横・斜めに何マスまで） */
 export const KINGMOVE_RANGE = 2;
+
+/*
+ * 極（エンドレスマッチでプレイヤーにだけ低い確率で配られる強化版のカード。engine/endless.ts が配る）。
+ * どのカードもゲージの長さが半分で、効果が強い: 回復の量・強打の倍率・補充の数・鉄壁でダメージ 0・偵察で王と副将の両方・
+ * 王の移し替えは盤のどこへでも・連続行動の 2 手目も全部のダメージ・運命の輪は引いた効果が極。全方向はゲージだけ
+ */
+/** 極の回復の量 */
+export const EX_HEAL: Readonly<Record<"firstaid" | "bigheal", number>> = { firstaid: 12, bigheal: 40 };
+/** 極の補充で戻す駒の数（同じ種類。減った数まで） */
+export const EX_REFILL = 2;
+/** 極の王の移し替えで移せる距離（盤のどこへでも） */
+export const EX_KINGMOVE_RANGE = SIZE;
 /** 副将（スキルありで隠し王ありのルールだけ）を返されたときの罰（体力） */
 export const VICE_PENALTY = 15;
 /** そのルールの副将の罰（エンドレスの短い対局は RuleSet.vice で下げる） */
@@ -80,6 +92,14 @@ export const skillLength = (id: SkillId, rules: Pick<RuleSet, "gauge">): number 
 /** 満タンの値（GAUGE_UNIT 単位） */
 export const gaugeMax = (id: SkillId, rules: Pick<RuleSet, "gauge">) => skillLength(id, rules) * GAUGE_UNIT;
 
+/** そのカードのゲージの長さ（点）。極は半分（四捨五入、1 未満は 1） */
+export const cardLength = (id: SkillId, rules: Pick<RuleSet, "gauge">, ex = false): number =>
+  ex ? Math.max(1, Math.round(skillLength(id, rules) / 2)) : skillLength(id, rules);
+
+/** 選んだカードの満タンの値（GAUGE_UNIT 単位。極は半分）。カードがなければ 0 */
+export const sideMax = (side: Pick<SkillSide, "card" | "ex">, rules: Pick<RuleSet, "gauge">): number =>
+  side.card ? cardLength(side.card, rules, !!side.ex) * GAUGE_UNIT : 0;
+
 /**
  * 1 手で手を打った人のゲージに入る点（GAUGE_UNIT 単位）。
  * 返した枚数の累進 ＋ 溜めマスに置いた・溜めマス上の相手の駒を返した 1 回ごとにカードの溜めマス点
@@ -93,10 +113,10 @@ export function moverGain(id: SkillId, placed: Cell, targets: readonly { r: numb
 /** 受けた側のゲージに入る点（GAUGE_UNIT 単位）。lost = その手で減った体力 */
 export const victimGain = (lost: number) => Math.max(0, lost) * DAMAGE_POINTS_UNITS;
 
-/** 強打: その手のダメージ ×1.5（端数切り捨て） */
-export const strongDamage = (d: number) => Math.floor((d * 3) / 2);
-/** 鉄壁: 相手の次の手のダメージを半分（端数切り捨て） */
-export const shieldDamage = (d: number) => Math.floor(d / 2);
+/** 強打: その手のダメージ ×1.5（端数切り捨て）。極は ×2.5 */
+export const strongDamage = (d: number, ex = false) => (ex ? Math.floor((d * 5) / 2) : Math.floor((d * 3) / 2));
+/** 鉄壁: 相手の次の手のダメージを半分（端数切り捨て）。極は 0 */
+export const shieldDamage = (d: number, ex = false) => (ex ? 0 : Math.floor(d / 2));
 /** 連続行動: 2 手目のダメージを半分（端数切り捨て。王の罰は変えない） */
 export const secondDamage = (d: number) => Math.floor(d / 2);
 
@@ -149,8 +169,10 @@ export interface SkillNote {
   fizzle?: true;
   /** 運命の輪: 補充・王の移し替えが出て、戻す駒・移す先の指定を待っている（置く前に指定する） */
   aim?: true;
-  /** 偵察: find = 相手の王の場所が分かった / vice = 相手の今の副将の場所が分かった（どちらも見えるだけで、罰は変わらない） */
-  scout?: "find" | "vice";
+  /** 偵察: find = 相手の王の場所が分かった / vice = 相手の今の副将の場所が分かった / both = 両方（極）。どれも見えるだけで、罰は変わらない */
+  scout?: "find" | "vice" | "both";
+  /** 極のカードで使った（運命の輪なら引いた効果も極の強さ） */
+  ex?: true;
   /** 巻き戻し（運命の輪で出たときも）: 戻した手数（自分の手と相手の応手） */
   back?: number;
   /** 巻き戻し（運命の輪で出たときも）: 戻した自分の手（公開されていた手。CPU が同じ手を打ち直さないため） */
@@ -164,8 +186,12 @@ export interface SkillSide {
   rerolled?: boolean;
   /** 選んだカード。まだ選んでいない・カードなしなら null */
   card: SkillId | null;
-  /** ゲージ（GAUGE_UNIT 単位。満タンは gaugeMax(card)） */
+  /** ゲージ（GAUGE_UNIT 単位。満タンは sideMax(side)） */
   gauge: number;
+  /** 選んだカードが極（エンドレスのプレイヤーだけ。選んだカードと同じく、両者が選び終えたら相手にも見える）。キーがなければ false */
+  ex?: boolean;
+  /** 配られたカードのうち極のもの（本人にだけ見える。選ぶと ex になり、配り直すと消える）。キーがなければなし */
+  exOffer?: SkillId;
 }
 
 export interface SkillsState {
@@ -176,8 +202,12 @@ export interface SkillsState {
   armed: SkillNote | null;
   /** 相手の鉄壁で、次の手のダメージが半分になる */
   shielded: [boolean, boolean];
+  /** shielded の鉄壁が極（ダメージ 0）。キーがなければ両者 false */
+  wallEx?: [boolean, boolean];
   /** 手番の人が連続行動の 2 手目を打つ（ダメージ半分・スキルは使えない）。キーがなければ false */
   second?: boolean;
+  /** second の連続行動が極（2 手目もダメージを半分にしない）。キーがなければ false */
+  secondEx?: boolean;
   /** 巻き戻しで戻せる（前の自分の手番の頭の局面がある）。公開情報。キーがなければ両者 false */
   undoable?: [boolean, boolean];
   /**

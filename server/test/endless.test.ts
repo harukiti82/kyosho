@@ -298,10 +298,46 @@ describe("改ざんと不正な入力", () => {
   it("test の上書きは形を検証する（範囲の外・知らない CPU は bad_message）", async () => {
     const dev = await newDevice();
     const { client } = await join(dev);
-    for (const test of [{ hp: [0, 5] }, { hp: [5] }, { cpu: "god" }, { turnSeconds: 0 }, "x"]) {
+    for (const test of [{ hp: [0, 5] }, { hp: [5] }, { cpu: "god" }, { turnSeconds: 0 }, { ex: "yes" }, "x"]) {
       client.send({ type: "start", test });
       await client.expectError("bad_message");
     }
+  });
+
+  it("極: プレイヤーにだけ配られ（test の ex で必ず）、選ぶと極のカード。配り直しの 3 枚にも付く。CPU には付かない", async () => {
+    const dev = await newDevice();
+    const { client } = await join(dev);
+    client.send({ type: "start", test: { hp: [100, 100], cpu: "easy", ex: true } });
+    const s0 = await client.expect("endless");
+    const me = s0.run!.you;
+    const cpu = me === 0 ? 1 : 0;
+    const mine = s0.run!.view.skills!.sides[me];
+    expect(mine.offer).toContain(mine.exOffer);
+    // CPU の側（相手）のカードは選び終えるまで見えず、サーバーの記録でも極は付かない
+    expect(s0.run!.view.skills!.sides[cpu]).toEqual({ offer: [], card: null, gauge: 0 });
+    const rec0 = (await recordOf(dev.device)).run!.state.skills!.sides[cpu];
+    expect(rec0.exOffer).toBeUndefined();
+    expect(rec0.ex).toBeUndefined();
+    // 配り直すと新しい 3 枚にまた極（test の ex）
+    client.send({ type: "reroll" });
+    const s1 = await client.expect("endless");
+    const again = s1.run!.view.skills!.sides[me];
+    expect(again.offer).toContain(again.exOffer);
+    expect(again.offer).not.toContain(mine.exOffer);
+    client.send({ type: "pick", card: again.exOffer });
+    const s2 = await client.expect("endless");
+    expect(s2.run!.view.skills!.sides[me]).toMatchObject({ card: again.exOffer, ex: true });
+    expect(s2.run!.view.skills!.sides[me].exOffer).toBeUndefined();
+    client.close();
+  });
+
+  it("極は test の ex がなければ配らないことがある（ENDLESS_EX_CHANCE の確率。ここでは記録の形だけ）", async () => {
+    const { dev } = await started({ hp: [100, 100], cpu: "easy" });
+    const side = (await recordOf(dev.device)).run!.state.skills!.sides;
+    // CPU 側には決して付かない
+    const cpu = (await recordOf(dev.device)).run!.cpu;
+    expect(side[cpu].ex).toBeUndefined();
+    expect(side[cpu].exOffer).toBeUndefined();
   });
 
   it("送られる view に CPU の王・巻き戻しの局面（GameState.kings / skills.undo）は入らない", async () => {

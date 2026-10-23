@@ -2,7 +2,7 @@
 // タロットは名前と意味の対応だけを借り、絵柄は石・駒・盤の格子で描くゲーム独自のもの。ルールの計算はしない（engine の値を読むだけ）。
 
 import type { Player, RuleSet } from "../engine/rules";
-import { gaugeMax, GAUGE_UNIT, skillLength, SKILLS, type SkillId, type SkillSide } from "../engine/skills";
+import { cardLength, GAUGE_UNIT, sideMax, SKILLS, type SkillId, type SkillSide } from "../engine/skills";
 import { byId, h } from "./dom";
 import { skillText } from "./ruletext";
 
@@ -94,10 +94,11 @@ export function tarotArt(id: SkillId): SVGSVGElement {
  * カードの面: 番号（ローマ数字）・絵柄・スキルの名前・タロットの名前・効果の一言・ゲージの長さ。
  * button なら選ぶ画面のカード（aria-pressed）、そうでなければ演出・表示用
  */
-export function tarotCard(id: SkillId, rules: RuleSet, opts: { button?: boolean; cls?: string } = {}): HTMLElement {
+export function tarotCard(id: SkillId, rules: RuleSet, opts: { button?: boolean; cls?: string; ex?: boolean } = {}): HTMLElement {
   const s = SKILLS[id];
-  const len = skillLength(id, rules);
-  const t = skillText(id, rules);
+  const ex = !!opts.ex;
+  const len = cardLength(id, rules, ex);
+  const t = skillText(id, rules, ex);
   const children = [
     h("span", { class: "tarot-num", text: s.numeral, attrs: { "aria-hidden": "true" } }),
     tarotArt(id),
@@ -106,9 +107,11 @@ export function tarotCard(id: SkillId, rules: RuleSet, opts: { button?: boolean;
     h("span", { class: "tarot-effect", text: t.short }),
     // ゲージの長さ（いちばん長い大回復 80 を全幅）
     h("span", { class: "tarot-len", attrs: { "aria-hidden": "true", style: `--len:${len / 80}` } }, [h("i"), h("b", { text: String(len) })]),
+    // 極（強化版）の印
+    ex ? h("span", { class: "tarot-ex", text: "極", attrs: { "aria-hidden": "true" } }) : null,
   ];
-  const cls = `tarot t-${id}${opts.cls ? ` ${opts.cls}` : ""}`;
-  const label = `${s.name}。${t.point}。${t.note}。ゲージ ${len}`;
+  const cls = `tarot t-${id}${ex ? " ex" : ""}${opts.cls ? ` ${opts.cls}` : ""}`;
+  const label = `${ex ? "極の" : ""}${s.name}。${t.point}。${t.note}。ゲージ ${len}`;
   if (opts.button) {
     return h("button", { class: cls, attrs: { type: "button", "data-skill": id, "aria-pressed": "false", "aria-label": label, title: `${t.point}。${t.note}` } }, children);
   }
@@ -133,6 +136,10 @@ export interface PickView {
   /** 選ぶ人の石（2 人対戦は先手・後手を石で示す）。出さないなら null */
   stone: Player | null;
   offer: SkillId[];
+  /** 配られたカードのうち極のもの（エンドレスのプレイヤーだけ） */
+  exOffer?: SkillId;
+  /** もう選んだカードが極 */
+  chosenEx?: boolean;
   rules: RuleSet;
   /** もう選んだカード（オンラインで相手を待っている間） */
   chosen: SkillId | null;
@@ -207,7 +214,7 @@ export class SkillPick {
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const deal = !waiting && !reduce;
     const cards = (waiting ? [v.chosen!] : v.offer).map((id, i) => {
-      const card = tarotCard(id, v.rules, { button: !waiting, cls: waiting ? "chosen" : "" });
+      const card = tarotCard(id, v.rules, { button: !waiting, cls: waiting ? "chosen" : "", ex: waiting ? !!v.chosenEx : id === v.exOffer });
       if (!waiting) {
         card.addEventListener("click", () => this.select(id));
         // 合わせた音はマウスとキーボードだけ（タッチは選んだ音だけ）
@@ -296,8 +303,8 @@ export class SkillPick {
 }
 
 /** ゲージの割合（0〜1） */
-export const gaugeRatio = (side: SkillSide, rules: Pick<RuleSet, "gauge">) => (side.card ? Math.min(1, side.gauge / gaugeMax(side.card, rules)) : 0);
+export const gaugeRatio = (side: SkillSide, rules: Pick<RuleSet, "gauge">) => (side.card ? Math.min(1, side.gauge / sideMax(side, rules)) : 0);
 
 /** ゲージの残り（満タンまでの点。小数は切り上げ） */
 export const gaugeLeft = (side: SkillSide, rules: Pick<RuleSet, "gauge">) =>
-  side.card ? Math.ceil((gaugeMax(side.card, rules) - side.gauge) / GAUGE_UNIT) : 0;
+  side.card ? Math.ceil((sideMax(side, rules) - side.gauge) / GAUGE_UNIT) : 0;
