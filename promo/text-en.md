@@ -16,12 +16,13 @@ Kyosho is a two-player board game played on a reversi board with shogi-style pie
 
 Place a piece to sandwich your opponent's pieces. The sandwiched pieces flip to your color, and the sum of their numbers is dealt as damage. Bring your opponent's HP to 0 first to win.
 
-Each piece flips only in its own directions, and the piece at the far end of the line adds its number to the damage, so where you leave your strong pieces matters. Within your first 7 moves you secretly make one piece your King; lose it and you take a heavy penalty. Before the game you pick one of three skill cards, and fill its gauge by flipping pieces.
+Each piece flips only in its own directions, and the piece at the far end of the line adds its number to the damage, so where you leave your strong pieces matters. Within your first 7 moves you secretly make one piece your King, and every 7 moves after that you hide a Vice; lose either and you take a heavy penalty. Before the game you pick one of three skill cards, and fill its gauge by flipping pieces.
 
 The board shows legal moves, the pieces you will flip and the damage before you commit.
 
 - Play against the CPU (3 levels), or with a friend on the same device
-- Online play with an invite link at https://kyosho.rukiharukichi.com/ (no sign-up)
+- Endless mode at https://kyosho.rukiharukichi.com/ : the CPU gets stronger with every win, and your streak goes on a shared leaderboard
+- Online play with an invite link or a passphrase at https://kyosho.rukiharukichi.com/ (no sign-up)
 - Interactive tutorial and a practice mode for all 11 skill cards
 - Runs in desktop and mobile browsers
 
@@ -34,19 +35,20 @@ The game text is in Japanese.
 3. Each piece flips in fixed directions (Fu: vertical, Yoko: horizontal, Kaku: diagonal, Hi: vertical and horizontal, Kin: all 8)
 4. Your piece at the far end of each line adds its number to the damage
 5. Hide your King among your first 7 moves. If it is flipped, you lose 30 HP
-6. When the gauge is full, use your skill card before placing a piece
-7. Reduce your opponent's HP to 0 to win
+6. After that, hide a Vice every 7 moves. If it is flipped, you lose 15 HP
+7. When the gauge is full, use your skill card before placing a piece
+8. Reduce your opponent's HP to 0 to win
 
 ## Controls
 
 - Desktop: select a piece, hover a square to preview the damage, click to place
 - Mobile: tap a piece, tap a square once to preview, tap again to place
-- King: press the King piece at the right end of your hand, then place
+- King / Vice: press the King or Vice button at the right end of your hand, then place
 - Skill: press your card on your name plate, then place
 - Rules: the "?" button at the top right
 
 ## Privacy and rights
 
 - Settings, tutorial progress and your win/loss record are stored only in your browser
-- At https://kyosho.rukiharukichi.com/ , visits are counted with Cloudflare Web Analytics (no cookies), and online play sends your moves to the game server. No name or account is used
+- At https://kyosho.rukiharukichi.com/ , visits are counted with Cloudflare Web Analytics (no cookies), and online play and Endless mode send your moves (and the name you set, if any) to the game server. Your name is shown to your opponent, and in Endless mode your best streak and name appear on the leaderboard. No account is used
 - Version 1.0. © 2026 rukiharukichi. All rights reserved. Do not copy, redistribute or modify the game, its rules, images or text without permission

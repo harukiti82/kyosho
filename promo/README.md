@@ -53,7 +53,7 @@ cd dist && zip -r ../../promo/kyosho-web.zip . && cd ..
 
 zip 版は本番（https://kyosho.rukiharukichi.com/ ）と次の点が違う。
 
-- オンライン対戦の入口が出ない（サーバー `/api` がないため。GitHub Pages 版と同じ。CPU 対戦・2 人対戦・遊び方・スキル練習はそのまま動く）
+- オンライン対戦とエンドレスマッチの入口が出ない（サーバー `/api` がないため。GitHub Pages 版と同じ。CPU 対戦・2 人対戦・遊び方・スキル練習はそのまま動く）
 - 設定・進み具合・通算は投稿サイトのドメインのブラウザ保存に入り、本番とは別になる
 - アクセス解析（Cloudflare）は数えない（本番のエッジで差し込むものなので zip には入らない）
 
@@ -64,7 +64,7 @@ zip 版は本番（https://kyosho.rukiharukichi.com/ ）と次の点が違う。
 **zip を HTML ゲームとして上げ、本文に本番の URL を書く**のをすすめる。
 
 - HTML ゲームなら itch.io のページの中でそのまま遊べ、「ブラウザで遊べるゲーム」の一覧と検索に載る。外部リンクだけのページは遊ぶ前にサイトを移る必要があり、ブラウザゲームの一覧にも載らない
-- zip 版にはオンライン対戦がないので、本文の「Online play … at https://kyosho.rukiharukichi.com/」で本番に案内する（itch.io は本文に URL を書いてよい）
+- zip 版にはオンライン対戦とエンドレスマッチがないので、本文の「Endless mode at …」「Online play … at https://kyosho.rukiharukichi.com/」で本番に案内する（itch.io は本文に URL を書いてよい）
 - 弱み: ゲームを直すたびに zip を上げ直す必要がある（上げ忘れると本番と食い違う）
 
 ### 手順（Dashboard → Create new project）

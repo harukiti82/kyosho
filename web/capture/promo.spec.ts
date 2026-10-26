@@ -49,6 +49,11 @@ async function selectKind(page: Page, kind: string) {
   await expect(btn).toHaveAttribute("aria-pressed", "true");
 }
 
+/** 手番の知らせ（「あなたの番」の帯）が消えるまで待つ。盤に重なったまま撮らない */
+async function noTurnCue(page: Page) {
+  await expect(page.locator(".fx-turn")).toHaveCount(0, { timeout: 5000 });
+}
+
 type Move = { kind: string; r: number; c: number; score: number };
 
 /** 置ける手をすべて狙って、予測のダメージ＋回復が最も大きい手（駒台の駒を順に選び、マスに合わせてバッジを読む） */
@@ -123,7 +128,9 @@ async function playPc(browser: Browser, record: boolean) {
   const start = Date.now();
   const at = () => (Date.now() - start) / 1000;
   const shot = async (name: string) => {
-    if (!record) await page.screenshot({ path: `${out}screenshots/${name}.png`, scale: "css" });
+    if (record) return;
+    await noTurnCue(page);
+    await page.screenshot({ path: `${out}screenshots/${name}.png`, scale: "css" });
   };
   await seedPage(page, CPU_SEED);
   await seedCrypto(page, DEAL_SEED);
@@ -262,6 +269,7 @@ test("スマホ: メニューと対局中の画面", async ({ browser }) => {
   const take = page.locator(".cell.can-take");
   await (((await take.count()) > 0 ? take : page.locator(".cell.open")).first()).tap();
   await page.waitForTimeout(600);
+  await noTurnCue(page);
   await page.screenshot({ path: `${out}screenshots/sp-game.png` });
   await context.close();
 });
