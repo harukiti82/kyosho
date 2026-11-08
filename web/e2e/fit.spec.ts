@@ -40,6 +40,7 @@ const PARTS = [
   ".menu-panel:not([hidden])",
   ".menu-logo",
   "#menu-rule",
+  ".menu-aside",
 ];
 
 type Box = { name: string; top: number; bottom: number; left: number; right: number };

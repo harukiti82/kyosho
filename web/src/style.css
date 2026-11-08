@@ -302,6 +302,48 @@ button {
   gap: 0.9rem;
   animation: logo-in 0.6s var(--ease-out) both;
 }
+/* ソフトメディア研究会のロゴと QR コード。メインの項目の間だけ出す（強さ・マルチなどの段は項目が多く 1 画面に収まらなくなる）。
+   ロゴの白い字は青い地の上で読める。QR は白い余白（quiet zone）を画像自身が持つ */
+.menu-aside {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  width: 100%;
+  margin: 0;
+}
+.menu-inner:has(#menu-main[hidden]) .menu-aside {
+  display: none;
+}
+.menu-credit {
+  display: block;
+  width: min(11rem, 60%);
+  height: auto;
+}
+.menu-qr {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 0;
+}
+.menu-qr img {
+  flex: none;
+  /* QR は余白込みで 37 モジュール。半端な倍率だと等倍の画面で読めなくなるので整数倍の px にする */
+  width: 74px;
+  height: 74px;
+  background: #fff;
+  /* 読み込めないときの代替文字が白地で読めるように */
+  overflow: hidden;
+  color: #000;
+  font-size: 0.6rem;
+}
+.menu-qr figcaption {
+  font-size: 0.85rem;
+  font-weight: 700;
+  line-height: 1.4;
+  /* 語の途中で折り返さない（折り返せるのは index.html の wbr の位置だけ） */
+  word-break: keep-all;
+  color: var(--ink-muted);
+}
 .menu-note {
   width: 100%;
   margin: 0;
@@ -786,6 +828,27 @@ button {
   .menu-rule {
     grid-column: 1;
     grid-row: 2;
+  }
+  /* 低い PC のウィンドウでも収まるよう、ロゴと QR を横に並べて高さを QR 1 つ分にする */
+  .menu-aside {
+    grid-column: 2;
+    grid-row: 2;
+    flex-direction: row;
+    align-items: center;
+    gap: 1.25rem;
+  }
+  .menu-credit {
+    flex: 0 1 9rem;
+    min-width: 0;
+    width: auto;
+  }
+  .menu-qr {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+  .menu-qr img {
+    width: 111px;
+    height: 111px;
   }
   /* 名前の名札はロゴと同じ欄の上端（右の列の最初の項目の高さ） */
   .menu-name {
@@ -6107,6 +6170,25 @@ button.tarot:focus-visible {
   }
   .menu-inner {
     gap: 1.1rem;
+  }
+  .menu-aside {
+    gap: 0.4rem;
+  }
+  .menu-credit {
+    width: 8rem;
+  }
+  .menu-qr img {
+    width: 3.5rem;
+    height: 3.5rem;
+  }
+}
+@media (max-width: 899px) and (max-height: 600px) {
+  .menu-inner {
+    gap: 0.8rem;
+  }
+  .menu-qr img {
+    width: 3rem;
+    height: 3rem;
   }
 }
 /* トーストは知らせるだけ（押せる物がない）なので、下のタブ・駒台・盤の操作を止めない */
