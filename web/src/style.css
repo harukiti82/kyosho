@@ -239,8 +239,26 @@ button {
   height: var(--topbar-h);
   padding: 0 16px;
 }
+.topbar-brand {
+  display: flex;
+  align-items: center;
+  gap: clamp(0.4rem, 2vw, 0.9rem);
+  min-width: 0;
+}
+/* ソフトメディア研究会のロゴ。メニューを出している間だけ（対局などの画面には出さない）。縦横比は保つ */
+.topbar-credit {
+  display: none;
+  flex: 0 1 auto;
+  min-width: 0;
+  width: auto;
+  height: 1.2rem;
+}
+body:has(#menu:not([hidden])) .topbar-credit {
+  display: block;
+}
 .title {
   display: flex;
+  flex: none;
   align-items: center;
   margin: 0;
   font-size: 1.55rem;
@@ -302,8 +320,8 @@ button {
   gap: 0.9rem;
   animation: logo-in 0.6s var(--ease-out) both;
 }
-/* ソフトメディア研究会のロゴと QR コード。メインの項目の間だけ出す（強さ・マルチなどの段は項目が多く 1 画面に収まらなくなる）。
-   ロゴの白い字は青い地の上で読める。QR は白い余白（quiet zone）を画像自身が持つ */
+/* QR コード。メインの項目の間だけ出す（強さ・マルチなどの段は項目が多く 1 画面に収まらなくなる）。
+   QR は白い余白（quiet zone）を画像自身が持つ */
 .menu-aside {
   display: flex;
   flex-direction: column;
@@ -313,11 +331,6 @@ button {
 }
 .menu-inner:has(#menu-main[hidden]) .menu-aside {
   display: none;
-}
-.menu-credit {
-  display: block;
-  width: min(11rem, 60%);
-  height: auto;
 }
 .menu-qr {
   display: flex;
@@ -829,22 +842,9 @@ button {
     grid-column: 1;
     grid-row: 2;
   }
-  /* 低い PC のウィンドウでも収まるよう、ロゴと QR を横に並べて高さを QR 1 つ分にする */
   .menu-aside {
     grid-column: 2;
     grid-row: 2;
-    flex-direction: row;
-    align-items: center;
-    gap: 1.25rem;
-  }
-  .menu-credit {
-    flex: 0 1 9rem;
-    min-width: 0;
-    width: auto;
-  }
-  .menu-qr {
-    flex: 1 1 0;
-    min-width: 0;
   }
   .menu-qr img {
     width: 111px;
@@ -6173,9 +6173,6 @@ button.tarot:focus-visible {
   }
   .menu-aside {
     gap: 0.4rem;
-  }
-  .menu-credit {
-    width: 8rem;
   }
   .menu-qr img {
     width: 3.5rem;
