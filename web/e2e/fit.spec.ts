@@ -39,7 +39,9 @@ const PARTS = [
   ".tab-panel:not([hidden]):not(.tab-off)",
   ".menu-panel:not([hidden])",
   ".menu-logo",
+  ".topbar-credit",
   "#menu-rule",
+  ".menu-aside",
 ];
 
 type Box = { name: string; top: number; bottom: number; left: number; right: number };
