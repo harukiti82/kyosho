@@ -239,26 +239,8 @@ button {
   height: var(--topbar-h);
   padding: 0 16px;
 }
-.topbar-brand {
-  display: flex;
-  align-items: center;
-  gap: clamp(0.4rem, 2vw, 0.9rem);
-  min-width: 0;
-}
-/* ソフトメディア研究会のロゴ。メニューを出している間だけ（対局などの画面には出さない）。縦横比は保つ */
-.topbar-credit {
-  display: none;
-  flex: 0 1 auto;
-  min-width: 0;
-  width: auto;
-  height: 1.2rem;
-}
-body:has(#menu:not([hidden])) .topbar-credit {
-  display: block;
-}
 .title {
   display: flex;
-  flex: none;
   align-items: center;
   margin: 0;
   font-size: 1.55rem;
