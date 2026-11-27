@@ -118,3 +118,7 @@
 
 - メニューにソフトメディア研究会のロゴと「挟将をスマホで遊ぶにはこちらから」の QR コードを追加（静的アセット `public/softmedia-logo.png`・`public/qr-kyosho.svg`。メインの項目の間だけ表示）。ブランチ `feat/menu-logo-qr`、未コミット
 - メニューのソフトメディアのロゴを、上の帯の小さい「挟将」ロゴの横（`.topbar-credit`、メニュー表示中だけ）へ移動。ブランチ feat/menu-logo-qr、未コミット
+
+## 2026-11-27
+
+- 上の帯のソフトメディア研究会のロゴを web ページから外す（ユーザーの指示。`public/softmedia-logo.png`・`.topbar-credit`・ロゴのためだけの `.topbar-brand` の包みを削除し、帯を #79 の前の形に戻す。QR は残す）。ブランチ `chore/remove-softmedia-logo`
